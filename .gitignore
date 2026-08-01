@@ -1,0 +1,63 @@
+# ---- Build output ----------------------------------------------------------
+/bin/
+/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# ---- Go --------------------------------------------------------------------
+*.test
+*.out
+coverage.out
+coverage.html
+go.work.sum
+/vendor/
+
+# ---- Rust ------------------------------------------------------------------
+/rust/target/
+**/*.rs.bk
+
+# ---- Node / web ------------------------------------------------------------
+node_modules/
+.pnpm-store/
+/web/**/dist/
+/web/**/.vite/
+*.tsbuildinfo
+
+# ---- Python (offline golden-file generator only) ---------------------------
+__pycache__/
+*.py[cod]
+/tools/goldengen/.venv/
+
+# ---- Local configuration and secrets ---------------------------------------
+# Blackstart uses only public data, but database credentials are still secrets.
+.env
+.env.local
+.env.*.local
+config.local.yaml
+config.local.yml
+.forge.local.yaml
+
+# ---- Large downloaded datasets ---------------------------------------------
+# Test cases and sample files are committed (they are small and their hashes
+# are the point). Bulk weather and outage archives are not — they are fetched
+# on demand and catalogued by content hash.
+/data/weather/
+/data/archive/
+*.grib2
+*.zarr/
+
+# ---- Editors and OS --------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# ---- Agent and tooling scratch ---------------------------------------------
+.claude/
