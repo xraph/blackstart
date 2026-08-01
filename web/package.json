@@ -16,12 +16,21 @@
   },
   "packageManager": "pnpm@10.21.0",
   "scripts": {
-    "lint": "pnpm -r --if-present lint",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "build": "pnpm -r --if-present build",
     "dev": "pnpm --filter viewer dev",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.8.0",
+    "globals": "17.8.0",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0"
   }
 }

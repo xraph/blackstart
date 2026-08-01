@@ -1,0 +1,6 @@
+dist/
+node_modules/
+.vite/
+pnpm-lock.yaml
+**/*.gen.ts
+packages/api-client/src/generated/
