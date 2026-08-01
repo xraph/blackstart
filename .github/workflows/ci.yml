@@ -120,6 +120,41 @@ jobs:
       - name: Coverage summary
         run: go tool cover -func=coverage.out | tail -1
 
+  # The GPL boundary is a design constraint, not a packaging detail: it decides
+  # which sparse-LU library the solver may link and why the SCL parser is
+  # written from the schema rather than wrapping libiec61850. Checking it
+  # mechanically is the only way that stays true as dependencies accumulate.
+  licenses:
+    name: License compliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Go dependency licenses
+        run: |
+          go install github.com/google/go-licenses@latest
+          if [ -n "$(go list ./... 2>/dev/null)" ]; then
+            go-licenses check ./... \
+              --disallowed_types=forbidden,restricted,unknown
+          else
+            echo "no Go packages yet"
+          fi
+
+      # cargo-deny runs once rust/ has members; an empty virtual workspace has
+      # no dependency graph to check.
+      - name: Rust dependency licenses
+        run: |
+          if grep -qE '^\s*members\s*=\s*\[\s*"' rust/Cargo.toml; then
+            cargo install cargo-deny --locked
+            (cd rust && cargo deny check licenses bans sources)
+          else
+            echo "rust workspace has no members yet; skipping cargo-deny"
+          fi
+
   lint-web:
     name: Lint (web)
     runs-on: ubuntu-latest
