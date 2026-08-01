@@ -1,0 +1,201 @@
+# golangci-lint configuration for Blackstart.
+#
+# Deliberately strict. Greenfield is the only cheap moment to adopt a large
+# linter set, and this codebase will be read by power-systems researchers who
+# are not Go specialists — consistency is worth more here than it usually is.
+#
+# Two project-specific rules live in the forbidigo block below and matter more
+# than the rest of this file put together: the ban on pgdriver.Unwrap, and the
+# ban on control-shaped identifiers in protocol adapters.
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+
+output:
+  formats:
+    text:
+      print-linter-name: true
+      print-issued-lines: true
+
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - containedctx
+    - copyloopvar
+    - decorder
+    - dogsled
+    - dupword
+    - durationcheck
+    - embeddedstructfieldcheck
+    - errcheck
+    - errchkjson
+    - errname
+    - errorlint
+    - exptostd
+    - fatcontext
+    - forbidigo
+    - gocheckcompilerdirectives
+    - gochecknoinits
+    - gochecksumtype
+    - gocritic
+    - godoclint
+    - godot
+    - gomoddirectives
+    - gomodguard
+    - goprintffuncname
+    - gosec
+    - gosmopolitan
+    - govet
+    - grouper
+    - importas
+    - inamedparam
+    - ineffassign
+    - intrange
+    - iotamixing
+    - loggercheck
+    - makezero
+    - mirror
+    - misspell
+    - modernize
+    - musttag
+    - nakedret
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - noctx
+    - nolintlint
+    - perfsprint
+    - predeclared
+    - promlinter
+    - protogetter
+    - reassign
+    - recvcheck
+    - rowserrcheck
+    - sloglint
+    - spancheck
+    - sqlclosecheck
+    - staticcheck
+    - tagalign
+    - testableexamples
+    - tparallel
+    - unconvert
+    - unused
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+    - whitespace
+    - zerologlint
+
+  settings:
+    forbidigo:
+      analyze-types: true
+      forbid:
+        # --------------------------------------------------------------
+        # Never unwrap the Postgres driver.
+        #
+        # pgdriver.Unwrap panics when the handle is backed by any other
+        # driver, which makes every store that calls it untestable against
+        # a fake and unrunnable against SQLite. Grove's own README
+        # recommends it; that recommendation is wrong for our purposes.
+        #
+        # Use the checked form instead, in exactly one place
+        # (pkg/store/fabriqstore.pgOrErr):
+        #
+        #     pg, ok := gdb.Driver().(*pgdriver.PgDB)
+        #     if !ok { return nil, fmt.Errorf(...) }
+        # --------------------------------------------------------------
+        - pattern: '^pgdriver\.Unwrap$'
+          msg: >-
+            pgdriver.Unwrap panics on non-Postgres drivers. Type-assert
+            gdb.Driver().(*pgdriver.PgDB) with an ok check instead, via
+            pkg/store/fabriqstore.pgOrErr.
+
+        # --------------------------------------------------------------
+        # Advisory-only boundary. See docs/SAFETY.md.
+        #
+        # Blackstart does not actuate. Protocol adapters are read-only
+        # clients: no control points, no select-before-operate, no
+        # setpoints, no tap changes. This rule makes that boundary
+        # mechanical rather than a promise — a promise CI cannot check is
+        # not an architectural boundary.
+        #
+        # If you are hitting this rule while writing a read path, rename
+        # the identifier. If you are hitting it while writing a write
+        # path, stop.
+        # --------------------------------------------------------------
+        - pattern: '(?i)(Write|Send|Issue|Execute|Operate)(Control|Command|Setpoint|Breaker|Point|Output)'
+          msg: >-
+            Blackstart is advisory and does not actuate (docs/SAFETY.md).
+            Protocol adapters expose read operations only.
+
+        - pattern: '(?i)SelectBeforeOperate|DirectOperate|ControlRelayOutput'
+          msg: >-
+            Blackstart is advisory and does not actuate (docs/SAFETY.md).
+            Control primitives must not appear in this repository.
+
+    gosec:
+      excludes:
+        - G115 # integer conversion overflow; the cast_* clippy analogues and
+               # code review cover the numerical paths that actually matter.
+
+    godot:
+      scope: declarations
+      capital: false
+
+    misspell:
+      locale: US
+      ignore-rules:
+        # Power-systems and meteorological vocabulary the dictionary rejects.
+        - modelling
+        - modelled
+        - travelling
+
+  exclusions:
+    generated: lax
+    warn-unused: true
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+      - legacy
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - nilnil
+          - containedctx
+
+      # Test fixtures and golden-file generators legitimately name things
+      # after the protocol operations they parse and assert are absent.
+      - path: (_test\.go|/testdata/)
+        linters:
+          - forbidigo
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  fix: false
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/xraph/blackstart
+    gofumpt:
+      extra-rules: true
+
+severity:
+  default: error
