@@ -17,6 +17,12 @@ const kelvinOffset = 273.15
 // exist rather than because callers are asked not to take it.
 //
 // The zero Quantity is a dimensionless zero and is safe to use.
+//
+// Methods use value receivers, because a Quantity is an immutable value.
+// UnmarshalJSON is the sole exception: json.Unmarshaler cannot be satisfied
+// without a pointer receiver.
+//
+//nolint:recvcheck // UnmarshalJSON must take a pointer; everything else is a value
 type Quantity struct {
 	mag  float64
 	unit Unit
