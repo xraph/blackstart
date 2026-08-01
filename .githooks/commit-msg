@@ -49,7 +49,7 @@ fail() {
 	exit 1
 }
 
-FIXED_SCOPES="repo|ci|deps|docs|quantity|bitemporal|hooks|id|store|proto|web|bsctl|solver|app|buildinfo|fabric|lint"
+FIXED_SCOPES="repo|ci|deps|docs|adr|design|quantity|bitemporal|hooks|id|store|proto|web|bsctl|solver|app|buildinfo|fabric|lint"
 
 # Directory-derived scopes.
 DYNAMIC_SCOPES=""
