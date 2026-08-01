@@ -75,10 +75,20 @@ lint-go:
 	golangci-lint run ./...
 	$(GO) vet ./...
 
+# An empty Cargo workspace does not pass vacuously — `cargo fmt` reports
+# "Failed to find targets" and `cargo clippy` exits 101 with "the manifest is
+# virtual, and the workspace has no members". Guard until Phase 2 adds crates,
+# and say why rather than skipping silently.
+HAS_RUST_CRATES := $(shell grep -qE '^[[:space:]]*members[[:space:]]*=[[:space:]]*\[[[:space:]]*"' $(RUST_DIR)/Cargo.toml && echo yes)
+
 .PHONY: lint-rust
 lint-rust:
+ifeq ($(HAS_RUST_CRATES),yes)
 	cd $(RUST_DIR) && $(CARGO) fmt --all --check
 	cd $(RUST_DIR) && $(CARGO) clippy --workspace --all-targets --all-features -- -D warnings
+else
+	@printf "lint-rust: skipped, the Cargo workspace has no members yet\n"
+endif
 
 .PHONY: lint-web
 lint-web:
@@ -108,7 +118,9 @@ tidy:
 .PHONY: test t
 test t:
 	$(GO) test -race -short ./...
+ifeq ($(HAS_RUST_CRATES),yes)
 	cd $(RUST_DIR) && $(CARGO) test --workspace
+endif
 	cd $(WEB_DIR) && $(PNPM) run test
 
 ## test-integration: Run integration tests (requires `make dev-up`)
