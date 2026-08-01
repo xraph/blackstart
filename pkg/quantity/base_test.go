@@ -182,3 +182,6 @@ func TestStringHandlesNil(t *testing.T) {
 		t.Errorf("String() = %q, want %q", got, want)
 	}
 }
+
+func inf() float64 { return math.Inf(1) }
+func nan() float64 { return math.NaN() }

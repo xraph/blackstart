@@ -85,7 +85,7 @@ func TestPowerFormsShareADimension(t *testing.T) {
 	}
 }
 
-func TestString(t *testing.T) {
+func TestDimensionString(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
