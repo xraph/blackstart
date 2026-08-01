@@ -82,4 +82,4 @@ if [ $FOUND -eq 1 ]; then
 	exit 1
 fi
 
-echo "check-safety-boundary: ok (${#FILES[@]} files scanned)"
+echo "check-safety-boundary: ok ($COUNT files scanned)"
