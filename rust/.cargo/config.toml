@@ -1,0 +1,25 @@
+# Build flags are pinned because they change the numbers.
+#
+# The rule that matters: NEVER add `-C target-cpu=native` to a build that
+# produces or checks golden files. Enabling FMA lets the compiler contract
+# `a * b + c` into a single fused instruction with one rounding step instead of
+# two. The result is more accurate and it is different — golden files generated
+# on one machine then fail on another, with a diff that looks like a solver bug
+# and is not.
+#
+# Blackstart promises same-machine determinism and documented tolerances across
+# machines. It does not promise bit-identical results across architectures,
+# because that is not achievable. See a private design note.
+
+[build]
+rustflags = []
+
+[target.'cfg(all())']
+rustflags = [
+    # Treat warnings as errors in CI; locally this is overridden by not setting
+    # RUSTFLAGS, so `cargo check` stays fast and friendly during development.
+]
+
+[alias]
+lint = "clippy --workspace --all-targets --all-features -- -D warnings"
+golden = "test --release -p bs-golden --"

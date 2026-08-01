@@ -1,0 +1,57 @@
+[workspace]
+resolver = "3"
+members = []
+
+# Member crates are added as they are built (Phase 2):
+#   bs-quantity     per-unit and SI newtypes, mirroring Go's pkg/quantity
+#   bs-case         canonical network-model blob decoder
+#   bs-sparse       CSR/CSC assembly, ordering, the Factorize trait
+#   bs-powerflow    DC, Newton-Raphson, fast-decoupled, reactive limits
+#   bs-factors      PTDF / LODF / OTDF
+#   bs-contingency  N-1 screening, parallelized
+#   bs-solver       the gRPC service binary and its model cache
+#   bs-golden       golden-file comparison harness (dev only)
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.97"
+license = "Apache-2.0"
+repository = "https://github.com/xraph/blackstart"
+authors = ["XRAPH"]
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+# Numerical correctness. These are the classes of mistake that produce a
+# plausible wrong answer rather than a crash, which is the failure mode this
+# project most needs to avoid.
+float_cmp = "deny"
+lossy_float_literal = "deny"
+cast_possible_truncation = "deny"
+cast_precision_loss = "deny"
+cast_sign_loss = "deny"
+indexing_slicing = "warn"
+
+# Determinism. Iterating a HashMap yields a different order per process, which
+# silently changes floating-point reduction order and therefore results. See
+# clippy.toml, which bans the types outright.
+implicit_hasher = "warn"
+
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+
+# Release profile used for golden-file generation and comparison. Both must
+# use the same profile or the last bits of the mantissa can differ.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1   # deterministic codegen; multiple units may reorder FP ops
+panic = "unwind"
+debug = 1           # keep line tables so solver panics are diagnosable
+
+[profile.bench]
+inherits = "release"

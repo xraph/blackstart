@@ -1,0 +1,8 @@
+# Pinned so that golden-file comparisons are reproducible. A toolchain bump is
+# a deliberate change that may shift the last bits of a floating-point result,
+# and therefore travels in its own commit alongside any golden-file updates it
+# requires.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

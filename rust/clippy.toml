@@ -1,0 +1,24 @@
+# Determinism is a correctness property of the solver, not a nicety.
+#
+# Iterating a std HashMap or HashSet yields a different order in every process
+# (the hasher is randomly seeded). When that order reaches a floating-point
+# reduction, the result changes in the last bits — so the same case solved
+# twice gives two different answers, and golden-file comparison becomes noise.
+#
+# BTreeMap/BTreeSet iterate in key order, and a sorted Vec with binary search
+# is usually faster anyway at the sizes involved. Where a hash map is genuinely
+# wanted on a non-numeric path, use an explicit deterministic hasher and
+# document why at the call site.
+disallowed-types = [
+    { path = "std::collections::HashMap", reason = "non-deterministic iteration order; use BTreeMap or a sorted Vec" },
+    { path = "std::collections::HashSet", reason = "non-deterministic iteration order; use BTreeSet or a sorted Vec" },
+]
+
+# f32 anywhere in the numerical path is almost always a mistake: power-flow
+# convergence tolerances are routinely tighter than f32 can represent.
+disallowed-methods = []
+
+# Power-systems code has conventional short names that read correctly to the
+# audience — v for voltage, p and q for real and reactive power, y for
+# admittance. Fighting those makes the code worse, not better.
+allow-one-hash-in-raw-strings = true
