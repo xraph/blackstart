@@ -1,0 +1,8 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Member packages are added as they are built (Phase 1):
+#   apps/viewer          Vite + React application
+#   packages/globe       the React Three Fiber scene and geodetic math
+#   packages/api-client  generated client for the platform's OpenAPI surface

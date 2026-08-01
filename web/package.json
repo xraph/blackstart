@@ -1,0 +1,27 @@
+{
+  "name": "@blackstart/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Blackstart web workspace: the 3D grid viewer and its supporting packages",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xraph/blackstart.git",
+    "directory": "web"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "packageManager": "pnpm@10.21.0",
+  "scripts": {
+    "lint": "pnpm -r --if-present lint",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build",
+    "dev": "pnpm --filter viewer dev",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  }
+}
