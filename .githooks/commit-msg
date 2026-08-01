@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+#
+# Validate the commit message against Conventional Commits.
+#
+# Installed by `make setup`, which sets core.hooksPath to .githooks. The same
+# rules run in CI over the whole pull request range; this hook exists so you
+# find out at commit time rather than after a push.
+#
+# Scopes are derived from the tree — extensions/* and rust/* directory names,
+# plus a fixed set for cross-cutting work — so adding an extension does not
+# require editing an allowlist here.
+
+set -euo pipefail
+
+MSG_FILE="$1"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+SUBJECT=$(head -1 "$MSG_FILE")
+
+# Merges, reverts, fixups and squashes are mechanical; git wrote them.
+case "$SUBJECT" in
+Merge\ * | Revert\ * | fixup!\ * | squash!\ *)
+	exit 0
+	;;
+esac
+
+# Comment-only file means an aborted commit; git handles that itself.
+if [ -z "${SUBJECT// /}" ] || [ "${SUBJECT:0:1}" = "#" ]; then
+	exit 0
+fi
+
+TYPES="feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert"
+
+fail() {
+	echo "commit-msg: rejected — $1" >&2
+	echo >&2
+	echo "  subject: $SUBJECT" >&2
+	echo >&2
+	echo "Conventional Commits: <type>(<scope>): <subject>" >&2
+	echo "  types:  ${TYPES//|/, }" >&2
+	echo "  scopes: an extensions/ or rust/ directory name, or one of" >&2
+	echo "          ${FIXED_SCOPES//|/, }" >&2
+	echo >&2
+	echo "  e.g.  feat(topology): add node-breaker connectivity model" >&2
+	echo "        fix(powerflow): enforce generator reactive limits on retry" >&2
+	echo "        docs: correct the commit-size limit in the spec" >&2
+	echo >&2
+	echo "See CONTRIBUTING.md." >&2
+	exit 1
+}
+
+FIXED_SCOPES="repo|ci|deps|docs|quantity|bitemporal|hooks|id|store|proto|web|bsctl|solver|app|buildinfo|fabric|lint"
+
+# Directory-derived scopes.
+DYNAMIC_SCOPES=""
+for dir in "$ROOT"/extensions/*/ "$ROOT"/rust/*/; do
+	[ -d "$dir" ] || continue
+	name=$(basename "$dir")
+	# Rust crates are bs-foo; allow both the crate name and the bare noun.
+	DYNAMIC_SCOPES="${DYNAMIC_SCOPES}|${name}|${name#bs-}"
+done
+
+ALL_SCOPES="${FIXED_SCOPES}${DYNAMIC_SCOPES}"
+
+if ! echo "$SUBJECT" | grep -qE "^(${TYPES})(\([a-z0-9./-]+\))?!?: .+"; then
+	fail "not in Conventional Commits form"
+fi
+
+# Extract and validate the scope when one is present.
+if echo "$SUBJECT" | grep -qE "^(${TYPES})\("; then
+	SCOPE=$(echo "$SUBJECT" | sed -E "s/^(${TYPES})\(([^)]+)\).*/\2/")
+	if ! echo "$SCOPE" | grep -qE "^(${ALL_SCOPES})$"; then
+		fail "unknown scope '$SCOPE'"
+	fi
+fi
+
+DESC=$(echo "$SUBJECT" | sed -E "s/^(${TYPES})(\([^)]+\))?!?: //")
+
+case "$DESC" in
+*.)
+	fail "subject must not end with a period"
+	;;
+esac
+
+# Imperative mood is not mechanically checkable, but a capitalised first word
+# is the most common symptom of not using it.
+if echo "$DESC" | grep -qE '^[A-Z][a-z]'; then
+	fail "subject should start lowercase and be in the imperative mood"
+fi
+
+if [ ${#SUBJECT} -gt 72 ]; then
+	fail "subject is ${#SUBJECT} characters; keep it under 72"
+fi
+
+exit 0

@@ -39,3 +39,10 @@ web/pnpm-lock.yaml      linguist-generated=true -diff
 
 # Vendored third-party source, if it ever becomes necessary.
 third_party/**          linguist-vendored=true -diff
+
+# Governing design documents, committed verbatim as project inputs. Prose, not
+# hand-written code, and not authored commit-by-commit — so the per-commit
+# size limit does not apply to them. Documentation written as part of the work
+# (README, CONTRIBUTING, a private design note, docs/extensions) is NOT marked here and does
+# count, because it is authored alongside the code it describes.
+a private design note          linguist-documentation=true
