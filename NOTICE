@@ -1,0 +1,24 @@
+Blackstart
+Copyright 2026 XRAPH
+
+Licensed under the Apache License, Version 2.0. See LICENSE for the full text.
+
+Blackstart is managed and governed by the XRAPH project maintainers.
+For project information and governance, see: https://github.com/xraph
+
+This product includes software developed as part of the XRAPH ecosystem:
+
+  - Forge (https://github.com/xraph/forge) — extension composition and host
+    application framework.
+  - Vessel (https://github.com/xraph/vessel) — dependency injection container.
+  - Grove (https://github.com/xraph/grove) — ORM, storage drivers, migrations.
+  - Fabriq (https://github.com/xraph/fabriq) — data fabric; single write path
+    with derived graph and search projections.
+
+Blackstart embeds no third-party numerical power-systems code. The Rust solver
+is an original implementation, validated against pandapower and MATPOWER as
+external reference tools. See docs/validation.md for the validation record.
+
+Test system data distributed with or downloaded by this project is public and
+carries its own terms. See data/cases/SOURCES.md and data/samples/SOURCES.md
+for per-file source URLs, content hashes, retrieval dates, and license basis.
