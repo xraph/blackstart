@@ -199,12 +199,101 @@ jobs:
       - run: pnpm run lint
       - run: pnpm run typecheck
 
+  lint-rust:
+    name: Lint (rust)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - run: cargo fmt --all --check
+      # --all-targets so tests and benches are linted too. A lint that only
+      # covers src/ leaves the tests — where most of this repository's
+      # explanatory prose lives — unchecked.
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  test-rust:
+    name: Test (rust)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - run: cargo test --workspace --all-features
+
+      # Release too. The solver's determinism and convergence behaviour depend
+      # on optimisation level — a debug build and a release build can take
+      # different iteration counts — so a suite that only ever runs in debug
+      # has not tested what ships.
+      - run: cargo test --workspace --all-features --release
+
+  golden-drift:
+    name: Golden references
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the oracle
+        run: pip install pandapower
+
+      # The committed goldens must still be what the generator produces. A
+      # golden that has drifted from its generator is a number nobody can
+      # reproduce, which is the one thing this project cannot ship.
+      #
+      # Provenance is excluded from the comparison on purpose: regenerating
+      # always rewrites generator_commit and oracle_version, so a plain
+      # `git diff` would fail every run and teach everyone to ignore it. What
+      # has to match is the network and the answer.
+      - name: Regenerate and compare
+        run: |
+          python tools/goldengen/generate.py --out /tmp/regenerated
+          python - <<'EOF'
+          import json, pathlib, sys
+
+          failures = []
+          for committed in sorted(pathlib.Path("data/golden").glob("*.golden.json")):
+              fresh = pathlib.Path("/tmp/regenerated") / committed.name
+              if not fresh.exists():
+                  failures.append(f"{committed.name}: the generator no longer produces this file")
+                  continue
+              a = json.loads(committed.read_text())
+              b = json.loads(fresh.read_text())
+              for section in ("case", "reference"):
+                  if a[section] != b[section]:
+                      failures.append(f"{committed.name}: {section} has drifted from the generator")
+
+          if failures:
+              print("::error::" + "; ".join(failures))
+              sys.exit(1)
+          print(f"all goldens match the generator")
+          EOF
+
+      - name: Compare against the oracle
+        run: cd rust && cargo test -p bs-golden --release
+
 # Jobs that arrive with the code they check, rather than being added now as
-# no-ops. An empty Cargo workspace fails `cargo clippy` outright ("the
-# manifest is virtual, and the workspace has no members"), and a job that is
-# green because it skipped is indistinguishable from one that is green because
-# it passed.
+# no-ops. A job that is green because it skipped is indistinguishable from one
+# that is green because it passed.
 #
-#   lint-rust / test-rust     Phase 2, with the first crate
-#   test-rust-golden          Phase 2, with the first golden file
 #   proto                     Phase 2, with the solver contract
