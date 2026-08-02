@@ -198,6 +198,25 @@ impl Csr {
         self.values.len()
     }
 
+    /// The stored entries of one row, as `(column, value)` pairs in ascending
+    /// column order.
+    ///
+    /// Assembly that walks a sparsity pattern — the power-flow Jacobian is the
+    /// motivating case — needs this. Doing it with `get` instead turns a linear
+    /// walk into a binary search per entry, and doing it with `to_dense` throws
+    /// away the sparsity that made the matrix worth storing this way.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the row index is out of range.
+    pub fn row(&self, row: usize) -> impl Iterator<Item = (usize, f64)> + '_ {
+        assert!(row < self.rows, "row {row} out of range");
+
+        let (start, end) = (self.row_start[row], self.row_start[row + 1]);
+
+        (start..end).map(move |k| (self.col_index[k], self.values[k]))
+    }
+
     /// Whether the matrix is square.
     #[must_use]
     pub const fn is_square(&self) -> bool {
@@ -275,6 +294,40 @@ mod tests {
 
     fn close(got: f64, want: f64, tol: f64) -> bool {
         (got - want).abs() <= tol * want.abs().max(1.0)
+    }
+
+    #[test]
+    fn a_row_yields_its_stored_entries_in_column_order() {
+        let mut t = Triplets::new(3, 3);
+        // Added out of order on purpose: compress sorts, and assembly relies
+        // on the result being ascending.
+        t.add(1, 2, 5.0).unwrap();
+        t.add(1, 0, 3.0).unwrap();
+        t.add(0, 1, 7.0).unwrap();
+
+        let csr = t.compress();
+
+        assert_eq!(csr.row(1).collect::<Vec<_>>(), vec![(0, 3.0), (2, 5.0)]);
+        assert_eq!(csr.row(0).collect::<Vec<_>>(), vec![(1, 7.0)]);
+        // An empty row yields nothing rather than a zero, so a walk over the
+        // pattern visits only what is stored.
+        assert_eq!(csr.row(2).count(), 0);
+    }
+
+    #[test]
+    fn row_iteration_agrees_with_get() {
+        let mut t = Triplets::new(4, 4);
+        for (r, c, v) in [(0, 0, 1.0), (0, 3, 2.0), (2, 1, -4.0), (3, 3, 9.0)] {
+            t.add(r, c, v).unwrap();
+        }
+
+        let csr = t.compress();
+
+        for row in 0..csr.rows() {
+            for (col, value) in csr.row(row) {
+                assert!(close(value, csr.get(row, col), 1e-15), "({row},{col})");
+            }
+        }
     }
 
     #[test]
