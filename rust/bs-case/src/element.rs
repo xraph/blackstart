@@ -40,6 +40,12 @@ pub struct Bus {
     pub q_min: f64,
     /// Upper limit on reactive output, per unit. Infinite by default.
     pub q_max: f64,
+    /// Shunt conductance to ground at this bus, per unit.
+    pub g_shunt: f64,
+    /// Shunt susceptance to ground at this bus, per unit. Positive is
+    /// capacitive — a capacitor bank supporting voltage; negative is a reactor
+    /// absorbing it.
+    pub b_shunt: f64,
 }
 
 impl Bus {
@@ -55,6 +61,8 @@ impl Bus {
             v_angle: 0.0,
             q_min: f64::NEG_INFINITY,
             q_max: f64::INFINITY,
+            g_shunt: 0.0,
+            b_shunt: 0.0,
         }
     }
 
@@ -70,7 +78,22 @@ impl Bus {
             v_angle: 0.0,
             q_min: f64::NEG_INFINITY,
             q_max: f64::INFINITY,
+            g_shunt: 0.0,
+            b_shunt: 0.0,
         }
+    }
+
+    /// Sets the shunt admittance to ground at this bus.
+    ///
+    /// Capacitor banks and reactors are modelled here rather than as branches
+    /// to a ground bus, because they are a property of the bus and adding a
+    /// fictitious bus per shunt would corrupt the index space every result is
+    /// reported in.
+    #[must_use]
+    pub fn with_shunt(mut self, g_shunt: f64, b_shunt: f64) -> Self {
+        self.g_shunt = g_shunt;
+        self.b_shunt = b_shunt;
+        self
     }
 
     /// Sets the reactive output limits.
@@ -98,6 +121,8 @@ impl Bus {
             v_angle: 0.0,
             q_min: f64::NEG_INFINITY,
             q_max: f64::INFINITY,
+            g_shunt: 0.0,
+            b_shunt: 0.0,
         }
     }
 }
@@ -124,6 +149,15 @@ pub struct Branch {
     /// case so that contingency analysis can restore it without rebuilding
     /// every index.
     pub in_service: bool,
+    /// Off-nominal turns ratio, applied at the from-end. 1.0 for a line.
+    ///
+    /// A transformer is a branch with a ratio, not a separate entity. Modelling
+    /// it separately would double every loop that walks the network for no
+    /// gain: the equations differ by this one factor.
+    pub tap: f64,
+    /// Phase shift in radians, applied at the from-end. Zero for a line and
+    /// for an ordinary transformer.
+    pub shift: f64,
 }
 
 impl Branch {
@@ -139,7 +173,20 @@ impl Branch {
             b: 0.0,
             rating: 0.0,
             in_service: true,
+            tap: 1.0,
+            shift: 0.0,
         }
+    }
+
+    /// Sets the off-nominal turns ratio and phase shift.
+    ///
+    /// The ratio is at the from-end, following the convention MATPOWER and
+    /// pandapower both use, so an imported case needs no reinterpretation.
+    #[must_use]
+    pub fn with_transformer(mut self, tap: f64, shift: f64) -> Self {
+        self.tap = tap;
+        self.shift = shift;
+        self
     }
 
     /// Sets the long-term rating.

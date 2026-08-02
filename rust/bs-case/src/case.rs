@@ -20,7 +20,7 @@ pub struct Case {
 }
 
 /// Why a case is not solvable.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CaseError {
     /// The case has no buses.
     Empty,
@@ -36,6 +36,9 @@ pub enum CaseError {
     SelfLoop { branch: usize, bus: usize },
     /// A branch has zero reactance.
     ZeroReactance { branch: usize },
+    /// A branch has a non-positive turns ratio, which has no physical meaning
+    /// and divides the admittance by zero.
+    BadTap { branch: usize, tap: f64 },
 }
 
 impl fmt::Display for CaseError {
@@ -65,6 +68,11 @@ impl fmt::Display for CaseError {
                 f,
                 "branch {branch} has zero reactance; a zero-impedance branch is \
                  a bus merge that topology processing should have collapsed"
+            ),
+            Self::BadTap { branch, tap } => write!(
+                f,
+                "branch {branch} has turns ratio {tap}; a ratio must be \
+                 positive, and 1.0 is the value for a line with no transformer"
             ),
         }
     }
@@ -158,6 +166,13 @@ impl Case {
 
             if branch.x == 0.0 {
                 return Err(CaseError::ZeroReactance { branch: i });
+            }
+
+            if !(branch.tap > 0.0) {
+                return Err(CaseError::BadTap {
+                    branch: i,
+                    tap: branch.tap,
+                });
             }
         }
 
