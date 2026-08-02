@@ -3,12 +3,16 @@ package networkmodel
 import (
 	"context"
 	"errors"
+	"fmt"
+
+	"github.com/xraph/fabriq"
 
 	"github.com/xraph/forge"
 	"github.com/xraph/vessel"
 
+	"github.com/xraph/blackstart/extensions/fabric"
 	"github.com/xraph/blackstart/extensions/networkmodel/store"
-	"github.com/xraph/blackstart/extensions/networkmodel/store/memory"
+	fabriqstore "github.com/xraph/blackstart/extensions/networkmodel/store/fabriq"
 	"github.com/xraph/blackstart/extensions/provenance"
 	"github.com/xraph/blackstart/pkg/hooks"
 )
@@ -27,12 +31,12 @@ type Extension struct {
 // Option configures the extension.
 type Option func(*Extension)
 
-// WithStore supplies a store, overriding the in-memory default.
+// WithStore supplies a store, overriding the Fabriq-backed default.
 //
-// The default is in-memory and that is a gap, stated rather than hidden: a
-// model is what every result cites, so losing them on restart means every
-// stored solution names a network nobody can produce. The Fabriq store is the
-// next piece of this extension.
+// The default is durable rather than in-memory, because a model is what every
+// result cites: losing them on restart would leave every stored solution
+// naming a network nobody can produce. The in-memory store exists for tests
+// and for `bsctl` run against a local file, both of which pass it explicitly.
 func WithStore(s store.Store) Option {
 	return func(e *Extension) { e.store = s }
 }
@@ -44,7 +48,6 @@ func New(opts ...Option) *Extension {
 			ExtensionName, "0.1.0",
 			"Builds immutable network snapshots and records where they came from",
 		),
-		store: memory.New(),
 	}
 
 	for _, opt := range opts {
@@ -54,9 +57,13 @@ func New(opts ...Option) *Extension {
 	return e
 }
 
-// Dependencies declares that provenance must start first, since every import
-// records a dataset version through it.
-func (e *Extension) Dependencies() []string { return []string{provenance.ExtensionName} }
+// Dependencies declares what must start first.
+//
+// The fabric extension, because the default store borrows its Fabriq facade,
+// and provenance because every import records a dataset version through it.
+func (e *Extension) Dependencies() []string {
+	return []string{fabric.ExtensionName, provenance.ExtensionName}
+}
 
 // Register provides the engine into the container.
 func (e *Extension) Register(app forge.App) error {
@@ -86,6 +93,30 @@ func (e *Extension) Start(ctx context.Context) error {
 		return errors.New("networkmodel: started without an application")
 	}
 
+	if e.store == nil {
+		fab, err := forge.Inject[*fabriq.Fabriq](app.Container())
+		if err != nil {
+			return fmt.Errorf(
+				"networkmodel: resolving the data fabric: %w; the fabric extension "+
+					"must start first, which its Dependencies() declares", err)
+		}
+
+		fabricExt, err := forge.Inject[*fabric.Extension](app.Container())
+		if err != nil {
+			return fmt.Errorf("networkmodel: resolving the fabric extension: %w", err)
+		}
+
+		// The tenant comes from the fabric extension rather than this one's own
+		// configuration. Two places naming the tenant is how a write ends up
+		// scoped differently from the read that looks for it.
+		built, err := fabriqstore.New(fab, fabricExt.Tenant())
+		if err != nil {
+			return err
+		}
+
+		e.store = built
+	}
+
 	// The recorder is optional at this layer even though Dependencies names
 	// provenance: a host may register this extension without that one, and an
 	// import that cannot record its chain reports so rather than failing.
@@ -106,11 +137,19 @@ func (e *Extension) Start(ctx context.Context) error {
 func (e *Extension) Stop(context.Context) error {
 	e.engine = nil
 
+	if e.store == nil {
+		return nil
+	}
+
 	return e.store.Close()
 }
 
 // Health reports whether the store is reachable.
 func (e *Extension) Health(ctx context.Context) error {
+	if e.store == nil {
+		return errors.New("networkmodel: no store; the extension has not started")
+	}
+
 	return e.store.Ping(ctx)
 }
 

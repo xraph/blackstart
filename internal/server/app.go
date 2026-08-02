@@ -27,8 +27,10 @@ import (
 
 	"github.com/xraph/blackstart/extensions/contingency"
 	"github.com/xraph/blackstart/extensions/datasource"
+	dsmigrations "github.com/xraph/blackstart/extensions/datasource/store/fabriq"
 	"github.com/xraph/blackstart/extensions/fabric"
 	"github.com/xraph/blackstart/extensions/networkmodel"
+	nmmigrations "github.com/xraph/blackstart/extensions/networkmodel/store/fabriq"
 	"github.com/xraph/blackstart/extensions/powerflow"
 	"github.com/xraph/blackstart/extensions/provenance"
 	"github.com/xraph/blackstart/internal/entities"
@@ -131,7 +133,15 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		// replica does. Fabriq's own documentation is explicit about it, and a
 		// migration racing N replicas coming up is a bad way to learn why.
 		groveext.WithDisableMigrate(),
-		groveext.WithMigrations(fabriqmigrations.Group()),
+		// Every extension's migration group is handed to one orchestrator, in
+		// dependency order. Grove resolves that ordering topologically, but only
+		// within a single orchestrator — registering each extension's group
+		// separately makes DependsOn a silent no-op, which its own source notes.
+		groveext.WithMigrations(
+			fabriqmigrations.Group(),
+			dsmigrations.Group(),
+			nmmigrations.Group(),
+		),
 	)
 
 	fabricExt := fabric.New(reg, fabric.WithConfig(fabricConfig(cfg)))
