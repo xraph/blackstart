@@ -59,5 +59,13 @@ Thumbs.db
 !.vscode/settings.json
 !.vscode/extensions.json
 
+# ---- Local configuration ---------------------------------------------------
+# The base config.yaml is committed and carries nothing secret; the local
+# layer carries connection strings and stays out of the repository.
+config.local.yaml
+config.local.yml
+configs/config.local.yaml
+configs/config.local.yml
+
 # ---- Agent and tooling scratch ---------------------------------------------
 .claude/

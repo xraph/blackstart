@@ -36,7 +36,15 @@ const Name = "bsctl"
 // replica to wait out an advisory lock held by a process that no longer
 // exists.
 func App() (forge.App, error) {
-	cfg := server.FromEnv(server.DefaultConfig(Name))
+	// Named for the server, not for bsctl: both binaries must read the same
+	// configuration files, and app-scoped discovery keyed on the CLI's own name
+	// would let the two diverge over exactly the settings that must not.
+	cfg, _, err := server.Load(blackstart.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.Name = Name
 	cfg.RunWorker = false
 	cfg.HTTPAddress = ""
 

@@ -1,0 +1,45 @@
+# BLACKSTART base configuration.
+#
+# This file is committed, so it carries nothing secret. Connection strings go
+# in config.local.yaml (gitignored, see config.local.yaml.example) or in the
+# environment, which wins over both.
+#
+# Precedence, lowest to highest:
+#   built-in defaults  <  configs/config.yaml  <  configs/config.local.yaml
+#     <  BLACKSTART_* environment variables
+#
+# Discovery walks upward from configs/ and from the working directory, so a
+# config.yaml at the repository root is also honoured.
+
+app:
+  environment: development
+
+server:
+  # Empty means no listener, which is what bsctl wants. The server binary sets
+  # :8080 for itself when nothing else does.
+  address: ":8080"
+
+# Grove reads database.driver and database.dsn from this key. The DSN is
+# deliberately absent here — a database credential is still a credential even
+# on a project that only handles public data.
+database:
+  driver: postgres
+
+extensions:
+  fabric:
+    # Blackstart is single-tenant. Fabriq has no default-tenant mode by design:
+    # missing tenant context is a hard failure rather than a silent write into
+    # someone else's rows.
+    tenant: blackstart
+
+    # Redis carries the outbox relay. Without a worker draining it,
+    # fabriq_outbox grows without bound, so the server refuses to start with a
+    # worker and no Redis.
+    redis:
+      addr: "localhost:56379"
+
+    # FalkorDB backs the graph projection. Ports match deploy/docker-compose.dev.yml,
+    # which is offset from the defaults so a local install of either service
+    # keeps working alongside it.
+    falkordb:
+      addr: "localhost:56380"

@@ -112,7 +112,19 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 
 	fabricExt := fabric.New(reg, fabric.WithConfig(fabricConfig(cfg)))
 
+	// Forge runs its own discovery for extension configuration, and its default
+	// search path is the working directory only — it never descends into
+	// configs/. Without these paths, everything under `extensions:` in
+	// configs/config.yaml is inert: no error, no warning, the block simply
+	// never reaches any extension. Pointing Forge at the same directories this
+	// package reads keeps one file authoritative for both.
+	searchPaths, err := ConfigSearchPaths()
+	if err != nil {
+		return nil, err
+	}
+
 	app := forge.New(
+		forge.WithConfigSearchPaths(searchPaths...),
 		forge.WithAppName(cfg.Name),
 		forge.WithAppVersion(buildinfo.Get().Version),
 		forge.WithAppDescription("Weather-driven outage risk and cascade analysis"),

@@ -1,0 +1,27 @@
+# Local overrides. Copy to config.local.yaml, which is gitignored.
+#
+#   cp configs/config.local.yaml.example configs/config.local.yaml
+#
+# This layer sits above configs/config.yaml and below the environment, so a
+# BLACKSTART_DATABASE_DSN in the shell still wins — which is what you want when
+# pointing a one-off command at a different database.
+
+# Matches deploy/docker-compose.dev.yml. Host ports there are deliberately
+# non-default (55432 / 56379 / 56380) so a dev stack does not fight a Postgres
+# or Redis you already have running on the standard ports.
+#
+# The application must connect as a non-superuser or row-level security is
+# silently a no-op — Postgres exempts superusers from RLS policies rather than
+# refusing them, so tenant isolation would appear to work and enforce nothing.
+# The compose stack's blackstart role is not a superuser; if you point this at
+# your own database, check that yours is not either. The fabric extension
+# asserts it at boot.
+database:
+  dsn: "postgres://blackstart:blackstart@localhost:55432/blackstart?sslmode=disable"
+
+extensions:
+  fabric:
+    redis:
+      addr: "localhost:56379"
+    falkordb:
+      addr: "localhost:56380"

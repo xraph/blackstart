@@ -7,6 +7,8 @@
 package blackstart
 
 import (
+	"os"
+
 	"github.com/xraph/forge"
 
 	"github.com/xraph/blackstart/internal/entities"
@@ -32,12 +34,24 @@ var Contributors = []entities.Contributor{
 // The server listens and drains the outbox; the CLI does neither. That is the
 // only difference between the two, and it lives here rather than in main.
 func New() (forge.App, error) {
-	cfg := server.FromEnv(server.DefaultConfig(Name))
+	cfg, loaded, err := server.Load(Name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Announced rather than merely available: "which configuration was in
+	// effect" is one of the inputs a result has to be traceable to, and the
+	// moment to record it is before anything connects, not after someone asks
+	// why two runs disagree.
+	server.ReportConfigSources(os.Stderr, loaded)
 
 	if cfg.HTTPAddress == "" {
 		cfg.HTTPAddress = ":8080"
 	}
 
+	// The server drains the outbox. Nothing else does, and the relay is not
+	// optional — an outbox nobody reads is a graph projection that silently
+	// stops advancing while every write still succeeds.
 	cfg.RunWorker = true
 
 	return server.Build(cfg, Contributors...)
