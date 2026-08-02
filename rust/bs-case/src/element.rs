@@ -31,6 +31,15 @@ pub struct Bus {
     /// Voltage angle in radians. Fixed for the slack bus; a starting value
     /// elsewhere.
     pub v_angle: f64,
+    /// Lower limit on reactive output, per unit.
+    ///
+    /// Infinite by default, which means unlimited rather than zero. A
+    /// generator with no stated limits is one whose limits are unknown, and
+    /// silently clamping it to zero would turn missing data into a voltage
+    /// collapse that looks like a finding.
+    pub q_min: f64,
+    /// Upper limit on reactive output, per unit. Infinite by default.
+    pub q_max: f64,
 }
 
 impl Bus {
@@ -44,6 +53,8 @@ impl Bus {
             q_injection,
             v_magnitude: 1.0,
             v_angle: 0.0,
+            q_min: f64::NEG_INFINITY,
+            q_max: f64::INFINITY,
         }
     }
 
@@ -57,7 +68,22 @@ impl Bus {
             q_injection: 0.0,
             v_magnitude,
             v_angle: 0.0,
+            q_min: f64::NEG_INFINITY,
+            q_max: f64::INFINITY,
         }
+    }
+
+    /// Sets the reactive output limits.
+    ///
+    /// A PV bus holds its scheduled voltage by producing whatever reactive
+    /// power that takes. Real generators cannot, and a solution that has one
+    /// producing 40 per unit to hold 1.02 is not a solution — it is a warning
+    /// that the network cannot support that voltage.
+    #[must_use]
+    pub fn with_reactive_limits(mut self, q_min: f64, q_max: f64) -> Self {
+        self.q_min = q_min;
+        self.q_max = q_max;
+        self
     }
 
     /// Builds the reference bus.
@@ -70,6 +96,8 @@ impl Bus {
             q_injection: 0.0,
             v_magnitude,
             v_angle: 0.0,
+            q_min: f64::NEG_INFINITY,
+            q_max: f64::INFINITY,
         }
     }
 }
