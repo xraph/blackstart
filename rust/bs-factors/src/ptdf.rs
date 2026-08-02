@@ -10,7 +10,7 @@ use bs_powerflow::{ReduceError, Reduction};
 use bs_sparse::{DenseLu, Error as SparseError, Factorize};
 
 /// Why sensitivity factors could not be built.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FactorError {
     /// The case itself is not solvable.
     Case(CaseError),
