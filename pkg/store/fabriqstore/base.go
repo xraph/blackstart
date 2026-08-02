@@ -229,3 +229,22 @@ func (b *Base) Spatial(
 
 	return nil
 }
+
+// SpatialDelete removes a geometry from the index.
+//
+// A missing geometry port is not an error here, unlike in Spatial: deleting
+// from an index that does not exist has already achieved what was asked. The
+// asymmetry is deliberate — failing to store geometry loses data, and failing
+// to delete geometry that was never stored loses nothing.
+func (b *Base) SpatialDelete(ctx context.Context, entity string, aggID id.ID) error {
+	spatial := b.fab.Spatial()
+	if spatial == nil {
+		return nil
+	}
+
+	if err := spatial.Delete(b.Scoped(ctx), entity, aggID.String()); err != nil {
+		return fmt.Errorf("deleting %s geometry: %w", entity, Translate(err))
+	}
+
+	return nil
+}

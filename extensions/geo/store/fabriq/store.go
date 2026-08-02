@@ -2,6 +2,7 @@ package fabriq
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/xraph/fabriq"
@@ -61,6 +62,15 @@ func (r *routes) Put(ctx context.Context, route asset.Route, spans []asset.Span)
 		return err
 	}
 
+	// A branch has one route, so a re-trace replaces rather than colliding
+	// with the unique index. Re-tracing is a normal thing to do — correcting a
+	// span length, or replacing an interpolated path with a surveyed one — and
+	// making it an error would mean the only way to correct geometry is to
+	// delete it by hand first.
+	if err := r.forget(ctx, route.BranchID); err != nil {
+		return err
+	}
+
 	if err := r.base.Create(ctx, RouteEntity, route.ID, routeRow{
 		ID:         route.ID.String(),
 		BranchID:   route.BranchID.String(),
@@ -107,6 +117,41 @@ func (r *routes) Put(ctx context.Context, route asset.Route, spans []asset.Span)
 	return nil
 }
 
+// forget removes any existing route for a branch, with its spans and their
+// geometry.
+//
+// Geometry is deleted before the rows that name it. A crash in between leaves
+// an indexed geometry for a span that still exists, which the next write
+// replaces; the other order would leave geometry pointing at nothing, and
+// nothing would ever visit it again to clean it up.
+func (r *routes) forget(ctx context.Context, branch id.ID) error {
+	existing, err := r.ForBranch(ctx, branch)
+	if errors.Is(err, bserr.ErrNotFound) {
+		return nil
+	}
+
+	if err != nil {
+		return err
+	}
+
+	spans, err := r.Spans(ctx, existing.ID)
+	if err != nil {
+		return err
+	}
+
+	for _, span := range spans {
+		if err := r.base.SpatialDelete(ctx, SpanEntity, span.ID); err != nil {
+			return err
+		}
+
+		if err := r.base.Delete(ctx, SpanEntity, span.ID); err != nil {
+			return err
+		}
+	}
+
+	return r.base.Delete(ctx, RouteEntity, existing.ID)
+}
+
 // Get reads one route.
 func (r *routes) Get(ctx context.Context, want id.ID) (asset.Route, error) {
 	var row routeRow
@@ -123,8 +168,10 @@ func (r *routes) ForBranch(ctx context.Context, branch id.ID) (asset.Route, erro
 	var rows []routeRow
 
 	if err := r.base.Query(ctx, &rows,
-		`SELECT * FROM `+RouteTable+` WHERE branch_id = ? LIMIT 1`,
-		branch.String()); err != nil {
+		`SELECT * FROM `+RouteTable+`
+		 WHERE tenant_id = current_setting('app.tenant_id', true)
+		   AND branch_id = $1
+		 LIMIT 1`, branch.String()); err != nil {
 		return asset.Route{}, err
 	}
 
@@ -150,8 +197,10 @@ func (r *routes) Spans(ctx context.Context, route id.ID) ([]asset.Span, error) {
 	var rows []spanRow
 
 	if err := r.base.Query(ctx, &rows,
-		`SELECT * FROM `+SpanTable+` WHERE route_id = ? ORDER BY sequence`,
-		route.String()); err != nil {
+		`SELECT * FROM `+SpanTable+`
+		 WHERE tenant_id = current_setting('app.tenant_id', true)
+		   AND route_id = $1
+		 ORDER BY sequence ASC`, route.String()); err != nil {
 		return nil, err
 	}
 
@@ -178,7 +227,10 @@ func (r *routes) List(ctx context.Context, limit int) ([]asset.Route, error) {
 	var rows []routeRow
 
 	if err := r.base.Query(ctx, &rows,
-		`SELECT * FROM `+RouteTable+` ORDER BY id LIMIT ?`, limit); err != nil {
+		`SELECT * FROM `+RouteTable+`
+		 WHERE tenant_id = current_setting('app.tenant_id', true)
+		 ORDER BY id DESC
+		 LIMIT $1`, limit); err != nil {
 		return nil, err
 	}
 
