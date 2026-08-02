@@ -1,0 +1,6 @@
+{
+  "balanced": true,
+  "baseMVA": 100,
+  "buses": 2,
+  "name": "two-bus"
+}
