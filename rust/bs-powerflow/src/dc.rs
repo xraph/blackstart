@@ -8,7 +8,7 @@ use bs_sparse::{DenseLu, Error as SparseError, Factorize};
 use crate::reduce::{ReduceError, Reduction};
 
 /// Why a power flow could not be solved.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PowerFlowError {
     /// The case itself is not solvable.
     Case(CaseError),
@@ -131,10 +131,15 @@ pub fn solve_dc(case: &Case) -> Result<DcSolution, PowerFlowError> {
         });
     }
 
+    // A phase shifter forces power across itself independently of the angle
+    // difference, so its contribution is removed from the scheduled injections
+    // before the solve and added back into the flows afterwards.
+    let shift = reduction.bus_shift_injection(case);
+
     let injections: Vec<f64> = reduction
         .full_of
         .iter()
-        .map(|&bus| case.buses[bus].p_injection)
+        .map(|&bus| case.buses[bus].p_injection - shift[bus])
         .collect();
 
     let lu = DenseLu;
@@ -161,7 +166,10 @@ pub fn branch_flows(case: &Case, angles: &[f64]) -> Vec<f64> {
         .iter()
         .map(|branch| {
             if branch.in_service {
-                (angles[branch.from] - angles[branch.to]) / branch.x
+                // The tap divides the susceptance and the phase shift offsets
+                // the angle difference, so a shifter carries flow even when
+                // its terminals are at the same angle.
+                (angles[branch.from] - angles[branch.to] - branch.shift) / (branch.x * branch.tap)
             } else {
                 0.0
             }

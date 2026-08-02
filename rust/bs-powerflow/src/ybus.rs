@@ -32,8 +32,24 @@ impl Ybus {
     /// Assembles the admittance matrix for a case.
     ///
     /// Each in-service branch contributes its series admittance
-    /// `y = 1 / (r + jx)` to both diagonals and, negated, to both off-diagonal
-    /// positions, plus half its total charging susceptance to each diagonal.
+    /// `y = 1 / (r + jx)` and half its charging susceptance, transformed by
+    /// the off-nominal turns ratio and phase shift. With `τ = tap · e^{j·shift}`
+    /// applied at the from-end, the four entries are
+    ///
+    /// ```text
+    /// Y_ff = (y + jb/2) / |τ|²      Y_ft = −y / conj(τ)
+    /// Y_tf = −y / τ                 Y_tt =  y + jb/2
+    /// ```
+    ///
+    /// which is the MATPOWER and pandapower convention, so an imported case
+    /// needs no reinterpretation. For a line — `tap` 1, `shift` 0 — this
+    /// reduces to the symmetric form.
+    ///
+    /// A phase shift makes the matrix asymmetric: `Y_ft ≠ Y_tf`. That is
+    /// physical, not a bug, and is why the symmetry test only covers networks
+    /// without shifters.
+    ///
+    /// Bus shunts land on the diagonal.
     ///
     /// Branches are walked in case order, which is canonical, so the triplet
     /// sequence — and therefore the summation order once compressed — is
@@ -71,15 +87,46 @@ impl Ybus {
             // each terminal's diagonal and none to the off-diagonals.
             let half_charging = branch.b / 2.0;
 
-            g.add(from, from, series_g)?;
-            g.add(to, to, series_g)?;
-            g.add(from, to, -series_g)?;
-            g.add(to, from, -series_g)?;
+            // The to-end sees the branch as it is; the from-end sees it
+            // through the transformer, scaled by |τ|².
+            let tap_squared = branch.tap * branch.tap;
 
-            b.add(from, from, series_b + half_charging)?;
+            g.add(to, to, series_g)?;
             b.add(to, to, series_b + half_charging)?;
-            b.add(from, to, -series_b)?;
-            b.add(to, from, -series_b)?;
+
+            g.add(from, from, series_g / tap_squared)?;
+            b.add(from, from, (series_b + half_charging) / tap_squared)?;
+
+            // Off-diagonals divide by the complex ratio, which for a phase
+            // shifter differs between the two directions — the from→to term
+            // uses conj(τ) and the to→from term uses τ, so a shifter makes Y
+            // legitimately asymmetric.
+            let (sin_shift, cos_shift) = branch.shift.sin_cos();
+
+            // −y / conj(τ) with τ = tap·e^{j·shift}.
+            let ft_g = -(series_g * cos_shift - series_b * sin_shift) / branch.tap;
+            let ft_b = -(series_b * cos_shift + series_g * sin_shift) / branch.tap;
+
+            // −y / τ: the same with the shift negated.
+            let tf_g = -(series_g * cos_shift + series_b * sin_shift) / branch.tap;
+            let tf_b = -(series_b * cos_shift - series_g * sin_shift) / branch.tap;
+
+            g.add(from, to, ft_g)?;
+            b.add(from, to, ft_b)?;
+            g.add(to, from, tf_g)?;
+            b.add(to, from, tf_b)?;
+        }
+
+        // Bus shunts — capacitor banks and reactors — go straight onto the
+        // diagonal. Emitted after the branches so that a bus with a shunt but
+        // no branch still gets an entry rather than an empty row.
+        for (bus, spec) in case.buses.iter().enumerate() {
+            if spec.g_shunt != 0.0 {
+                g.add(bus, bus, spec.g_shunt)?;
+            }
+            if spec.b_shunt != 0.0 {
+                b.add(bus, bus, spec.b_shunt)?;
+            }
         }
 
         Ok(Self {
@@ -96,7 +143,7 @@ impl Ybus {
 }
 
 /// Why an admittance matrix could not be assembled.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum YbusError {
     /// The case itself is invalid.
     Case(CaseError),

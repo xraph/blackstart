@@ -20,9 +20,24 @@ pub struct Reduction {
     pub reduced_of: Vec<usize>,
     /// Full bus index for each reduced index.
     pub full_of: Vec<usize>,
-    /// The reduced susceptance matrix, `1/x` summed onto the diagonal and
-    /// negated off it.
+    /// The reduced susceptance matrix, `1/(x·tap)` summed onto the diagonal
+    /// and negated off it.
     pub matrix: Csr,
+    /// Per-branch DC susceptance, `1/(x·tap)`, in case branch order. Zero for
+    /// an out-of-service branch.
+    ///
+    /// Kept so the flow calculation uses the same number the matrix was built
+    /// from rather than recomputing it — the two drifting apart is how a
+    /// screen and its verification end up disagreeing.
+    pub susceptance: Vec<f64>,
+    /// Real power a phase shifter injects at its from-end, in case branch
+    /// order. Zero for everything else.
+    ///
+    /// A phase shifter forces power across itself independently of the angle
+    /// difference, which in the linear model is exactly an injection. Ignoring
+    /// it does not fail — it silently reports the flow the network would have
+    /// had without the shifter.
+    pub shift_injection: Vec<f64>,
 }
 
 impl Reduction {
@@ -61,12 +76,21 @@ impl Reduction {
         let mut susceptances = Triplets::new(reduced_n, reduced_n);
         susceptances.reserve(case.n_branch() * 4);
 
-        for branch in &case.branches {
+        let mut susceptance = vec![0.0; case.n_branch()];
+        let mut shift_injection = vec![0.0; case.n_branch()];
+
+        for (index, branch) in case.branches.iter().enumerate() {
             if !branch.in_service {
                 continue;
             }
 
-            let susceptance = 1.0 / branch.x;
+            // The tap divides the susceptance, matching the MATPOWER DC model
+            // so an imported case needs no reinterpretation.
+            let susceptance_value = 1.0 / (branch.x * branch.tap);
+            susceptance[index] = susceptance_value;
+            shift_injection[index] = -susceptance_value * branch.shift;
+
+            let susceptance = susceptance_value;
             let (from, to) = (reduced_of[branch.from], reduced_of[branch.to]);
 
             // Diagonal terms accumulate from every incident branch;
@@ -91,6 +115,8 @@ impl Reduction {
             reduced_of,
             full_of,
             matrix: susceptances.compress(),
+            susceptance,
+            shift_injection,
         })
     }
 
@@ -107,6 +133,26 @@ impl Reduction {
         self.full_of.is_empty()
     }
 
+    /// Net real power each phase shifter forces into every bus, in full bus
+    /// indexing.
+    ///
+    /// Subtracted from the scheduled injections before the solve: a shifter
+    /// moves power the angles alone would not.
+    #[must_use]
+    pub fn bus_shift_injection(&self, case: &Case) -> Vec<f64> {
+        let mut out = vec![0.0; self.n_bus];
+
+        for (index, branch) in case.branches.iter().enumerate() {
+            if !branch.in_service || self.shift_injection[index] == 0.0 {
+                continue;
+            }
+            out[branch.from] += self.shift_injection[index];
+            out[branch.to] -= self.shift_injection[index];
+        }
+
+        out
+    }
+
     /// Expands a reduced vector to full bus indexing, with zero at the slack.
     #[must_use]
     pub fn expand(&self, reduced: &[f64]) -> Vec<f64> {
@@ -121,7 +167,7 @@ impl Reduction {
 }
 
 /// Why a case could not be reduced.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ReduceError {
     /// The case has no usable slack bus.
     Case(CaseError),
