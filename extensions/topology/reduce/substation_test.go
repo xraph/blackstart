@@ -328,12 +328,15 @@ func TestATieBreakerDecidesWhetherASectionedBusIsOneBusOrTwo(t *testing.T) {
 // A bus count alone says a test failed; this says how, which is the difference
 // between a message that starts an investigation and one that ends it.
 func describe(r reduce.Reduction) string {
-	out := ""
+	var out strings.Builder
 
 	for _, bus := range r.Buses {
-		out += "  bus " + strconv.Itoa(bus.Number) + ": " +
-			strings.Join(bus.Nodes, ", ") + "\n"
+		out.WriteString("  bus ")
+		out.WriteString(strconv.Itoa(bus.Number))
+		out.WriteString(": ")
+		out.WriteString(strings.Join(bus.Nodes, ", "))
+		out.WriteString("\n")
 	}
 
-	return out
+	return out.String()
 }
