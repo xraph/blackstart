@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/xraph/fabriq"
+
 	"github.com/xraph/forge"
 	"github.com/xraph/vessel"
 
 	"github.com/xraph/blackstart/extensions/contingency/store"
-	"github.com/xraph/blackstart/extensions/contingency/store/memory"
+	fabriqstore "github.com/xraph/blackstart/extensions/contingency/store/fabriq"
+	"github.com/xraph/blackstart/extensions/fabric"
 	"github.com/xraph/blackstart/pkg/hooks"
 	"github.com/xraph/blackstart/pkg/solver"
 )
@@ -74,7 +77,6 @@ func New(opts ...Option) *Extension {
 			ExtensionName, "0.1.0",
 			"Screens N-1 contingencies against the solver service and records what it found",
 		),
-		store:         memory.New(),
 		solverVersion: DefaultSolverVersion,
 	}
 
@@ -89,7 +91,13 @@ func New(opts ...Option) *Extension {
 //
 // This extension reaches the solver over gRPC and holds its results in its own
 // store, so it borrows no other extension's connection.
-func (e *Extension) Dependencies() []string { return nil }
+// Dependencies declares what must start first.
+//
+// The fabric extension, because the default store borrows its Fabriq facade.
+// Results are durable rather than in-memory: a number that vanishes when the
+// process exits cannot be cited, and every figure this platform produces has
+// to be traceable to the inputs behind it.
+func (e *Extension) Dependencies() []string { return []string{fabric.ExtensionName} }
 
 // Register provides the engine into the container.
 //
@@ -128,6 +136,27 @@ func (e *Extension) Start(ctx context.Context) error {
 		return errors.New("contingency: started without an application")
 	}
 
+	if e.store == nil {
+		fab, err := forge.Inject[*fabriq.Fabriq](app.Container())
+		if err != nil {
+			return fmt.Errorf(
+				"contingency: resolving the data fabric: %w; the fabric extension must "+
+					"start first, which its Dependencies() declares", err)
+		}
+
+		fabricExt, err := forge.Inject[*fabric.Extension](app.Container())
+		if err != nil {
+			return fmt.Errorf("contingency: resolving the fabric extension: %w", err)
+		}
+
+		built, err := fabriqstore.New(fab, fabricExt.Tenant())
+		if err != nil {
+			return err
+		}
+
+		e.store = built
+	}
+
 	client, err := forge.Inject[*solver.Client](app.Container())
 	if err != nil {
 		return fmt.Errorf("contingency: resolving the solver client: %w", err)
@@ -157,6 +186,13 @@ func (e *Extension) Start(ctx context.Context) error {
 // Stop releases the store.
 func (e *Extension) Stop(context.Context) error {
 	e.engine = nil
+
+	// Nil until Start builds it, and stopping an extension that never started
+	// is a normal path — a host that fails partway through startup stops
+	// everything it registered.
+	if e.store == nil {
+		return nil
+	}
 
 	return e.store.Close()
 }

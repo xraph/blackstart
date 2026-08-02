@@ -27,8 +27,13 @@ func TestTheExtensionIdentifiesItself(t *testing.T) {
 // Nothing to depend on: this extension reaches the solver over gRPC and holds
 // its results in its own store. Naming a dependency it does not have would
 // constrain startup order for no reason.
-func TestTheExtensionDependsOnNothing(t *testing.T) {
-	if deps := powerflow.New().Dependencies(); len(deps) != 0 {
+// The fabric extension, because the default store borrows its Fabriq facade.
+// Results are durable rather than in-memory: a number that vanishes when the
+// process exits cannot be cited.
+func TestTheExtensionDependsOnTheFabric(t *testing.T) {
+	deps := powerflow.New().Dependencies()
+
+	if len(deps) != 1 || deps[0] != "fabric" {
 		t.Errorf("declared dependencies %v", deps)
 	}
 }

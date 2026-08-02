@@ -11,10 +11,12 @@ import (
 
 	"github.com/xraph/forge"
 
+	ctgfabriq "github.com/xraph/blackstart/extensions/contingency/store/fabriq"
 	dsfabriq "github.com/xraph/blackstart/extensions/datasource/store/fabriq"
 	"github.com/xraph/blackstart/extensions/fabric"
 	geofabriq "github.com/xraph/blackstart/extensions/geo/store/fabriq"
 	nmfabriq "github.com/xraph/blackstart/extensions/networkmodel/store/fabriq"
+	pffabriq "github.com/xraph/blackstart/extensions/powerflow/store/fabriq"
 	sclfabriq "github.com/xraph/blackstart/extensions/scl/store/fabriq"
 	"github.com/xraph/blackstart/internal/entities"
 	"github.com/xraph/blackstart/internal/server"
@@ -36,6 +38,8 @@ var Contributors = []entities.Contributor{
 	nmfabriq.Contributor{},
 	geofabriq.Contributor{},
 	sclfabriq.Contributor{},
+	pffabriq.Contributor{},
+	ctgfabriq.Contributor{},
 }
 
 // New builds the server application.

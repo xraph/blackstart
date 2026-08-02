@@ -26,6 +26,7 @@ import (
 	groveext "github.com/xraph/grove/extension"
 
 	"github.com/xraph/blackstart/extensions/contingency"
+	ctgmigrations "github.com/xraph/blackstart/extensions/contingency/store/fabriq"
 	"github.com/xraph/blackstart/extensions/datasource"
 	dsmigrations "github.com/xraph/blackstart/extensions/datasource/store/fabriq"
 	"github.com/xraph/blackstart/extensions/fabric"
@@ -34,6 +35,7 @@ import (
 	"github.com/xraph/blackstart/extensions/networkmodel"
 	nmmigrations "github.com/xraph/blackstart/extensions/networkmodel/store/fabriq"
 	"github.com/xraph/blackstart/extensions/powerflow"
+	pfmigrations "github.com/xraph/blackstart/extensions/powerflow/store/fabriq"
 	"github.com/xraph/blackstart/extensions/provenance"
 	"github.com/xraph/blackstart/extensions/scl"
 	sclmigrations "github.com/xraph/blackstart/extensions/scl/store/fabriq"
@@ -162,6 +164,8 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 			nmmigrations.Group(),
 			geomigrations.Group(),
 			sclmigrations.Group(),
+			pfmigrations.Group(),
+			ctgmigrations.Group(),
 		),
 	)
 

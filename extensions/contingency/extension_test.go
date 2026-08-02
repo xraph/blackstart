@@ -24,8 +24,13 @@ func TestTheExtensionIdentifiesItself(t *testing.T) {
 	}
 }
 
-func TestTheExtensionDependsOnNothing(t *testing.T) {
-	if deps := contingency.New().Dependencies(); len(deps) != 0 {
+// The fabric extension, because the default store borrows its Fabriq facade.
+// Results are durable rather than in-memory: a number that vanishes when the
+// process exits cannot be cited.
+func TestTheExtensionDependsOnTheFabric(t *testing.T) {
+	deps := contingency.New().Dependencies()
+
+	if len(deps) != 1 || deps[0] != "fabric" {
 		t.Errorf("declared dependencies %v", deps)
 	}
 }
