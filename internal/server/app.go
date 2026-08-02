@@ -15,12 +15,14 @@ package server
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	chronicleext "github.com/xraph/chronicle/extension"
 	"github.com/xraph/fabriq"
 	"github.com/xraph/fabriq/core/registry"
 	fabriqmigrations "github.com/xraph/fabriq/migrations"
 	"github.com/xraph/forge"
+	dashboardExt "github.com/xraph/forge/extensions/dashboard"
 	_ "github.com/xraph/grove/drivers/pgdriver"           // registers the "postgres" driver
 	_ "github.com/xraph/grove/drivers/pgdriver/pgmigrate" // registers its migration executor
 	groveext "github.com/xraph/grove/extension"
@@ -189,6 +191,23 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		topology.New(), geo.New(), scl.New(),
 	}
 
+	// The operator dashboard, last in the list on purpose: it calls
+	// DashboardContributor on every other extension during its own Start, so
+	// anything registered after it would be invisible to it.
+	//
+	// Standalone rather than a discovery contributor. Blackstart is one binary
+	// with one database and no aggregating portal in front of it, so the
+	// discovery machinery would poll for peers that do not exist. It becomes a
+	// contributor by configuration if that ever changes.
+	extensions = append(extensions, dashboardExt.NewExtension(
+		dashboardExt.WithTitle(cfg.Name+" — operations"),
+		dashboardExt.WithBasePath("/_forge/dashboard"),
+		dashboardExt.WithDiscovery(false),
+		dashboardExt.WithRealtime(true),
+		dashboardExt.WithSearch(true),
+		dashboardExt.WithRefreshInterval(10*time.Second),
+	))
+
 	// The solver-backed extensions are registered only when there is a solver
 	// to reach. Registering them without one would mean every startup logs a
 	// failure for a capability the operator did not ask for.
@@ -217,6 +236,10 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		forge.WithAppDescription("Weather-driven outage risk and cascade analysis"),
 		forge.WithAppEnvironment(cfg.Environment),
 		forge.WithHTTPAddress(cfg.HTTPAddress),
+		// Generated from the same schema declarations the router enforces, so
+		// the specification cannot drift from the API it documents. Served at
+		// /docs with the raw document at /openapi.json.
+		forge.WithAppRouterOptions(routerOptions(cfg)...),
 		// Migrations are run by `bsctl migrate`, not at startup.
 		forge.WithDisableMigrations(),
 	)
