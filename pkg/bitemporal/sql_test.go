@@ -102,20 +102,56 @@ func TestPredicateWithoutAnAlias(t *testing.T) {
 	}
 }
 
-// CurrentPredicate takes no parameters so it can serve as a partial-index
-// predicate as well as a filter. A parameterized version could not.
-func TestCurrentPredicateIsParameterFree(t *testing.T) {
+func TestCurrentPredicateConstrainsBothAxes(t *testing.T) {
 	t.Parallel()
 
 	clause := CurrentPredicate("t")
 
 	if strings.Contains(clause, "$") {
-		t.Errorf("CurrentPredicate must be parameter-free to serve as a "+
-			"partial index predicate:\n%s", clause)
+		t.Errorf("CurrentPredicate should be parameter-free:\n%s", clause)
 	}
 
 	if !strings.Contains(clause, ColKnowledgeTo) || !strings.Contains(clause, ColValidTo) {
 		t.Errorf("CurrentPredicate must constrain both axes:\n%s", clause)
+	}
+}
+
+// A partial-index predicate must be IMMUTABLE. now() is STABLE, and
+// PostgreSQL rejects it outright:
+//
+//	ERROR: functions in index predicate must be marked IMMUTABLE
+//
+// Parameter-free is not sufficient — the first draft of this package checked
+// only that, used one expression for both purposes, and failed at CREATE INDEX
+// in the integration suite.
+func TestCurrentIndexPredicateIsImmutable(t *testing.T) {
+	t.Parallel()
+
+	clause := CurrentIndexPredicate("t")
+
+	if strings.Contains(clause, "now()") {
+		t.Errorf("the index predicate calls now(), which is STABLE not "+
+			"IMMUTABLE; CREATE INDEX will reject it:\n%s", clause)
+	}
+
+	if strings.Contains(clause, "$") {
+		t.Errorf("the index predicate must be parameter-free:\n%s", clause)
+	}
+
+	if !strings.Contains(clause, ColKnowledgeTo) {
+		t.Errorf("the index predicate must constrain the knowledge axis:\n%s", clause)
+	}
+}
+
+// The generated index DDL must use the immutable form, not the query form.
+func TestIndexDDLUsesTheImmutablePredicate(t *testing.T) {
+	t.Parallel()
+
+	for _, stmt := range IndexDDL("blackstart_bus") {
+		if strings.Contains(stmt, "now()") {
+			t.Errorf("index DDL calls now(), which PostgreSQL rejects in an "+
+				"index predicate:\n%s", stmt)
+		}
 	}
 }
 

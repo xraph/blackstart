@@ -56,18 +56,43 @@ func Predicate(alias string, a AsOf, firstArg int) (string, []any) {
 }
 
 // CurrentPredicate renders the WHERE clause selecting rows that are both
-// currently believed and currently valid.
+// currently believed and currently valid — the common "network as it is now"
+// read.
 //
-// It takes no arguments and no parameters, so it can serve as a partial-index
-// predicate as well as a query filter — which is the point: the common read is
-// "the network as it is now", and that should not pay for a range scan.
+// It is a query filter only. It cannot be a partial-index predicate, because
+// now() is STABLE rather than IMMUTABLE and PostgreSQL rejects it there:
+//
+//	ERROR: functions in index predicate must be marked IMMUTABLE (SQLSTATE 42P17)
+//
+// Use CurrentIndexPredicate for the index. That distinction was found by the
+// integration suite, not by reasoning — the first draft used this expression
+// for both and failed at CREATE INDEX.
 func CurrentPredicate(alias string) string {
 	q := qualify(alias)
 
 	return fmt.Sprintf(
-		"%s%s = '%s' AND %s%s > now()",
-		q, ColKnowledgeTo, foreverLiteral,
+		"%s AND %s%s > now()",
+		CurrentIndexPredicate(alias),
 		q, ColValidTo,
+	)
+}
+
+// CurrentIndexPredicate renders the immutable half of CurrentPredicate, for
+// use as a partial-index predicate.
+//
+// Only the knowledge axis is expressible here: "is this row still believed" is
+// a comparison against a constant, while "is this row still valid" depends on
+// the current time and therefore cannot be indexed.
+//
+// The narrower index is still worth having. Archived versions accumulate
+// without bound as facts are corrected, while currently-believed rows stay
+// proportional to the size of the network — so excluding history is where
+// nearly all of the selectivity is. The remaining valid_to > now() check runs
+// against that much smaller set.
+func CurrentIndexPredicate(alias string) string {
+	return fmt.Sprintf(
+		"%s%s = '%s'",
+		qualify(alias), ColKnowledgeTo, foreverLiteral,
 	)
 }
 
@@ -110,7 +135,7 @@ func IndexDDL(table string) []string {
 
 		fmt.Sprintf(
 			`CREATE INDEX IF NOT EXISTS %s_current_idx ON %s (tenant_id, %s) WHERE %s`,
-			table, table, ColEntityID, CurrentPredicate("")),
+			table, table, ColEntityID, CurrentIndexPredicate("")),
 
 		fmt.Sprintf(
 			`CREATE INDEX IF NOT EXISTS %s_asof_idx ON %s USING gist (
