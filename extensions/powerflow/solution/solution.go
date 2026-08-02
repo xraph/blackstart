@@ -13,6 +13,7 @@ package solution
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"slices"
 	"time"
@@ -188,4 +189,24 @@ func (s Solution) Violations(threshold float64) []int {
 	})
 
 	return out
+}
+
+// Store persists solutions.
+//
+// Solutions are append-only and are not bitemporal. A solved power flow is a
+// statement about one instant that was true when it was computed and does not
+// become untrue later; correcting one would mean claiming a different number
+// was produced, which is not a correction but a falsification. A re-solve
+// against corrected inputs is a new solution that names the new model.
+type Store interface {
+	// Create records a solution.
+	Create(ctx context.Context, in Solution) (Solution, error)
+
+	// Get retrieves one by identifier.
+	Get(ctx context.Context, solutionID id.ID) (Solution, error)
+
+	// ListByModel returns solutions for one network, most recent first, so a
+	// caller asking "what do we know about this model" gets the current answer
+	// without paging.
+	ListByModel(ctx context.Context, modelHash string, limit int) ([]Solution, error)
 }
