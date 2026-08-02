@@ -132,7 +132,13 @@ fn adjust(
 
         match enforcement[bus] {
             Enforcement::OnVoltage => {
-                let required = solution.injections.q[bus];
+                // The generator's output, not the bus's net injection. Those
+                // differ by whatever load sits at the same bus, and comparing
+                // a net injection against a generator limit binds early on
+                // every bus where a machine and a load share a node — which is
+                // most of them on a real network, and none of them on a
+                // hand-written test case.
+                let required = solution.injections.q[bus] - scheduled.q_injection;
 
                 let (limit, state) = if required > scheduled.q_max {
                     (scheduled.q_max, Enforcement::AtMaximum)
@@ -143,8 +149,10 @@ fn adjust(
                 };
 
                 // Fix the reactive output at the limit and free the voltage.
+                // The bus's net injection is the load plus what the generator
+                // can still produce.
                 working.buses[bus].kind = BusKind::Pq;
-                working.buses[bus].q_injection = limit;
+                working.buses[bus].q_injection = scheduled.q_injection + limit;
                 enforcement[bus] = state;
                 changed = true;
             }
