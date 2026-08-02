@@ -70,7 +70,7 @@ func TestPredicateArgsAreValidThenKnown(t *testing.T) {
 // The clause composes after other conditions, so the placeholder numbering has
 // to start where the caller says. Getting this wrong shifts every argument and
 // produces a type error at best, a wrong answer at worst.
-func TestPredicateHonoursTheArgumentOffset(t *testing.T) {
+func TestPredicateHonorsTheArgumentOffset(t *testing.T) {
 	t.Parallel()
 
 	clause, _ := Predicate("t", Current(), 4)
