@@ -96,6 +96,23 @@ linters:
     - zerologlint
 
   settings:
+    tagalign:
+      # Binding tag first, then the OpenAPI description. Alphabetical order —
+      # tagalign's default — would put `description` ahead of `query`, which
+      # buries the one tag that decides where a field is read from behind a
+      # sentence of prose. This matches the convention across the xraph
+      # ecosystem.
+      order:
+        - path
+        - query
+        - header
+        - body
+        - json
+        - yaml
+        - db
+        - description
+      sort: true
+
     forbidigo:
       analyze-types: true
       forbid:

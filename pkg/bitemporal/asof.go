@@ -3,6 +3,7 @@ package bitemporal
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // AsOf fixes both time axes for a read.
@@ -134,4 +135,51 @@ func Require(ctx context.Context) AsOf {
 	}
 
 	return Current()
+}
+
+// ParseAsOf builds an AsOf from two RFC 3339 strings, either of which may be
+// empty.
+//
+// Both empty is the present. Only validAt is a historical read with present
+// knowledge — which includes corrections filed since, and is therefore *not*
+// a point-in-time read; IsLeakFree reports false for it, and a caller that
+// wants reproducibility has to pass both.
+//
+// This lives here rather than at each boundary because the CLI and the HTTP
+// API accept the same pair and must interpret it identically. Two parsers
+// would be two chances to disagree about what an empty knownAt means, and the
+// disagreement would be invisible until someone compared a report against a
+// command.
+func ParseAsOf(validAt, knownAt string) (AsOf, error) {
+	if validAt == "" && knownAt == "" {
+		return Current(), nil
+	}
+
+	valid, err := parseInstant("validAt", validAt)
+	if err != nil {
+		return AsOf{}, err
+	}
+
+	known, err := parseInstant("knownAt", knownAt)
+	if err != nil {
+		return AsOf{}, err
+	}
+
+	return PointInTime(valid, known), nil
+}
+
+// parseInstant reads one RFC 3339 time, defaulting an empty value to now.
+func parseInstant(field, value string) (Instant, error) {
+	if value == "" {
+		return Now(), nil
+	}
+
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return Instant{}, fmt.Errorf(
+			"bitemporal: parsing %s %q: %w; times must be RFC 3339, "+
+				"for example 2024-01-15T09:30:00Z", field, value, err)
+	}
+
+	return At(parsed), nil
 }

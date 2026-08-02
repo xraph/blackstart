@@ -9,7 +9,6 @@ package bsctl
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/xraph/forge"
 	"github.com/xraph/forge/cli"
@@ -105,37 +104,25 @@ func entitiesCommand() cli.Command {
 func TemporalContext(ctx cli.CommandContext) (bitemporal.AsOf, error) {
 	validAt, knownAt := ctx.String("valid-at"), ctx.String("known-at")
 
-	if validAt == "" && knownAt == "" {
-		return bitemporal.Current(), nil
+	// Parsed by pkg/bitemporal rather than here, because the HTTP API accepts
+	// the same pair and the two must interpret it identically. Two parsers
+	// would be two chances to disagree about what an empty --known-at means,
+	// and the disagreement would stay invisible until someone compared a
+	// report against a command.
+	asOf, err := bitemporal.ParseAsOf(validAt, knownAt)
+	if err != nil {
+		return bitemporal.AsOf{}, err
 	}
 
-	valid := bitemporal.Now()
-
-	if validAt != "" {
-		parsed, err := time.Parse(time.RFC3339, validAt)
-		if err != nil {
-			return bitemporal.AsOf{}, fmt.Errorf("parsing --valid-at: %w", err)
-		}
-
-		valid = bitemporal.At(parsed)
-	}
-
-	known := bitemporal.Now()
-
-	if knownAt != "" {
-		parsed, err := time.Parse(time.RFC3339, knownAt)
-		if err != nil {
-			return bitemporal.AsOf{}, fmt.Errorf("parsing --known-at: %w", err)
-		}
-
-		known = bitemporal.At(parsed)
-	}
-
+	// The warning is the CLI's own, because a person at a terminal can act on
+	// it and an HTTP caller cannot. Reading the past with present knowledge
+	// includes corrections filed since, which is right for a report and wrong
+	// for scoring a model.
 	if validAt != "" && knownAt == "" {
 		ctx.Warning(fmt.Sprintf(
 			"reading %s with present knowledge, including corrections filed "+
-				"since; pass --known-at for a point-in-time read", valid))
+				"since; pass --known-at for a point-in-time read", asOf.ValidAt))
 	}
 
-	return bitemporal.PointInTime(valid, known), nil
+	return asOf, nil
 }

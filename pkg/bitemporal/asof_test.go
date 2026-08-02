@@ -2,6 +2,7 @@ package bitemporal
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -192,5 +193,98 @@ func TestFromContextReportsAbsence(t *testing.T) {
 
 	if _, ok := FromContext(context.Background()); ok {
 		t.Error("found a temporal context in a bare background context")
+	}
+}
+
+// The CLI and the HTTP API accept the same pair of strings and must interpret
+// them identically. Two parsers would be two chances to disagree about what an
+// empty knownAt means, and the disagreement would stay invisible until someone
+// compared a report against a command.
+func TestParseAsOfReadsBothAxes(t *testing.T) {
+	// Neither given is the present, and the present is leak-free by
+	// construction: there is no knowledge to be missing.
+	present, err := ParseAsOf("", "")
+	if err != nil {
+		t.Fatalf("ParseAsOf: %v", err)
+	}
+
+	if !present.IsLeakFree() {
+		t.Error("a read of the present was reported as leaking knowledge")
+	}
+
+	// Both given fixes both axes. Whether it leaks depends on their order, and
+	// that ordering is the whole point of having two: knowledge at or before
+	// the world state cannot see later corrections, which is what a backtest
+	// requires.
+	backtest, err := ParseAsOf("2024-02-01T00:00:00Z", "2024-01-15T09:30:00Z")
+	if err != nil {
+		t.Fatalf("ParseAsOf: %v", err)
+	}
+
+	if !backtest.IsLeakFree() {
+		t.Error("knowledge earlier than the world state was reported as leaking")
+	}
+
+	// The reverse is legitimate for a report — "what do we now know about last
+	// January" — and must be reported as leaking, so it is never used to score
+	// a model.
+	report, err := ParseAsOf("2024-01-15T09:30:00Z", "2024-02-01T00:00:00Z")
+	if err != nil {
+		t.Fatalf("ParseAsOf: %v", err)
+	}
+
+	if report.IsLeakFree() {
+		t.Error("knowledge later than the world state was reported as leak-free")
+	}
+}
+
+// Only validAt is a historical read with *present* knowledge — it includes
+// corrections filed since, so it is not reproducible. That has to be
+// detectable, or a caller will quote it as though it were.
+func TestAValidAtWithoutAKnownAtLeaksPresentKnowledge(t *testing.T) {
+	asOf, err := ParseAsOf("2024-01-15T09:30:00Z", "")
+	if err != nil {
+		t.Fatalf("ParseAsOf: %v", err)
+	}
+
+	if asOf.IsLeakFree() {
+		t.Error("reading the past with present knowledge was reported as leak-free")
+	}
+}
+
+// The message has to say what a valid time looks like. "parsing error" sends
+// the reader to the source; an example tells them what to type.
+func TestAMalformedTimeSaysWhatIsAccepted(t *testing.T) {
+	for _, tc := range []struct{ validAt, knownAt string }{
+		{"yesterday", ""},
+		{"", "yesterday"},
+		{"2024-01-15", ""},
+	} {
+		_, err := ParseAsOf(tc.validAt, tc.knownAt)
+		if err == nil {
+			t.Fatalf("ParseAsOf accepted %q / %q", tc.validAt, tc.knownAt)
+		}
+
+		if !strings.Contains(err.Error(), "RFC 3339") {
+			t.Errorf("message %q does not say what format is accepted", err)
+		}
+
+		if !strings.Contains(err.Error(), "2024-01-15T09:30:00Z") {
+			t.Errorf("message %q gives no example", err)
+		}
+	}
+}
+
+// The failing field has to be named. With two time parameters, "parsing error"
+// leaves the caller guessing which one they got wrong.
+func TestTheRejectionNamesTheFieldThatFailed(t *testing.T) {
+	_, err := ParseAsOf("nonsense", "")
+	if err == nil || !strings.Contains(err.Error(), "validAt") {
+		t.Errorf("got %v, want it to name validAt", err)
+	}
+
+	_, err = ParseAsOf("", "nonsense")
+	if err == nil || !strings.Contains(err.Error(), "knownAt") {
+		t.Errorf("got %v, want it to name knownAt", err)
 	}
 }
