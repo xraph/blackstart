@@ -45,19 +45,23 @@ const (
 func (s Screenability) Evaluated() bool { return s == Screened }
 
 // Violation is a branch loaded past its rating.
+//
+// The json tags are load-bearing rather than decorative: candidates are
+// persisted as an encoded column, so a renamed field without a tag would
+// silently change the stored format and make every existing run unreadable.
 type Violation struct {
 	// Branch is the index in the model's branch list.
-	Branch uint32
+	Branch uint32 `json:"branch"`
 
 	// PFlow is the post-contingency flow, per unit.
-	PFlow float64
+	PFlow float64 `json:"p_flow"`
 
 	// Rating is the limit it exceeded, per unit.
-	Rating float64
+	Rating float64 `json:"rating"`
 
 	// Loading is flow magnitude over rating, above the threshold by
 	// construction.
-	Loading float64
+	Loading float64 `json:"loading"`
 }
 
 // Candidate is one contingency as the screen saw it.
@@ -68,16 +72,16 @@ type Violation struct {
 type Candidate struct {
 	// ContingencyID names what was outaged, carried through from the request
 	// so a report can print a line name rather than an index.
-	ContingencyID string
+	ContingencyID string `json:"contingency_id"`
 
 	// Branch is the index that was taken out of service.
-	Branch uint32
+	Branch uint32 `json:"branch"`
 
 	// Screenability is what the screen could say.
-	Screenability Screenability
+	Screenability Screenability `json:"screenability"`
 
 	// Violations are branches over their rating, worst first.
-	Violations []Violation
+	Violations []Violation `json:"violations"`
 
 	// WorstLoading is the highest loading seen anywhere, including branches
 	// within their rating, so a contingency with no violations still ranks
@@ -86,7 +90,7 @@ type Candidate struct {
 	// A pointer because absent and zero are different. A contingency the
 	// screen could not evaluate has no loading, and representing that as zero
 	// would rank the most consequential outage below every mildly loaded one.
-	WorstLoading *float64
+	WorstLoading *float64 `json:"worst_loading,omitempty"`
 }
 
 // Concerning reports whether this candidate warrants verification.
