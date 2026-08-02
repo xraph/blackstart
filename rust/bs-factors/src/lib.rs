@@ -22,6 +22,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod lodf;
 pub mod ptdf;
 
+pub use lodf::{Lodf, Screenability};
 pub use ptdf::{FactorError, Ptdf};
