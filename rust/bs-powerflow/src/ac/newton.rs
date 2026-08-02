@@ -83,6 +83,13 @@ pub enum AcError {
     /// a tighter limit — than at 1e3, which means the case has no solution
     /// near the starting point.
     NotConverged { iterations: usize, residual: f64 },
+    /// Reactive-limit switching never settled: generators bound and released
+    /// in a cycle.
+    ///
+    /// Distinct from [`AcError::NotConverged`] because every underlying solve converged —
+    /// the equations are fine and the switching heuristic is what failed, which
+    /// calls for a different response and a different fix.
+    LimitCycle { rounds: usize },
 }
 
 impl core::fmt::Display for AcError {
@@ -102,6 +109,13 @@ impl core::fmt::Display for AcError {
                 f,
                 "did not converge in {iterations} iterations; largest bus \
                  mismatch is {residual} per unit"
+            ),
+            Self::LimitCycle { rounds } => write!(
+                f,
+                "generator reactive limits did not settle in {rounds} rounds; \
+                 machines are binding and releasing in a cycle. Every power \
+                 flow converged, so the equations are fine and the switching \
+                 heuristic is what failed."
             ),
         }
     }

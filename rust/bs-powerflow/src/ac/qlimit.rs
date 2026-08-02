@@ -106,10 +106,19 @@ pub fn solve_with_limits(case: &Case, options: Options) -> Result<LimitedSolutio
         start = solution.voltages;
     }
 
-    Err(AcError::NotConverged {
-        iterations: MAX_ROUNDS,
-        residual: f64::NAN,
-    })
+    // The limit set never settled: generators are binding and releasing in a
+    // cycle. Reported as a non-convergence because that is what it is from the
+    // caller's point of view, with the round count rather than an iteration
+    // count — the underlying solves each converged fine.
+    //
+    // KNOWN LIMITATION: IEEE 300 reaches this on a flat start. The plain AC
+    // solve matches pandapower to 2e-14 there, so the equations are right and
+    // the switching heuristic is what fails. Real implementations damp the
+    // switching or bind several generators per round; this one binds every
+    // violator at once and can overshoot on a network with many machines.
+    // Tracked rather than papered over: returning the last iterate as though
+    // it were converged would be the wrong kind of quiet.
+    Err(AcError::LimitCycle { rounds: MAX_ROUNDS })
 }
 
 /// Applies one round of limit changes; reports whether anything changed.

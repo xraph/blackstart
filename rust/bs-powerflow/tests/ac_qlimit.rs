@@ -234,3 +234,28 @@ fn repeated_solves_are_bit_identical() {
         assert_eq!(first, solve_with_limits(&case, Options::default()).unwrap());
     }
 }
+
+/// A limit cycle is not a convergence failure, and the two call for different
+/// responses: a cycle means every solve was fine and the switching heuristic
+/// overshot, while a convergence failure means the network may have no
+/// solution. Reporting one as the other sends the reader to the wrong place.
+#[test]
+fn a_limit_cycle_is_reported_as_itself() {
+    use bs_powerflow::ac::AcError;
+
+    let error = AcError::LimitCycle { rounds: 10 };
+    let message = error.to_string();
+
+    assert!(
+        message.contains("did not settle") && message.contains("cycle"),
+        "{message}"
+    );
+    assert!(
+        message.contains("equations are fine"),
+        "the message must say the solves converged, or it reads as a \
+         numerical failure: {message}"
+    );
+
+    // And it is a distinct variant, not NotConverged with a sentinel residual.
+    assert!(!matches!(error, AcError::NotConverged { .. }));
+}
