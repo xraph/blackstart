@@ -91,6 +91,15 @@ func (e *Extension) Register(app forge.App) error {
 		return err
 	}
 
+	// The extension itself is provided too, not only the facade it opens.
+	// Other extensions need the tenant it was configured with, and reading
+	// that from their own configuration would give two places naming one
+	// tenant — which is how a write ends up scoped differently from the read
+	// that looks for it.
+	if err := vessel.ProvideValue(app.Container(), e); err != nil {
+		return err
+	}
+
 	return vessel.Provide(app.Container(), func() (*fabriq.Fabriq, error) {
 		e.mu.Lock()
 		defer e.mu.Unlock()
