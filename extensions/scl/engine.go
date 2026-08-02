@@ -281,6 +281,13 @@ func (e *Engine) recordDataset(ctx context.Context, in ImportRequest) (id.ID, bo
 	return stored.ID, true
 }
 
+// Topology exposes the topology engine this importer writes through.
+//
+// Present so a caller that has just imported a file can reduce what it wrote
+// without resolving a second engine from the container — and so a test can
+// check that the electrical model is usable rather than merely written.
+func (e *Engine) Topology() *topology.Engine { return e.topology }
+
 // Devices lists the devices this extension knows.
 func (e *Engine) Devices(ctx context.Context, limit int) ([]device.IED, error) {
 	return e.store.Devices().IEDs(ctx, limit)
