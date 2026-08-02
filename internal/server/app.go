@@ -1,11 +1,16 @@
-// Package app is the composition root shared by both binaries.
+// Package server is the composition root shared by both binaries.
 //
 // blackstart (the server) and bsctl (the CLI) are the same application with
 // different entry points. Wiring them separately would mean two places to
 // forget an extension, and a CLI that quietly disagrees with the server about
 // what the system contains — which for a tool whose job is to import and
 // inspect a network model is the worst possible divergence.
-package app
+//
+// The Forge layout is cmd/<binary>/main.go for the entry point and
+// apps/<name>/ for that binary's assembly, with anything shared between them
+// here. Both apps/ packages are thin because everything real lives in this
+// one, which is the arrangement that keeps the two from drifting.
+package server
 
 import (
 	"errors"

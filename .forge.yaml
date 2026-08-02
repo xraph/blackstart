@@ -1,0 +1,59 @@
+project:
+    name: blackstart
+    version: 0.1.0
+    description: Weather-driven outage risk and cascade analysis for US power systems
+    type: monorepo
+    layout: single-module
+    module: github.com/xraph/blackstart
+    workspace:
+        enabled: false
+    structure:
+        cmd: ./cmd
+        apps: ./apps
+        pkg: ./pkg
+        internal: ./internal
+        extensions: ./extensions
+        config: ./config
+
+dev:
+    auto_discover: true
+    discover_pattern: ./cmd/*
+    default_app: blackstart
+    watch:
+        enabled: true
+        paths:
+            - ./apps/**/*.go
+            - ./cmd/**/*.go
+            - ./extensions/**/*.go
+            - ./internal/**/*.go
+            - ./pkg/**/*.go
+            - ./config/**/*.yaml
+        exclude:
+            - '**/*_test.go'
+            - '**/testdata/**'
+    hot_reload:
+        enabled: true
+        delay: 500ms
+
+# Migrations are a discrete deploy step run through `bsctl migrate`, never at
+# application startup. Both the grove extension and the Forge app have
+# migrations disabled for that reason — a migration racing N replicas coming up
+# is a bad way to learn why Fabriq's documentation insists on the separation.
+database:
+    driver: postgres
+    migrations_path: ./extensions
+
+build:
+    output_dir: ./bin
+    auto_discover: true
+    platforms:
+        - os: linux
+          arch: amd64
+        - os: darwin
+          arch: arm64
+
+test:
+    coverage_threshold: 80
+    race_detector: true
+    parallel: true
+    timeout: 15m
