@@ -10,5 +10,7 @@
 //! verification costs a factorization per iteration.
 
 pub mod layout;
+pub mod power;
 
 pub use layout::Layout;
+pub use power::{Injections, Voltages, injections, max_mismatch, mismatch};
