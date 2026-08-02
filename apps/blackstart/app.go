@@ -67,5 +67,9 @@ func New() (forge.App, error) {
 	// stops advancing while every write still succeeds.
 	cfg.RunWorker = true
 
+	// The server is the only thing that serves the HTTP surface, so it is the
+	// only thing that needs an authentication authority in process.
+	cfg.EnableAuth = true
+
 	return server.Build(cfg, Contributors...)
 }

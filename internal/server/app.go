@@ -17,11 +17,18 @@ import (
 	"fmt"
 	"time"
 
+	authsomeext "github.com/xraph/authsome/extension"
+	apikeyplugin "github.com/xraph/authsome/plugins/apikey"
+	mfaplugin "github.com/xraph/authsome/plugins/mfa"
+	passkeyplugin "github.com/xraph/authsome/plugins/passkey"
+	passwordplugin "github.com/xraph/authsome/plugins/password"
 	chronicleext "github.com/xraph/chronicle/extension"
 	"github.com/xraph/fabriq"
 	"github.com/xraph/fabriq/core/registry"
 	fabriqmigrations "github.com/xraph/fabriq/migrations"
 	"github.com/xraph/forge"
+	wardenext "github.com/xraph/warden/extension"
+
 	dashboardExt "github.com/xraph/forge/extensions/dashboard"
 	_ "github.com/xraph/grove/drivers/pgdriver"           // registers the "postgres" driver
 	_ "github.com/xraph/grove/drivers/pgdriver/pgmigrate" // registers its migration executor
@@ -102,6 +109,20 @@ type Config struct {
 	// CLI does not, because a short-lived command should not take over draining
 	// a shared queue and then exit mid-batch.
 	RunWorker bool
+
+	// EnableAuth registers Authsome as this application's own authentication
+	// authority.
+	//
+	// In-process and single-tenant, not a client of an identity service. There
+	// is one blackstart, one database and one operator population, so the
+	// client-mode arrangement — where every binary delegates to a central
+	// authority over HTTP — would add a network hop and a second deployment to
+	// answer a question this process can answer locally.
+	//
+	// Off for the CLI. Authsome protects the HTTP surface, and `bsctl` serves
+	// none: registering it there would make every command pay for a subsystem
+	// it never reaches.
+	EnableAuth bool
 }
 
 // DefaultConfig returns a configuration suitable for local development.
@@ -189,6 +210,41 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		groveExt, fabricExt, auditExt,
 		provenance.New(), networkmodel.New(), datasource.New(),
 		topology.New(), geo.New(), scl.New(),
+	}
+
+	// Authsome, this application's own authentication authority.
+	//
+	// The plugin set is deliberately short. Organization, SCIM, SSO, the
+	// OAuth2 provider, social login and subscription are all multi-tenancy and
+	// SaaS concerns — blackstart has one tenant, one operator population and
+	// nothing to bill — and registering them would create tables, routes and a
+	// configuration surface for capabilities nobody here can use.
+	//
+	// What remains is what a single-tenant operator console actually needs: a
+	// password credential, API keys for service-to-service and scripted
+	// access, and two factors — TOTP and passkeys — for the console itself.
+	if cfg.EnableAuth {
+		// Warden first, and that ordering is enforced rather than conventional:
+		// Authsome resolves *warden.Engine from the container during its own
+		// Register and refuses to start without it. Warden is the authorization
+		// half — roles and permissions — to Authsome's authentication half.
+		extensions = append(extensions, wardenext.New(
+			wardenext.WithGroveDatabase(""),
+		))
+
+		extensions = append(extensions, authsomeext.New(
+			authsomeext.WithBasePath("/api/v1/auth"),
+			// The same grove database as everything else. A second connection
+			// to manage would be a second thing to get wrong in a deployment
+			// whose whole point is one binary and one database.
+			authsomeext.WithGroveDatabase(""),
+			authsomeext.WithPlugins(
+				passwordplugin.New(),
+				apikeyplugin.New(),
+				mfaplugin.New(),
+				passkeyplugin.New(),
+			),
+		))
 	}
 
 	// The operator dashboard, last in the list on purpose: it calls
