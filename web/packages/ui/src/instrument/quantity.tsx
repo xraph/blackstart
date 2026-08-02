@@ -1,0 +1,83 @@
+/**
+ * Rendering a measurement.
+ *
+ * This component takes a `Quantity`, never a `number`. That is the whole
+ * design: the interface rule is that no number appears without its unit, and
+ * the cheapest way to enforce a rule is to make breaking it a type error. A
+ * call site that only has a float has to say what it is measuring before it
+ * can display it.
+ */
+
+import type { ReactElement } from "react";
+import {
+  formatQuantity,
+  type FormatOptions,
+  type Quantity,
+  type Unit,
+} from "@blackstart/schema";
+import { cn } from "../cn";
+
+export interface QuantityProps<U extends Unit> extends FormatOptions {
+  readonly q: Quantity<U>;
+  /** Hide the unit where a column header already carries it. */
+  readonly unitless?: boolean;
+  readonly className?: string;
+  readonly unitClassName?: string;
+}
+
+export function QuantityValue<U extends Unit>({
+  q,
+  unitless = false,
+  className,
+  unitClassName,
+  ...format
+}: QuantityProps<U>): ReactElement {
+  const f = formatQuantity(q, format);
+  return (
+    <span className={cn("font-mono tabular", className)}>
+      {f.value}
+      {!unitless && (
+        <span className={cn("ml-1 text-fg-3", unitClassName)}>{f.unit}</span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * A labelled measurement, as the cascade counters show one.
+ *
+ * The magnitude is deliberately large and the unit small: an operator reads
+ * "4 187" and already knows it is megawatts, but the unit still has to be
+ * present for the screenshot to stand alone.
+ */
+export interface QuantityBlockProps<U extends Unit> {
+  readonly label: string;
+  readonly q: Quantity<U>;
+  readonly note?: string;
+  readonly decimals?: number;
+  readonly className?: string;
+}
+
+export function QuantityBlock<U extends Unit>({
+  label,
+  q,
+  note,
+  decimals,
+  className,
+}: QuantityBlockProps<U>): ReactElement {
+  const f = formatQuantity(q, decimals === undefined ? {} : { decimals });
+  return (
+    <div className={cn("px-5 py-3", className)}>
+      <div className="font-mono text-[9px] uppercase tracking-[0.13em] text-fg-3">
+        {label}
+      </div>
+      <div className="mt-2 font-mono text-[27px] leading-none tracking-[-0.035em] tabular text-fg">
+        {f.value}
+        <span className="ml-1.5 text-xs tracking-normal text-fg-3">{f.unit}</span>
+      </div>
+      {note !== undefined && (
+        <div className="mt-2 font-mono text-[9px] tabular text-fg-3">{note}</div>
+      )}
+    </div>
+  );
+}
