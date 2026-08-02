@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["bs-case", "bs-contingency", "bs-factors", "bs-golden",
-    "bs-powerflow","bs-quantity", "bs-sparse"]
+    "bs-powerflow","bs-quantity", "bs-solver", "bs-sparse"]
 
 # Member crates are added as they are built (Phase 2):
 #   bs-quantity     per-unit and SI newtypes, mirroring Go's pkg/quantity
