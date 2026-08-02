@@ -30,13 +30,17 @@ type Extension struct {
 	mu     sync.Mutex
 	fab    *fabriq.Fabriq
 	stores *fabriq.Stores
+
+	// Worker lifecycle, guarded by the same mutex.
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 var (
 	_ forge.Extension = (*Extension)(nil)
-	_ interface {
-		Dependencies() []string
-	} = (*Extension)(nil)
+	// RunnableExtension is what Forge calls after the HTTP server starts and
+	// cancels on shutdown, which is where the outbox worker belongs.
+	_ forge.RunnableExtension = (*Extension)(nil)
 )
 
 // New builds the extension over an already-assembled registry.

@@ -163,3 +163,26 @@ func Rollback(t testing.TB, dsn string, groups ...*migrate.Group) error {
 
 	return err
 }
+
+// Graph starts a FalkorDB container and returns its address.
+//
+// Separate from Postgres because most integration tests do not need it and a
+// graph container is a second or two of start-up each. The tests that do need
+// it are the ones proving the architectural claim: that one write through the
+// command path produces both a relational row and a graph edge.
+func Graph(t testing.TB) string {
+	t.Helper()
+
+	return fabriqtest.StartFalkorDB(t)
+}
+
+// Redis starts a Redis container and returns its address.
+//
+// Required whenever projections are exercised: the outbox relay publishes
+// through Redis, so without it a write lands in Postgres and nothing ever
+// reaches the graph.
+func Redis(t testing.TB) string {
+	t.Helper()
+
+	return fabriqtest.StartRedis(t)
+}
