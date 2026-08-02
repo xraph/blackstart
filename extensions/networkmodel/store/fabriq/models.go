@@ -19,13 +19,17 @@ import (
 // Table names, prefixed with the extension so a shared schema stays legible.
 const (
 	ModelTable = "blackstart_networkmodel_model"
-	BlobTable  = "blackstart_networkmodel_blob"
+
+	// BlobTable held canonical encodings before they moved to Fabriq's
+	// content-addressable byte plane. Named only by migration 0001, which
+	// created it, and 0002, which drops it — an applied migration is history
+	// and must keep describing what it actually did.
+	BlobTable = "blackstart_networkmodel_blob"
 )
 
 // Entity names as registered with Fabriq.
 const (
 	ModelEntity = "networkmodel_model"
-	BlobEntity  = "networkmodel_blob"
 )
 
 // modelRow is the persistence shape of a network model.
@@ -41,33 +45,13 @@ type modelRow struct {
 	Version  int64  `grove:"version,notnull"`
 
 	ContentHash      string    `grove:"content_hash,notnull"`
+	BlobRef          string    `grove:"blob_ref,notnull"`
 	Name             string    `grove:"name"`
 	SourceKind       string    `grove:"source_kind,notnull"`
 	DatasetVersionID string    `grove:"dataset_version_id"`
 	BusCount         int       `grove:"bus_count,notnull"`
 	BranchCount      int       `grove:"branch_count,notnull"`
 	BuiltAt          time.Time `grove:"built_at,notnull"`
-}
-
-// blobRow is the canonical encoding of a model.
-//
-// A separate entity because the two have different shapes and lifetimes: the
-// record is small and queried constantly, the blob is megabytes and read only
-// when a solve needs uploading. One row would drag the bytes through every
-// listing.
-//
-// Keyed by content hash rather than by model identifier, because that is what
-// names it everywhere else and two models with one hash share one blob.
-type blobRow struct {
-	grove.BaseModel `grove:"table:blackstart_networkmodel_blob"`
-
-	ID       string `grove:"id,pk"`
-	TenantID string `grove:"tenant_id,notnull"`
-	Version  int64  `grove:"version,notnull"`
-
-	ContentHash string `grove:"content_hash,notnull"`
-	Body        []byte `grove:"body,notnull"`
-	SizeBytes   int    `grove:"size_bytes,notnull"`
 }
 
 // toDomain maps a stored row onto the domain type.
@@ -80,6 +64,7 @@ func (r modelRow) toDomain() (model.NetworkModel, error) {
 	out := model.NetworkModel{
 		ID:          modelID,
 		ContentHash: r.ContentHash,
+		BlobRef:     r.BlobRef,
 		Name:        r.Name,
 		SourceKind:  r.SourceKind,
 		BusCount:    r.BusCount,
@@ -107,6 +92,7 @@ func fromDomain(in model.NetworkModel) modelRow {
 	row := modelRow{
 		ID:          in.ID.String(),
 		ContentHash: in.ContentHash,
+		BlobRef:     in.BlobRef,
 		Name:        in.Name,
 		SourceKind:  in.SourceKind,
 		BusCount:    in.BusCount,

@@ -10,6 +10,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"maps"
 	"slices"
@@ -107,6 +109,23 @@ func (s *models) FindByHash(_ context.Context, contentHash string) (model.Networ
 	return s.models[key], nil
 }
 
+func (s *models) SetBlobRef(
+	_ context.Context, want id.ID, reference string,
+) (model.NetworkModel, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	found, ok := s.models[want]
+	if !ok {
+		return model.NetworkModel{}, fmt.Errorf("%w: model %s", bserr.ErrNotFound, want)
+	}
+
+	found.BlobRef = reference
+	s.models[want] = found
+
+	return found, nil
+}
+
 func (s *models) List(_ context.Context, limit int) ([]model.NetworkModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -133,31 +152,29 @@ func (s *models) List(_ context.Context, limit int) ([]model.NetworkModel, error
 
 type blobs Store
 
-func (s *blobs) Put(_ context.Context, contentHash string, body []byte) error {
+func (s *blobs) Put(_ context.Context, body []byte) (string, error) {
+	// Content-addressed, matching the durable store: identical bytes get one
+	// reference and one copy. A counter would work for a fake, and would let a
+	// test pass that the real store fails — the real one deduplicates, so a
+	// second import of one file must not produce a second reference.
+	sum := sha256.Sum256(body)
+	reference := "sha256:" + hex.EncodeToString(sum[:])
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// A blob is named by the hash of its own bytes, so re-putting the same
-	// hash with different bytes is a contradiction rather than an update.
-	if existing, ok := s.blobs[contentHash]; ok && !bytes.Equal(existing, body) {
-		return fmt.Errorf(
-			"%w: content hash %s already holds different bytes; a blob is named "+
-				"by the hash of its own content, so this is a hash collision or a "+
-				"caller passing the wrong hash", bserr.ErrConflict, contentHash)
-	}
+	s.blobs[reference] = bytes.Clone(body)
 
-	s.blobs[contentHash] = bytes.Clone(body)
-
-	return nil
+	return reference, nil
 }
 
-func (s *blobs) Get(_ context.Context, contentHash string) ([]byte, error) {
+func (s *blobs) Get(_ context.Context, reference string) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	body, ok := s.blobs[contentHash]
+	body, ok := s.blobs[reference]
 	if !ok {
-		return nil, fmt.Errorf("%w: no blob for content hash %s", bserr.ErrNotFound, contentHash)
+		return nil, fmt.Errorf("%w: no blob for %s", bserr.ErrNotFound, reference)
 	}
 
 	return bytes.Clone(body), nil

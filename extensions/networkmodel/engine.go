@@ -127,6 +127,22 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (ImportResult, er
 	datasetID, traceable := e.recordDataset(ctx, in)
 
 	if existing, err := e.store.Models().FindByHash(ctx, hash); err == nil {
+		// A model with no stored encoding is repaired rather than left broken.
+		// These exist: models built before the byte plane was configured, and
+		// models whose blob write failed after the row was written. The bytes
+		// are identical by definition — the content hash matched — so
+		// re-storing them cannot produce a different network, and refusing
+		// would leave a model nothing can ever solve against with no way to
+		// fix it short of deleting the row.
+		if existing.BlobRef == "" {
+			repaired, err := e.restore(ctx, existing, parsed.Model)
+			if err != nil {
+				return ImportResult{}, err
+			}
+
+			existing = repaired
+		}
+
 		return ImportResult{
 			Model:            existing,
 			AlreadyPresent:   true,
@@ -143,7 +159,8 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (ImportResult, er
 		return ImportResult{}, fmt.Errorf("networkmodel: encoding the model: %w", err)
 	}
 
-	if err := e.store.Blobs().Put(ctx, hash, encoded); err != nil {
+	reference, err := e.store.Blobs().Put(ctx, encoded)
+	if err != nil {
 		return ImportResult{}, fmt.Errorf("networkmodel: storing the encoding: %w", err)
 	}
 
@@ -155,6 +172,7 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (ImportResult, er
 	stored, err := e.store.Models().Create(ctx, model.NetworkModel{
 		ID:               nmid.NewModel(),
 		ContentHash:      hash,
+		BlobRef:          reference,
 		Name:             name,
 		SourceKind:       matpower.AliasNamespace,
 		DatasetVersionID: datasetID,
@@ -173,6 +191,36 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (ImportResult, er
 		DatasetVersionID: datasetID,
 		Traceable:        traceable,
 	}, nil
+}
+
+// restore re-stores a model's canonical encoding and records the reference.
+//
+// # Errors
+//
+// Returns an error when the bytes cannot be stored or the row cannot be
+// updated. Both leave the model exactly as it was — unusable — rather than
+// pointing at a blob that is not there.
+func (e *Engine) restore(
+	ctx context.Context, existing model.NetworkModel, parsed canonical.Model,
+) (model.NetworkModel, error) {
+	encoded, err := canonical.Encode(parsed)
+	if err != nil {
+		return model.NetworkModel{}, fmt.Errorf("networkmodel: encoding the model: %w", err)
+	}
+
+	reference, err := e.store.Blobs().Put(ctx, encoded)
+	if err != nil {
+		return model.NetworkModel{}, fmt.Errorf(
+			"networkmodel: restoring the encoding for %s: %w", existing.ID, err)
+	}
+
+	updated, err := e.store.Models().SetBlobRef(ctx, existing.ID, reference)
+	if err != nil {
+		return model.NetworkModel{}, fmt.Errorf(
+			"networkmodel: recording the restored encoding for %s: %w", existing.ID, err)
+	}
+
+	return updated, nil
 }
 
 // recordDataset writes the provenance for the bytes, reporting whether it
@@ -224,8 +272,23 @@ func (e *Engine) List(ctx context.Context, limit int) ([]model.NetworkModel, err
 // re-encoded, so the bytes a result was computed from are the bytes that were
 // stored — re-encoding would be correct today and would silently diverge the
 // first time the encoder's version moved.
+//
+// Named by content hash because that is what every caller holds: a result
+// records the hash of the network it was computed against, never a storage
+// reference. The model row is the one place that maps between them.
 func (e *Engine) Encoding(ctx context.Context, hash string) ([]byte, error) {
-	return e.store.Blobs().Get(ctx, hash)
+	found, err := e.store.Models().FindByHash(ctx, hash)
+	if err != nil {
+		return nil, err
+	}
+
+	if found.BlobRef == "" {
+		return nil, fmt.Errorf(
+			"networkmodel: model %s has no stored encoding; it was built before "+
+				"the byte plane was configured", found.ID)
+	}
+
+	return e.store.Blobs().Get(ctx, found.BlobRef)
 }
 
 // emit publishes a domain event, best effort.

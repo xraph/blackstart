@@ -62,6 +62,10 @@ type fileConfig struct {
 			FalkorDB struct {
 				Addr string `yaml:"addr"`
 			} `yaml:"falkordb"`
+
+			Storage struct {
+				Driver string `yaml:"driver"`
+			} `yaml:"storage"`
 		} `yaml:"fabric"`
 	} `yaml:"extensions"`
 }
@@ -173,6 +177,7 @@ func (f fileConfig) apply(cfg Config) Config {
 	cfg.Tenant = orKeep(f.Extensions.Fabric.Tenant, cfg.Tenant)
 	cfg.RedisAddr = orKeep(f.Extensions.Fabric.Redis.Addr, cfg.RedisAddr)
 	cfg.FalkorDBAddr = orKeep(f.Extensions.Fabric.FalkorDB.Addr, cfg.FalkorDBAddr)
+	cfg.BlobDir = orKeep(f.Extensions.Fabric.Storage.Driver, cfg.BlobDir)
 	cfg.SolverAddress = orKeep(f.Solver.Address, cfg.SolverAddress)
 	cfg.SolverVersion = orKeep(f.Solver.Version, cfg.SolverVersion)
 

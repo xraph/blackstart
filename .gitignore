@@ -73,3 +73,8 @@ configs/config.local.yml
 # The forge CLI's local state directory: build caches and dev-server bookkeeping,
 # regenerated on demand and specific to one machine.
 .forge/
+
+# The content-addressable byte plane's local driver root. Canonical encodings
+# are rebuildable from their source cases by re-importing — the content hash is
+# what makes that safe — so the bytes themselves are not repository content.
+.data/

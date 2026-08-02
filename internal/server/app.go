@@ -58,6 +58,15 @@ type Config struct {
 	// RedisAddr is required whenever the outbox worker runs.
 	RedisAddr string
 
+	// BlobDir is where the content-addressed byte plane keeps its objects.
+	//
+	// A filesystem path in development; a driver URL in a deployment that has
+	// object storage. Empty disables the byte plane, and an import then fails
+	// rather than silently keeping megabytes of canonical encoding in a
+	// Postgres column — which is where they used to live, and is what this
+	// replaced.
+	BlobDir string
+
 	// FalkorDBAddr enables the graph projection. Required whenever any entity
 	// declares one, which the fabric extension asserts.
 	FalkorDBAddr string
@@ -238,6 +247,16 @@ func fabricConfig(cfg Config) fabric.Config {
 	// outbox, so declaring them without one would be a lie about what the
 	// system maintains.
 	fc.Fabriq.Projections.Graph = cfg.FalkorDBAddr != "" && cfg.RunWorker
+
+	// The content-addressable layer, not just the byte plane. Canonical
+	// encodings are keyed by their own content hash everywhere else in the
+	// system, so storing them under anything else would mean maintaining a
+	// second identity for the same bytes.
+	if cfg.BlobDir != "" {
+		fc.Fabriq.Storage.StorageDriver = cfg.BlobDir
+		fc.Fabriq.Storage.DefaultBucket = "blackstart"
+		fc.Fabriq.Storage.EnableCas = true
+	}
 
 	return fc
 }

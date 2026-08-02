@@ -17,9 +17,12 @@ func (Contributor) ExtensionName() string { return "networkmodel" }
 // Specs returns the entities this extension declares.
 //
 // A network model is projected as a graph node so that "what was solved
-// against this network" can be walked rather than joined. The blob is not:
-// megabytes of canonical encoding have no place in a graph, and projecting it
-// would push the whole model through the outbox on every write.
+// against this network" can be walked rather than joined.
+//
+// The canonical encoding is not an entity here at all any more. It lives in
+// Fabriq's content-addressable byte plane, which declares its own blob_object
+// catalog entity — so the bytes are deduplicated, ref-counted and audited
+// without this extension owning a table of them.
 func (Contributor) Specs() []registry.EntitySpec {
 	return []registry.EntitySpec{
 		{
@@ -27,11 +30,6 @@ func (Contributor) Specs() []registry.EntitySpec {
 			Kind:      registry.KindAggregate,
 			Model:     (*modelRow)(nil),
 			GraphNode: "NetworkModel",
-		},
-		{
-			Name:  BlobEntity,
-			Kind:  registry.KindAggregate,
-			Model: (*blobRow)(nil),
 		},
 	}
 }

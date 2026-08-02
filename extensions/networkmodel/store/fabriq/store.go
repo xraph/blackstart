@@ -1,12 +1,15 @@
 package fabriq
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 
 	"github.com/xraph/fabriq"
 
-	nmid "github.com/xraph/blackstart/extensions/networkmodel/id"
 	"github.com/xraph/blackstart/extensions/networkmodel/model"
 	"github.com/xraph/blackstart/extensions/networkmodel/store"
 	"github.com/xraph/blackstart/pkg/bserr"
@@ -104,6 +107,27 @@ func (s *models) FindByHash(ctx context.Context, contentHash string) (model.Netw
 	return rows[0].toDomain()
 }
 
+// SetBlobRef records where a model's canonical encoding is stored.
+func (s *models) SetBlobRef(
+	ctx context.Context, want id.ID, reference string,
+) (model.NetworkModel, error) {
+	found, err := s.Get(ctx, want)
+	if err != nil {
+		return model.NetworkModel{}, err
+	}
+
+	found.BlobRef = reference
+
+	// Through the command path like every other write, so the change appears
+	// in the outbox and the audit trail. A direct UPDATE would be simpler and
+	// would make the one mutation this store allows the one nothing records.
+	if err := s.base.Update(ctx, ModelEntity, want, fromDomain(found), nil); err != nil {
+		return model.NetworkModel{}, err
+	}
+
+	return found, nil
+}
+
 func (s *models) List(ctx context.Context, limit int) ([]model.NetworkModel, error) {
 	if limit <= 0 {
 		limit = defaultListLimit
@@ -143,46 +167,58 @@ const defaultListLimit = 100
 
 type blobs Store
 
-func (s *blobs) Put(ctx context.Context, contentHash string, body []byte) error {
-	// Looked up before writing, so a re-put of identical bytes is an
-	// idempotent no-op rather than a second copy of a megabyte. The unique
-	// index on content_hash would reject the duplicate anyway; checking here
-	// makes the common case succeed quietly instead of erroring.
-	existing, err := s.Get(ctx, contentHash)
-	if err == nil {
-		if string(existing) == string(body) {
-			return nil
-		}
-
-		return fmt.Errorf(
-			"%w: content hash %s already holds different bytes; a blob is named "+
-				"by the hash of its own content, so this is a caller passing the "+
-				"wrong hash", bserr.ErrConflict, contentHash)
-	}
-
-	return s.base.Create(ctx, BlobEntity, nmid.NewBlob(), blobRow{
-		ContentHash: contentHash,
-		Body:        body,
-		SizeBytes:   len(body),
-	})
-}
-
-func (s *blobs) Get(ctx context.Context, contentHash string) ([]byte, error) {
-	var rows []blobRow
-
-	err := s.base.Query(ctx, &rows,
-		`SELECT * FROM `+BlobTable+`
-		 WHERE tenant_id = current_setting('app.tenant_id', true)
-		   AND content_hash = $1
-		 LIMIT 1`, contentHash)
+// Put stores the canonical bytes in Fabriq's content-addressable byte plane.
+//
+// Not a table of our own. Fabriq's blob plane is trove-backed CAS: identical
+// bytes are stored once and ref-counted, and the catalog row it writes goes
+// through the command path, so the blob gets the same tenancy, outbox and
+// audit treatment as every other write. The hand-rolled BYTEA column this
+// replaced had none of that, and kept megabytes of encoding in a row that a
+// listing had to step over.
+//
+// The returned reference is checked against the hash we computed ourselves.
+// Trove reports "sha256:<hex>" and the canonical hash is the same digest of
+// the same bytes, so a mismatch means something re-encoded them between the
+// hash and the write — which would leave a model naming an encoding that is
+// not the one it was hashed from.
+func (s *blobs) Put(ctx context.Context, body []byte) (string, error) {
+	ref, err := s.base.Fabric().PutBlob(s.base.Scoped(ctx), bytes.NewReader(body),
+		fabriq.PutBlobOpts{ContentType: canonicalContentType})
 	if err != nil {
-		return nil, err
+		return "", fmt.Errorf("networkmodel: storing the canonical encoding: %w",
+			fabriqstore.Translate(err))
 	}
 
-	if len(rows) == 0 {
-		return nil, fmt.Errorf(
-			"%w: no blob for content hash %s", bserr.ErrNotFound, contentHash)
+	sum := sha256.Sum256(body)
+
+	if want := "sha256:" + hex.EncodeToString(sum[:]); ref.Hash != want {
+		return "", fmt.Errorf(
+			"%w: the byte plane stored %s but these bytes hash to %s; something "+
+				"altered them between hashing and writing, and the model would "+
+				"name an encoding it was not hashed from",
+			bserr.ErrConflict, ref.Hash, want)
 	}
 
-	return rows[0].Body, nil
+	return ref.ID, nil
 }
+
+// Get reads the bytes a reference names.
+func (s *blobs) Get(ctx context.Context, reference string) ([]byte, error) {
+	reader, _, err := s.base.Fabric().GetBlob(s.base.Scoped(ctx), reference)
+	if err != nil {
+		return nil, fmt.Errorf("networkmodel: reading the canonical encoding: %w",
+			fabriqstore.Translate(err))
+	}
+	defer func() { _ = reader.Close() }()
+
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("networkmodel: reading the canonical encoding: %w", err)
+	}
+
+	return body, nil
+}
+
+// canonicalContentType names what these bytes are, so an operator listing the
+// object store sees a format rather than an opaque blob.
+const canonicalContentType = "application/vnd.blackstart.canonical"

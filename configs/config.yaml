@@ -56,3 +56,17 @@ extensions:
     # keeps working alongside it.
     falkordb:
       addr: "localhost:56380"
+
+    # The content-addressable byte plane, where canonical network encodings
+    # live. Fabriq wires trove behind this and deduplicates by content hash, so
+    # re-importing an unchanged case stores no second copy.
+    #
+    # A filesystem path in development; a driver URL wherever there is object
+    # storage. Empty disables the plane, and an import then fails rather than
+    # silently putting megabytes of encoding back into a Postgres column.
+    #
+    # local:// rather than file://, and the difference is not cosmetic: only
+    # the local scheme rebuilds a relative path from the URL's host and path,
+    # so "file://./.data" resolves to "/.data" and fails on a read-only root.
+    storage:
+      driver: "local://./.data/blobs"

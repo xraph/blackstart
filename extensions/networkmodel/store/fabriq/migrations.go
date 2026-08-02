@@ -21,6 +21,7 @@ func Group() *migrate.Group {
 	g := migrate.NewGroup(GroupName, migrate.DependsOn(fabriqmigrations.GroupName))
 
 	g.MustRegister(migration0001Tables)
+	g.MustRegister(migration0002BytePlane)
 
 	return g
 }
@@ -128,4 +129,56 @@ func execAll(ctx context.Context, exec migrate.Executor, statements []string) er
 	}
 
 	return nil
+}
+
+// migration0002BytePlane moves canonical encodings out of Postgres.
+//
+// A second migration rather than an edit to the first. 0001 has run in
+// databases that exist, and grove records it as applied — editing it would
+// leave every one of them without the change while reporting the group as up
+// to date.
+var migration0002BytePlane = &migrate.Migration{
+	Name:    "networkmodel_byte_plane",
+	Version: "20260802000030",
+	Comment: "canonical encodings move to fabriq's content-addressable blob plane",
+	Up:      up0002,
+	Down:    down0002,
+}
+
+func up0002(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		// The reference Fabriq's byte plane mints for the stored encoding.
+		// Nullable in effect — defaulted empty — because models imported
+		// before this migration have no blob there, and Encoding says so
+		// rather than returning bytes that are not the ones it was hashed
+		// from.
+		`ALTER TABLE ` + ModelTable + `
+			ADD COLUMN IF NOT EXISTS blob_ref TEXT NOT NULL DEFAULT ''`,
+
+		// Dropped rather than left behind. A table holding a second copy of
+		// every encoding, which nothing reads and no migration will ever
+		// reconcile, is a copy that drifts — and the next person to find it
+		// has no way to tell which copy was authoritative.
+		`DROP TABLE IF EXISTS ` + BlobTable,
+	})
+}
+
+func down0002(ctx context.Context, exec migrate.Executor) error {
+	// The table comes back empty. Its contents were the encodings, and those
+	// now live in the byte plane under references this column is about to
+	// drop — so a down migration cannot restore them and should not pretend
+	// to. Re-importing the source files rebuilds them, which is what the
+	// content hash makes safe.
+	return execAll(ctx, exec, []string{
+		`ALTER TABLE ` + ModelTable + ` DROP COLUMN IF EXISTS blob_ref`,
+
+		`CREATE TABLE IF NOT EXISTS ` + BlobTable + ` (
+			id            TEXT PRIMARY KEY,
+			tenant_id     TEXT NOT NULL,
+			version       BIGINT NOT NULL,
+			content_hash  TEXT NOT NULL,
+			body          BYTEA NOT NULL,
+			size_bytes    INTEGER NOT NULL
+		)`,
+	})
 }

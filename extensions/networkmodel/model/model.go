@@ -36,6 +36,15 @@ type NetworkModel struct {
 	// SourceKind says where it came from: "matpower", "topology", "scl".
 	SourceKind string `json:"source_kind"`
 
+	// BlobRef names the stored canonical encoding in the byte plane.
+	//
+	// Fabriq's content-addressable store mints this when the bytes are
+	// written, and it is the only way back to them. Kept on the row rather
+	// than derived from the content hash: the two agree today because both are
+	// SHA-256 of the same bytes, and depending on that would break silently
+	// the day either side changed its digest.
+	BlobRef string `json:"blob_ref"`
+
 	// DatasetVersionID names the provenance record for the file it was built
 	// from, when there was one. Zero for a model assembled from the topology
 	// store rather than imported.
@@ -92,4 +101,14 @@ type Store interface {
 
 	// List returns models most recent first.
 	List(ctx context.Context, limit int) ([]NetworkModel, error)
+
+	// SetBlobRef records where a model's canonical encoding is stored.
+	//
+	// The one mutation this store allows, and narrow on purpose. Append-only
+	// protects the network a model describes, because a result citing it must
+	// keep meaning what it meant. Where the bytes live is not part of that:
+	// the content hash is unchanged, the physics is unchanged, and only the
+	// pointer to storage moves. A general Update would let the physics move
+	// too, and nothing would notice.
+	SetBlobRef(ctx context.Context, want id.ID, reference string) (NetworkModel, error)
 }

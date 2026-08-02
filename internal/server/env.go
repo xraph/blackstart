@@ -11,6 +11,7 @@ const (
 	EnvDatabaseDSN = "BLACKSTART_DATABASE_DSN"
 	EnvRedisAddr   = "BLACKSTART_REDIS_ADDR"
 	EnvFalkorAddr  = "BLACKSTART_FALKORDB_ADDR"
+	EnvBlobDir     = "BLACKSTART_BLOB_DIR"
 	EnvHTTPAddress = "BLACKSTART_HTTP_ADDRESS"
 	EnvEnvironment = "BLACKSTART_ENV"
 	EnvTenant      = "BLACKSTART_TENANT"
@@ -29,6 +30,7 @@ func FromEnv(cfg Config) Config {
 	cfg.DatabaseDSN = envOr(EnvDatabaseDSN, cfg.DatabaseDSN)
 	cfg.RedisAddr = envOr(EnvRedisAddr, cfg.RedisAddr)
 	cfg.FalkorDBAddr = envOr(EnvFalkorAddr, cfg.FalkorDBAddr)
+	cfg.BlobDir = envOr(EnvBlobDir, cfg.BlobDir)
 	cfg.HTTPAddress = envOr(EnvHTTPAddress, cfg.HTTPAddress)
 	cfg.Environment = envOr(EnvEnvironment, cfg.Environment)
 	cfg.Tenant = envOr(EnvTenant, cfg.Tenant)

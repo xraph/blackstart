@@ -12,6 +12,7 @@ import (
 	"github.com/xraph/forge"
 
 	dsfabriq "github.com/xraph/blackstart/extensions/datasource/store/fabriq"
+	"github.com/xraph/blackstart/extensions/fabric"
 	geofabriq "github.com/xraph/blackstart/extensions/geo/store/fabriq"
 	nmfabriq "github.com/xraph/blackstart/extensions/networkmodel/store/fabriq"
 	"github.com/xraph/blackstart/internal/entities"
@@ -29,6 +30,7 @@ const Name = "blackstart"
 //
 //nolint:gochecknoglobals // the composition manifest, read once at startup
 var Contributors = []entities.Contributor{
+	fabric.Contributor{},
 	dsfabriq.Contributor{},
 	nmfabriq.Contributor{},
 	geofabriq.Contributor{},
