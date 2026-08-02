@@ -44,6 +44,18 @@
   </Substation>
   <Communication>
     <SubNetwork name="STATION_BUS" type="8-MMS">
+      <ConnectedAP iedName="IED2" apName="AP1">
+        <Address>
+          <P type="IP">10.0.0.12</P>
+        </Address>
+        <GSE ldInst="PROT" cbName="gcbProt">
+          <Address>
+            <P type="MAC-Address">01-0C-CD-01-00-02</P>
+            <P type="APPID">0002</P>
+            <P type="VLAN-ID">005</P>
+          </Address>
+        </GSE>
+      </ConnectedAP>
       <ConnectedAP iedName="IED1" apName="AP1">
         <Address>
           <P type="IP">10.0.0.11</P>
@@ -77,6 +89,21 @@
                       srcCBName="gcbProt" srcLDInst="PROT" srcLNClass="LLN0"/>
             </Inputs>
           </LN>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+  <IED name="IED2" type="PROTECTION" manufacturer="Nobody" configVersion="1.0">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="PROT">
+          <LN0 lnClass="LLN0" lnType="LLN0_0" inst="">
+            <DataSet name="dsProt" desc="Protection operate">
+              <FCDA ldInst="PROT" lnClass="PTOC" lnInst="1" doName="Op" daName="general" fc="ST"/>
+            </DataSet>
+            <GSEControl name="gcbProt" datSet="dsProt" appID="PROT1" confRev="1" type="GOOSE"/>
+          </LN0>
+          <LN prefix="" lnClass="PTOC" inst="1" lnType="PTOC_0" desc="Overcurrent"/>
         </LDevice>
       </Server>
     </AccessPoint>

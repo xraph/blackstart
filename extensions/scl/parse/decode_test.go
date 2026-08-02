@@ -141,7 +141,20 @@ func TestTheGooseAddressIsReadFromTheCommunicationSection(t *testing.T) {
 		t.Fatal("the communication section was not read")
 	}
 
-	point := got.Communication.SubNetworks[0].ConnectedAPs[0]
+	// Found by name rather than by position. Access points arrive in file
+	// order and a fixture gains devices over time, so an index would tie this
+	// test to the order rather than to the thing it checks.
+	var point *parse.ConnectedAP
+
+	for index, candidate := range got.Communication.SubNetworks[0].ConnectedAPs {
+		if candidate.IEDName == "IED1" {
+			point = &got.Communication.SubNetworks[0].ConnectedAPs[index]
+		}
+	}
+
+	if point == nil {
+		t.Fatal("IED1 has no connected access point")
+	}
 
 	if len(point.GSEs) != 1 || point.GSEs[0].CBName != "gcbTrip" {
 		t.Fatalf("GSE is %+v", point.GSEs)
