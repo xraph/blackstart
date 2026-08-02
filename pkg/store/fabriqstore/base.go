@@ -181,3 +181,19 @@ func (b *Base) Ping(ctx context.Context) error {
 
 	return Translate(b.fab.Relational().Query(b.Scoped(ctx), &probe, "SELECT 1 AS ok"))
 }
+
+// Query runs a read with no temporal predicate.
+//
+// For entities that are not bitemporal, and only those. A network model is a
+// snapshot, a provenance record states what happened, a solution records an
+// answer — none of them is corrected, so none has a valid-time interval to
+// filter on and QueryAsOf would compose a predicate against columns that do
+// not exist.
+//
+// The distinction is worth stating because the failure is quiet in opposite
+// directions. Using this on a bitemporal entity returns every version of every
+// row, which reads as duplicates. Using QueryAsOf on one that is not fails at
+// the database with a missing column, which is loud and therefore fine.
+func (b *Base) Query(ctx context.Context, into any, sql string, args ...any) error {
+	return Translate(b.fab.Relational().Query(b.Scoped(ctx), into, sql, args...))
+}
