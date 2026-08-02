@@ -30,13 +30,15 @@ func (Contributor) Specs() []registry.EntitySpec {
 				Fields: []string{"name", "type", "manufacturer"},
 			},
 		},
+		// Not a graph node, and therefore no edge to its device: fabriq
+		// requires one for the other, and it is right to. A GOOSE stream is a
+		// row belonging to a device, and the graph question that matters is
+		// device-to-device — putting a node in the graph for every control
+		// block would inflate it to support no query anyone asks.
 		{
 			Name:  PublicationEntity,
 			Kind:  registry.KindAggregate,
 			Model: (*publicationRow)(nil),
-			Edges: []registry.EdgeSpec{
-				{Field: "ied_id", Rel: "PUBLISHED_BY", Target: IEDEntity},
-			},
 		},
 		{
 			Name:  SubscriptionEntity,
