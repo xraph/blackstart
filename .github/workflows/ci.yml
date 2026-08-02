@@ -292,8 +292,39 @@ jobs:
       - name: Compare against the oracle
         run: cd rust && cargo test -p bs-golden --release
 
-# Jobs that arrive with the code they check, rather than being added now as
-# no-ops. A job that is green because it skipped is indistinguishable from one
-# that is green because it passed.
-#
-#   proto                     Phase 2, with the solver contract
+  proto:
+    name: Proto
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - run: buf lint
+        working-directory: proto
+      - run: buf format --diff --exit-code
+        working-directory: proto
+
+      # The committed Go stubs must be what the contract produces. Go's tooling
+      # expects checked-in generated code, so it can drift from its source; a
+      # stub that no longer matches its proto is a contract nobody is honouring.
+      - name: Generate and diff
+        working-directory: proto
+        run: |
+          buf generate
+          if ! git diff --quiet -- gen; then
+            echo "::error::committed stubs differ from what the contract produces; run 'cd proto && buf generate'"
+            git diff --stat -- gen
+            exit 1
+          fi
+
+      # Breaking changes against main. The solver and the platform deploy
+      # separately, so a contract change that breaks one of them is an outage
+      # rather than a compile error.
+      - name: Breaking changes
+        if: github.event_name == 'pull_request'
+        working-directory: proto
+        run: buf breaking --against "https://github.com/${{ github.repository }}.git#branch=${{ github.base_ref }},subdir=proto"
