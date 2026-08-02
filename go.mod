@@ -153,6 +153,7 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	github.com/xraph/chronicle v1.5.3 // indirect
 	github.com/xraph/go-utils v1.1.3 // indirect
 	github.com/xraph/grove/kv v1.5.9 // indirect
 	github.com/xraph/grove/kv/drivers/redisdriver v1.5.9 // indirect

@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 
+	chronicleext "github.com/xraph/chronicle/extension"
 	"github.com/xraph/fabriq"
 	"github.com/xraph/fabriq/core/registry"
 	fabriqmigrations "github.com/xraph/fabriq/migrations"
@@ -133,7 +134,19 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 
 	fabricExt := fabric.New(reg, fabric.WithConfig(fabricConfig(cfg)))
 
-	extensions := []forge.Extension{groveExt, fabricExt, datasource.New()}
+	// Chronicle is the audit trail. Blackstart does not own one: chronicle is
+	// hash-chained, supports per-subject crypto-erasure, and produces
+	// compliance reports, none of which a hand-written append-only table would
+	// have. See a private design note.
+	//
+	// It borrows the same grove database, so its migrations run alongside the
+	// platform's rather than needing a second connection to manage.
+	auditExt := chronicleext.New(
+		chronicleext.WithGroveDatabase(""),
+		chronicleext.WithCryptoErasure(true),
+	)
+
+	extensions := []forge.Extension{groveExt, fabricExt, auditExt, datasource.New()}
 
 	// The solver-backed extensions are registered only when there is a solver
 	// to reach. Registering them without one would mean every startup logs a
