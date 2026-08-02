@@ -7,6 +7,7 @@ require (
 	github.com/xraph/forge v1.9.1
 	github.com/xraph/grove v1.5.9
 	github.com/xraph/grove/drivers/pgdriver v1.5.9
+	github.com/xraph/grove/extension v1.5.9
 	github.com/xraph/vessel v1.0.2
 	go.jetify.com/typeid/v2 v2.0.0-alpha.3
 )
