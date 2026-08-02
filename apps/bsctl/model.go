@@ -12,8 +12,10 @@ import (
 	"github.com/xraph/forge/cli"
 
 	"github.com/xraph/blackstart/extensions/networkmodel"
+	"github.com/xraph/blackstart/extensions/networkmodel/canonical"
 	nmid "github.com/xraph/blackstart/extensions/networkmodel/id"
 	"github.com/xraph/blackstart/extensions/networkmodel/model"
+	"github.com/xraph/blackstart/extensions/networkmodel/viewer"
 )
 
 // modelCommand groups everything to do with network models.
@@ -236,6 +238,49 @@ func modelExportCommand() cli.Command {
 
 				payload = encoded
 
+			case "viewer":
+				// Decoded from the stored bytes rather than re-parsed from a
+				// source file that may be long gone — and which would anyway
+				// risk the export describing a different network from the one
+				// the hash names.
+				encoded, err := engine.Encoding(ctx.Context(), found.ContentHash)
+				if err != nil {
+					return err
+				}
+
+				decoded, err := canonical.Decode(encoded)
+				if err != nil {
+					return err
+				}
+
+				var placements viewer.Placement
+
+				if coords := ctx.String("coords"); coords != "" {
+					if placements, err = readPlacements(coords); err != nil {
+						return err
+					}
+				}
+
+				built, err := viewer.Build(
+					found.ID.String(), found.ContentHash, decoded, placements)
+				if err != nil {
+					return err
+				}
+
+				if payload, err = json.Marshal(built); err != nil {
+					return err
+				}
+
+				// Said plainly. A bus with no coordinate draws at the origin,
+				// which is conspicuous in the viewer but reads as a rendering
+				// fault rather than as missing data.
+				if missing := countMissing(built); missing > 0 {
+					ctx.Warning(fmt.Sprintf(
+						"%d of %d buses have no coordinate and will draw at "+
+							"0°N 0°E; supply --coords bus,lat,lon",
+						missing, len(built.Buses.IDs)))
+				}
+
 			case "json":
 				encoded, err := json.MarshalIndent(found, "", "  ")
 				if err != nil {
@@ -260,10 +305,14 @@ func modelExportCommand() cli.Command {
 
 			return nil
 		},
-		cli.WithUsage("bsctl model export <nmdl_… | content-hash> --out FILE [--format canonical|json]"),
+		cli.WithUsage(
+			"bsctl model export <nmdl_… | content-hash> --out FILE "+
+				"[--format canonical|json|viewer] [--coords FILE]"),
 		cli.WithFlag(cli.NewStringFlag("out", "o", "file to write", "")),
 		cli.WithFlag(cli.NewStringFlag(
-			"format", "", "canonical or json", "canonical")),
+			"format", "", "canonical, json or viewer", "canonical")),
+		cli.WithFlag(cli.NewStringFlag(
+			"coords", "", "CSV of bus,lat,lon[,elevation] for the viewer format", "")),
 	)
 }
 
@@ -320,4 +369,22 @@ func truncate(s string, limit int) string {
 	}
 
 	return s[:limit-1] + "…"
+}
+
+// countMissing counts buses that have no coordinate.
+//
+// Exactly at the origin, which is the sentinel a missing placement leaves. A
+// real bus at 0°N 0°E would be in the Gulf of Guinea, and there are no
+// substations there.
+func countMissing(payload viewer.Model) int {
+	var missing int
+
+	for index := range payload.Buses.IDs {
+		if payload.Buses.Coordinates[index*3] == 0 &&
+			payload.Buses.Coordinates[index*3+1] == 0 {
+			missing++
+		}
+	}
+
+	return missing
 }
