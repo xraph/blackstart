@@ -23,18 +23,30 @@ pub struct Voltages {
 }
 
 impl Voltages {
-    /// A flat start: every magnitude at its scheduled value, every angle zero.
+    /// A flat start: every magnitude at its scheduled value, every angle at
+    /// the reference.
     ///
     /// Flat is the standard starting point and is deliberate rather than lazy.
     /// It is the state a well-behaved transmission network is near, so Newton
     /// converges from it in a handful of iterations; starting somewhere
     /// "cleverer" makes convergence depend on the previous answer, which makes
     /// a result depend on what was solved before it.
+    ///
+    /// "Flat" means every angle equal to the slack's, not every angle zero.
+    /// Those coincide only when the reference is scheduled at zero, and a case
+    /// whose reference is elsewhere — IEEE 118 puts it at 30° — would
+    /// otherwise be solved against the wrong reference. Every angle then comes
+    /// out shifted by a constant, which is easy to miss because every *flow*
+    /// is still correct: flows depend on angle differences alone.
     #[must_use]
     pub fn flat(case: &bs_case::Case) -> Self {
+        let reference = case
+            .slack_index()
+            .map_or(0.0, |slack| case.buses[slack].v_angle);
+
         Self {
             magnitude: case.buses.iter().map(|b| b.v_magnitude).collect(),
-            angle: vec![0.0; case.n_bus()],
+            angle: vec![reference; case.n_bus()],
         }
     }
 
