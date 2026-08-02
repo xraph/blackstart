@@ -1,0 +1,20 @@
+[package]
+name = "bs-factors"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bs-case = { path = "../bs-case" }
+bs-powerflow = { path = "../bs-powerflow" }
+bs-sparse = { path = "../bs-sparse" }
+
+[dev-dependencies]
+bs-quantity = { path = "../bs-quantity" }
