@@ -1,0 +1,238 @@
+/*
+ * The two grounds.
+ *
+ * Chrome is achromatic in both, because the globe consumes the colour budget:
+ * risk is a ramp along spans, islands separate by hue, and the sky renders
+ * actual forecast state. An accent colour in the chrome would compete with the
+ * encoding until the encoding stopped reading as data. The primary button is
+ * therefore the foreground colour inverted, not a hue.
+ *
+ * The data palettes are re-tuned per ground rather than inverted. A mid-risk
+ * #6A9955 that reads clearly on near-black turns to mush on paper, so the
+ * light ramp is deepened and pulled off full saturation to keep the five steps
+ * perceptually even. Same for the eight island hues.
+ *
+ * Layering: runtime values live on :root so they can follow the theme, and
+ * `@theme inline` maps them into Tailwind utilities. That indirection is what
+ * lets `bg-panel` mean different things in different grounds without every
+ * component knowing about themes.
+ */
+
+@import "tailwindcss";
+
+:root {
+  /* chrome */
+  --bs-bg: #0a0b0d;
+  --bs-panel: #111316;
+  --bs-panel-2: #16191d;
+  --bs-panel-3: #1b1f24;
+  --bs-line: #1f2328;
+  --bs-line-2: #2a3037;
+  --bs-line-3: #39424b;
+  --bs-line-t: #191d22;
+  --bs-fg: #e6e8ea;
+  --bs-fg-2: #8b9199;
+  --bs-fg-3: #5a616a;
+  --bs-fg-4: #3d444c;
+  --bs-ink: #0a0b0d;
+  --bs-stage: #04060a;
+  --bs-glass: rgb(14 16 19 / 0.93);
+  --bs-hl: rgb(255 255 255 / 0.028);
+
+  /* measurement — never used for chrome */
+  --bs-risk-0: #2d6a4f;
+  --bs-risk-1: #6a9955;
+  --bs-risk-2: #c9a227;
+  --bs-risk-3: #e07a2f;
+  --bs-risk-4: #c1121f;
+  --bs-island-1: #4c9aff;
+  --bs-island-2: #c77dff;
+  --bs-island-3: #4dd0a7;
+  --bs-island-4: #ffb454;
+  --bs-island-5: #ff7a85;
+  --bs-island-6: #7fd4e8;
+  --bs-island-7: #b5c46a;
+  --bs-island-8: #a99bff;
+  --bs-alarm: #ff3b30;
+  --bs-amber: #e0a82e;
+  --bs-amber-bg: #1c1608;
+  --bs-amber-line: #3a2e12;
+  --bs-ok: #3e8e5a;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bs-bg: #e4e9ed;
+    --bs-panel: #f6f8f9;
+    --bs-panel-2: #edf1f3;
+    --bs-panel-3: #dce3e8;
+    --bs-line: #cbd3d9;
+    --bs-line-2: #bac4cc;
+    --bs-line-3: #98a5b0;
+    --bs-line-t: #dfe5ea;
+    --bs-fg: #10161b;
+    --bs-fg-2: #56626c;
+    --bs-fg-3: #7c8892;
+    --bs-fg-4: #a5afb7;
+    --bs-ink: #f6f8f9;
+    --bs-stage: #bfd0dc;
+    --bs-glass: rgb(246 248 249 / 0.94);
+    --bs-hl: rgb(16 22 27 / 0.032);
+
+    --bs-risk-0: #1f5c40;
+    --bs-risk-1: #4e7c39;
+    --bs-risk-2: #95760c;
+    --bs-risk-3: #b85614;
+    --bs-risk-4: #9e0a16;
+    --bs-island-1: #1565c0;
+    --bs-island-2: #8134b8;
+    --bs-island-3: #0f7a5b;
+    --bs-island-4: #9c6500;
+    --bs-island-5: #b5303e;
+    --bs-island-6: #0e7290;
+    --bs-island-7: #65752a;
+    --bs-island-8: #5443c0;
+    --bs-alarm: #c4160c;
+    --bs-amber: #8a6206;
+    --bs-amber-bg: #faf2da;
+    --bs-amber-line: #e0cd98;
+    --bs-ok: #1f7040;
+  }
+}
+
+/* An explicit choice wins over the system preference, in both directions. */
+:root[data-theme="light"] {
+  --bs-bg: #e4e9ed;
+  --bs-panel: #f6f8f9;
+  --bs-panel-2: #edf1f3;
+  --bs-panel-3: #dce3e8;
+  --bs-line: #cbd3d9;
+  --bs-line-2: #bac4cc;
+  --bs-line-3: #98a5b0;
+  --bs-line-t: #dfe5ea;
+  --bs-fg: #10161b;
+  --bs-fg-2: #56626c;
+  --bs-fg-3: #7c8892;
+  --bs-fg-4: #a5afb7;
+  --bs-ink: #f6f8f9;
+  --bs-stage: #bfd0dc;
+  --bs-glass: rgb(246 248 249 / 0.94);
+  --bs-hl: rgb(16 22 27 / 0.032);
+  --bs-risk-0: #1f5c40;
+  --bs-risk-1: #4e7c39;
+  --bs-risk-2: #95760c;
+  --bs-risk-3: #b85614;
+  --bs-risk-4: #9e0a16;
+  --bs-island-1: #1565c0;
+  --bs-island-2: #8134b8;
+  --bs-island-3: #0f7a5b;
+  --bs-island-4: #9c6500;
+  --bs-island-5: #b5303e;
+  --bs-island-6: #0e7290;
+  --bs-island-7: #65752a;
+  --bs-island-8: #5443c0;
+  --bs-alarm: #c4160c;
+  --bs-amber: #8a6206;
+  --bs-amber-bg: #faf2da;
+  --bs-amber-line: #e0cd98;
+  --bs-ok: #1f7040;
+}
+
+:root[data-theme="dark"] {
+  --bs-bg: #0a0b0d;
+  --bs-panel: #111316;
+  --bs-panel-2: #16191d;
+  --bs-panel-3: #1b1f24;
+  --bs-line: #1f2328;
+  --bs-line-2: #2a3037;
+  --bs-line-3: #39424b;
+  --bs-line-t: #191d22;
+  --bs-fg: #e6e8ea;
+  --bs-fg-2: #8b9199;
+  --bs-fg-3: #5a616a;
+  --bs-fg-4: #3d444c;
+  --bs-ink: #0a0b0d;
+  --bs-stage: #04060a;
+  --bs-glass: rgb(14 16 19 / 0.93);
+  --bs-hl: rgb(255 255 255 / 0.028);
+  --bs-risk-0: #2d6a4f;
+  --bs-risk-1: #6a9955;
+  --bs-risk-2: #c9a227;
+  --bs-risk-3: #e07a2f;
+  --bs-risk-4: #c1121f;
+  --bs-island-1: #4c9aff;
+  --bs-island-2: #c77dff;
+  --bs-island-3: #4dd0a7;
+  --bs-island-4: #ffb454;
+  --bs-island-5: #ff7a85;
+  --bs-island-6: #7fd4e8;
+  --bs-island-7: #b5c46a;
+  --bs-island-8: #a99bff;
+  --bs-alarm: #ff3b30;
+  --bs-amber: #e0a82e;
+  --bs-amber-bg: #1c1608;
+  --bs-amber-line: #3a2e12;
+  --bs-ok: #3e8e5a;
+}
+
+/*
+ * `inline` so the generated utilities reference the custom properties rather
+ * than baking the hex in at build time — which is what makes them follow the
+ * theme at runtime.
+ */
+@theme inline {
+  --color-bg: var(--bs-bg);
+  --color-panel: var(--bs-panel);
+  --color-panel-2: var(--bs-panel-2);
+  --color-panel-3: var(--bs-panel-3);
+  --color-line: var(--bs-line);
+  --color-line-2: var(--bs-line-2);
+  --color-line-3: var(--bs-line-3);
+  --color-line-t: var(--bs-line-t);
+  --color-fg: var(--bs-fg);
+  --color-fg-2: var(--bs-fg-2);
+  --color-fg-3: var(--bs-fg-3);
+  --color-fg-4: var(--bs-fg-4);
+  --color-ink: var(--bs-ink);
+  --color-stage: var(--bs-stage);
+  --color-hl: var(--bs-hl);
+
+  --color-risk-0: var(--bs-risk-0);
+  --color-risk-1: var(--bs-risk-1);
+  --color-risk-2: var(--bs-risk-2);
+  --color-risk-3: var(--bs-risk-3);
+  --color-risk-4: var(--bs-risk-4);
+  --color-island-1: var(--bs-island-1);
+  --color-island-2: var(--bs-island-2);
+  --color-island-3: var(--bs-island-3);
+  --color-island-4: var(--bs-island-4);
+  --color-island-5: var(--bs-island-5);
+  --color-island-6: var(--bs-island-6);
+  --color-island-7: var(--bs-island-7);
+  --color-island-8: var(--bs-island-8);
+  --color-alarm: var(--bs-alarm);
+  --color-amber: var(--bs-amber);
+  --color-amber-bg: var(--bs-amber-bg);
+  --color-amber-line: var(--bs-amber-line);
+  --color-ok: var(--bs-ok);
+
+  /*
+   * Density is identical in both grounds. An operator switching theme should
+   * never have to re-learn where anything is.
+   */
+  --spacing-row: 2rem; /* 32px — table row */
+  --spacing-rail-row: 3.25rem; /* 52px — contingency row */
+  --spacing-event-row: 1.625rem; /* 26px — event log row */
+  --radius-instrument: 4px;
+
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
+}
+
+/*
+ * Measurements are tabular everywhere, without every call site remembering.
+ * Applied by the `<Quantity>` primitive and the grid cells.
+ */
+@utility tabular {
+  font-variant-numeric: tabular-nums lining-nums;
+}
