@@ -1,0 +1,23 @@
+{
+  "name": "@blackstart/schema",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Zod schemas for the client's domain vocabulary: typed quantities, TypeIDs, bitemporal references, provenance chains, and the payloads the viewer renders",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "3.2.4"
+  }
+}
