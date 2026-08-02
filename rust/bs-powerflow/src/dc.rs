@@ -3,7 +3,9 @@
 use std::fmt;
 
 use bs_case::{Case, CaseError};
-use bs_sparse::{DenseLu, Error as SparseError, Factorize, Triplets};
+use bs_sparse::{DenseLu, Error as SparseError, Factorize};
+
+use crate::reduce::{ReduceError, Reduction};
 
 /// Why a power flow could not be solved.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +44,15 @@ impl From<CaseError> for PowerFlowError {
 impl From<SparseError> for PowerFlowError {
     fn from(e: SparseError) -> Self {
         Self::Linear(e)
+    }
+}
+
+impl From<ReduceError> for PowerFlowError {
+    fn from(e: ReduceError) -> Self {
+        match e {
+            ReduceError::Case(c) => Self::Case(c),
+            ReduceError::Sparse(s) => Self::Linear(s),
+        }
     }
 }
 
@@ -108,77 +119,27 @@ impl DcSolution {
 pub fn solve_dc(case: &Case) -> Result<DcSolution, PowerFlowError> {
     case.validate()?;
 
-    let slack = case.slack_index()?;
-    let n = case.n_bus();
-
-    // Map full bus indices onto reduced ones, skipping the slack. A Vec rather
-    // than a map: the lookup is on the inner assembly loop, and the ordering
-    // has to be deterministic anyway.
-    let mut reduced_of = vec![usize::MAX; n];
-    let mut full_of = Vec::with_capacity(n.saturating_sub(1));
-
-    for (bus, slot) in reduced_of.iter_mut().enumerate() {
-        if bus == slack {
-            continue;
-        }
-        *slot = full_of.len();
-        full_of.push(bus);
-    }
-
-    let reduced_n = full_of.len();
+    let reduction = Reduction::build(case)?;
 
     // A single-bus network is degenerate but legitimate: the slack supplies
     // everything and there is nothing to solve.
-    if reduced_n == 0 {
+    if reduction.is_empty() {
         return Ok(DcSolution {
-            angles: vec![0.0; n],
+            angles: vec![0.0; case.n_bus()],
             flows: vec![0.0; case.n_branch()],
             slack_injection: -case.total_injection(),
         });
     }
 
-    // Assemble the reduced susceptance matrix. Branches are walked in case
-    // order, which is canonical, so the triplet sequence — and therefore the
-    // summation order once compressed — is identical every run.
-    let mut susceptances = Triplets::new(reduced_n, reduced_n);
-    susceptances.reserve(case.n_branch() * 4);
-
-    for branch in &case.branches {
-        if !branch.in_service {
-            continue;
-        }
-
-        let susceptance = 1.0 / branch.x;
-        let (from, to) = (reduced_of[branch.from], reduced_of[branch.to]);
-
-        // Diagonal terms accumulate from every incident branch; off-diagonals
-        // are negative. Rows and columns belonging to the slack are simply
-        // never emitted, which is what deleting them means here.
-        if from != usize::MAX {
-            susceptances.add(from, from, susceptance)?;
-        }
-        if to != usize::MAX {
-            susceptances.add(to, to, susceptance)?;
-        }
-        if from != usize::MAX && to != usize::MAX {
-            susceptances.add(from, to, -susceptance)?;
-            susceptances.add(to, from, -susceptance)?;
-        }
-    }
-
-    let injections: Vec<f64> = full_of
+    let injections: Vec<f64> = reduction
+        .full_of
         .iter()
         .map(|&bus| case.buses[bus].p_injection)
         .collect();
 
     let lu = DenseLu;
-    let factors = lu.factor(&susceptances.compress())?;
-    let reduced_angles = lu.solve(&factors, &injections)?;
-
-    let mut angles = vec![0.0; n];
-    for (reduced, &bus) in full_of.iter().enumerate() {
-        angles[bus] = reduced_angles[reduced];
-    }
+    let factors = lu.factor(&reduction.matrix)?;
+    let angles = reduction.expand(&lu.solve(&factors, &injections)?);
 
     let flows = branch_flows(case, &angles);
 

@@ -14,5 +14,6 @@
 #![forbid(unsafe_code)]
 
 pub mod dc;
+pub mod reduce;
 
 pub use dc::{DcSolution, PowerFlowError, solve_dc};
