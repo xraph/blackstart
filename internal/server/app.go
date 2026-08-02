@@ -28,6 +28,7 @@ import (
 	"github.com/xraph/blackstart/extensions/contingency"
 	"github.com/xraph/blackstart/extensions/datasource"
 	"github.com/xraph/blackstart/extensions/fabric"
+	"github.com/xraph/blackstart/extensions/networkmodel"
 	"github.com/xraph/blackstart/extensions/powerflow"
 	"github.com/xraph/blackstart/extensions/provenance"
 	"github.com/xraph/blackstart/internal/entities"
@@ -147,7 +148,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		chronicleext.WithCryptoErasure(true),
 	)
 
-	extensions := []forge.Extension{groveExt, fabricExt, auditExt, provenance.New(), datasource.New()}
+	extensions := []forge.Extension{groveExt, fabricExt, auditExt, provenance.New(), networkmodel.New(), datasource.New()}
 
 	// The solver-backed extensions are registered only when there is a solver
 	// to reach. Registering them without one would mean every startup logs a
