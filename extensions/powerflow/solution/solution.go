@@ -46,33 +46,37 @@ func (m Method) Valid() bool {
 
 // Bus is one bus's result.
 //
+// The json tags are load-bearing rather than decorative: these are persisted
+// as an encoded column, so a renamed field without a tag would silently change
+// the stored format and make every existing solution unreadable.
+//
 // Per-unit, converted at the client boundary. The wire is SI and the domain is
 // per unit, and this is the side of that conversion the rest of the platform
 // sees.
 type Bus struct {
 	// VMagnitude is the voltage magnitude, per unit.
-	VMagnitude float64
+	VMagnitude float64 `json:"v_magnitude"`
 
 	// VAngle is the voltage angle, radians.
-	VAngle float64
+	VAngle float64 `json:"v_angle"`
 
 	// PInjection is net real power injection, per unit. At the slack this is
 	// what the reference had to supply.
-	PInjection float64
+	PInjection float64 `json:"p_injection"`
 
 	// QInjection is net reactive power injection, per unit.
-	QInjection float64
+	QInjection float64 `json:"q_injection"`
 }
 
 // Branch is one branch's result.
 type Branch struct {
 	// PFlow is real power at the from-end, per unit, positive from→to.
-	PFlow float64
+	PFlow float64 `json:"p_flow"`
 
 	// Loading is flow magnitude over rating. Zero for an unrated branch,
 	// because an unrated branch has an unknown limit rather than a zero one
 	// and must never be reported as overloaded.
-	Loading float64
+	Loading float64 `json:"loading"`
 }
 
 // Overloaded reports whether this branch exceeds the given loading threshold.
