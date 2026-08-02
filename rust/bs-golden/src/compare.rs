@@ -110,10 +110,8 @@ impl Comparison {
         }
 
         if self.disagreements.len() > limit {
-            out.push_str(&format!(
-                "  … and {} more\n",
-                self.disagreements.len() - limit
-            ));
+            use core::fmt::Write as _;
+            let _ = writeln!(out, "  … and {} more", self.disagreements.len() - limit);
         }
 
         out
