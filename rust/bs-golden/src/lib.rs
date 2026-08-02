@@ -21,6 +21,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod compare;
 pub mod document;
 
+pub use compare::{Comparison, Disagreement, Tolerances, compare};
 pub use document::{Golden, LoadError, load, load_all};
