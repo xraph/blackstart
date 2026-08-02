@@ -18,5 +18,7 @@
 #![forbid(unsafe_code)]
 
 pub mod screen;
+pub mod verify;
 
 pub use screen::{Contingency, ScreenOutcome, ScreenResult, Violation, all_branches, rank, screen};
+pub use verify::{Verdict, Verification, VoltageLimits, VoltageViolation, verify, verify_top};
