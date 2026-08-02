@@ -25,6 +25,19 @@ server:
 database:
   driver: postgres
 
+# The Rust power-flow service. Empty means no solver, which is a legitimate
+# configuration: `bsctl entities` and `blackstart migrate` never call one, and
+# requiring it would make every command depend on a process it does not use.
+# The solver-backed extensions are registered only when an address is set.
+solver:
+  address: "127.0.0.1:50051"
+  # Recorded with every contingency run. The screen stream does not carry a
+  # version — the contract puts version fields on the solve response, since
+  # repeating them across thousands of streamed results would be noise — so the
+  # host supplies it. Left empty, the extension records a conspicuous
+  # placeholder rather than a plausible version.
+  version: ""
+
 extensions:
   fabric:
     # Blackstart is single-tenant. Fabriq has no default-tenant mode by design:

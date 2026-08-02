@@ -46,6 +46,11 @@ type fileConfig struct {
 		DSN string `yaml:"dsn"`
 	} `yaml:"database"`
 
+	Solver struct {
+		Address string `yaml:"address"`
+		Version string `yaml:"version"`
+	} `yaml:"solver"`
+
 	Extensions struct {
 		Fabric struct {
 			Tenant string `yaml:"tenant"`
@@ -168,6 +173,8 @@ func (f fileConfig) apply(cfg Config) Config {
 	cfg.Tenant = orKeep(f.Extensions.Fabric.Tenant, cfg.Tenant)
 	cfg.RedisAddr = orKeep(f.Extensions.Fabric.Redis.Addr, cfg.RedisAddr)
 	cfg.FalkorDBAddr = orKeep(f.Extensions.Fabric.FalkorDB.Addr, cfg.FalkorDBAddr)
+	cfg.SolverAddress = orKeep(f.Solver.Address, cfg.SolverAddress)
+	cfg.SolverVersion = orKeep(f.Solver.Version, cfg.SolverVersion)
 
 	return cfg
 }

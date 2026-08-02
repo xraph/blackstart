@@ -14,6 +14,8 @@ const (
 	EnvHTTPAddress = "BLACKSTART_HTTP_ADDRESS"
 	EnvEnvironment = "BLACKSTART_ENV"
 	EnvTenant      = "BLACKSTART_TENANT"
+	EnvSolverAddr  = "BLACKSTART_SOLVER_ADDRESS"
+	EnvSolverVer   = "BLACKSTART_SOLVER_VERSION"
 )
 
 // FromEnv fills a configuration from the environment, leaving anything unset
@@ -30,6 +32,8 @@ func FromEnv(cfg Config) Config {
 	cfg.HTTPAddress = envOr(EnvHTTPAddress, cfg.HTTPAddress)
 	cfg.Environment = envOr(EnvEnvironment, cfg.Environment)
 	cfg.Tenant = envOr(EnvTenant, cfg.Tenant)
+	cfg.SolverAddress = envOr(EnvSolverAddr, cfg.SolverAddress)
+	cfg.SolverVersion = envOr(EnvSolverVer, cfg.SolverVersion)
 
 	return cfg
 }

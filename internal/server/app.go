@@ -24,7 +24,9 @@ import (
 	_ "github.com/xraph/grove/drivers/pgdriver/pgmigrate" // registers its migration executor
 	groveext "github.com/xraph/grove/extension"
 
+	"github.com/xraph/blackstart/extensions/contingency"
 	"github.com/xraph/blackstart/extensions/fabric"
+	"github.com/xraph/blackstart/extensions/powerflow"
 	"github.com/xraph/blackstart/internal/entities"
 	"github.com/xraph/blackstart/pkg/buildinfo"
 )
@@ -53,6 +55,24 @@ type Config struct {
 
 	// Tenant is the single tenant every call is scoped to.
 	Tenant string
+
+	// SolverVersion is recorded with every contingency run.
+	//
+	// The screen stream does not carry one — the contract puts version fields
+	// on the solve response, since repeating them across thousands of streamed
+	// results would be noise — so the host supplies it. Left empty, the
+	// extension records a conspicuous placeholder rather than a plausible
+	// version, so the gap is visible in the record.
+	SolverVersion string
+
+	// SolverAddress is where the Rust power-flow service listens.
+	//
+	// Empty means no solver, which is a legitimate configuration: `bsctl
+	// entities` and `blackstart migrate` have no use for one, and requiring it
+	// would make every command depend on a process it never calls. The
+	// extensions that need it fail at Start with a message naming this
+	// setting, rather than at first use.
+	SolverAddress string
 
 	// RunWorker starts the outbox relay in this process. The server does; the
 	// CLI does not, because a short-lived command should not take over draining
@@ -112,6 +132,18 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 
 	fabricExt := fabric.New(reg, fabric.WithConfig(fabricConfig(cfg)))
 
+	extensions := []forge.Extension{groveExt, fabricExt}
+
+	// The solver-backed extensions are registered only when there is a solver
+	// to reach. Registering them without one would mean every startup logs a
+	// failure for a capability the operator did not ask for.
+	if cfg.SolverAddress != "" {
+		extensions = append(extensions,
+			powerflow.New(),
+			contingency.New(contingency.WithSolverVersion(cfg.SolverVersion)),
+		)
+	}
+
 	// Forge runs its own discovery for extension configuration, and its default
 	// search path is the working directory only — it never descends into
 	// configs/. Without these paths, everything under `extensions:` in
@@ -134,10 +166,16 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		forge.WithDisableMigrations(),
 	)
 
-	for _, ext := range []forge.Extension{groveExt, fabricExt} {
+	for _, ext := range extensions {
 		if err := app.RegisterExtension(ext); err != nil {
 			return nil, fmt.Errorf("app: registering %s: %w", ext.Name(), err)
 		}
+	}
+
+	// The solver client is provided before the extensions start, since both
+	// solver-backed extensions resolve it in their own Start.
+	if err := provideSolver(app, cfg.SolverAddress); err != nil {
+		return nil, err
 	}
 
 	// Forge builds a HealthManager and runs its checks but wires no route for

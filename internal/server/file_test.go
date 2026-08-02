@@ -231,3 +231,37 @@ func TestABaseFileAboveALocalFileDoesNotBreakStartup(t *testing.T) {
 		t.Errorf("DatabaseDSN = %q, want the local file's value", cfg.DatabaseDSN)
 	}
 }
+
+// The solver is optional, and the config has to be able to say so. A host with
+// no solver address registers no solver-backed extensions, which is what
+// `bsctl entities` and `blackstart migrate` want.
+func TestTheSolverIsConfigurableAndOptional(t *testing.T) {
+	dir := write(t, t.TempDir(), server.ConfigBaseName,
+		"solver:\n  address: \"solver:50051\"\n  version: \"1.2.3\"\n")
+
+	cfg, _, err := server.FromFile(server.DefaultConfig("blackstart"), dir)
+	if err != nil {
+		t.Fatalf("FromFile: %v", err)
+	}
+
+	if cfg.SolverAddress != "solver:50051" {
+		t.Errorf("SolverAddress = %q", cfg.SolverAddress)
+	}
+
+	if cfg.SolverVersion != "1.2.3" {
+		t.Errorf("SolverVersion = %q", cfg.SolverVersion)
+	}
+
+	// And a file that never mentions the solver leaves it unset rather than
+	// inventing a default address that would be dialed and fail.
+	bare := write(t, t.TempDir(), server.ConfigBaseName, "app:\n  environment: test\n")
+
+	empty, _, err := server.FromFile(server.DefaultConfig("blackstart"), bare)
+	if err != nil {
+		t.Fatalf("FromFile: %v", err)
+	}
+
+	if empty.SolverAddress != "" {
+		t.Errorf("a config with no solver section produced address %q", empty.SolverAddress)
+	}
+}
