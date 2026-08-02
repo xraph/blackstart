@@ -13,10 +13,12 @@
 
 #![forbid(unsafe_code)]
 
+pub mod ac;
 pub mod dc;
 pub mod reduce;
 pub mod ybus;
 
+pub use ac::Layout;
 pub use dc::{DcSolution, PowerFlowError, branch_flows, solve_dc};
 pub use reduce::{ReduceError, Reduction};
 pub use ybus::{Ybus, YbusError};
