@@ -14,6 +14,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod case;
 pub mod element;
 
+pub use case::{Case, CaseError};
 pub use element::{Branch, Bus, BusKind};
