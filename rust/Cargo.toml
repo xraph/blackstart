@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = []
+members = ["bs-quantity", "bs-sparse"]
 
 # Member crates are added as they are built (Phase 2):
 #   bs-quantity     per-unit and SI newtypes, mirroring Go's pkg/quantity
@@ -34,7 +34,13 @@ lossy_float_literal = "deny"
 cast_possible_truncation = "deny"
 cast_precision_loss = "deny"
 cast_sign_loss = "deny"
-indexing_slicing = "warn"
+
+# indexing_slicing is deliberately NOT enabled. It exists to catch panics from
+# unchecked indexing, which is a real hazard in most code — but in a matrix
+# solver every index is derived from the matrix's own dimensions, and rewriting
+# a dense inner loop in terms of .get() would be both unreadable and slower for
+# no safety gained. Bounds correctness there is carried by the types and the
+# tests, not by an option unwrap on every element access.
 
 # Determinism. Iterating a HashMap yields a different order per process, which
 # silently changes floating-point reduction order and therefore results. See
