@@ -20,34 +20,34 @@ import (
 // NetworkModel is one built snapshot of a network.
 type NetworkModel struct {
 	// ID identifies this snapshot.
-	ID id.ID
+	ID id.ID `json:"id"`
 
 	// ContentHash is what the canonical encoder produced.
 	//
 	// The model's real identity. Two snapshots with one hash describe the same
 	// network whatever else differs about them, which is what lets the solver
 	// cache work and what lets a result name a network without carrying it.
-	ContentHash string
+	ContentHash string `json:"content_hash"`
 
 	// Name is what to call it. Excluded from the hash on purpose: renaming a
 	// model must not invalidate every result computed from it.
-	Name string
+	Name string `json:"name"`
 
 	// SourceKind says where it came from: "matpower", "topology", "scl".
-	SourceKind string
+	SourceKind string `json:"source_kind"`
 
 	// DatasetVersionID names the provenance record for the file it was built
 	// from, when there was one. Zero for a model assembled from the topology
 	// store rather than imported.
-	DatasetVersionID id.ID
+	DatasetVersionID id.ID `json:"dataset_version_id"`
 
 	// BusCount and BranchCount are carried so a listing can say how big a
 	// model is without decoding it.
-	BusCount    int
-	BranchCount int
+	BusCount    int `json:"bus_count"`
+	BranchCount int `json:"branch_count"`
 
 	// BuiltAt is when it was assembled.
-	BuiltAt time.Time
+	BuiltAt time.Time `json:"built_at"`
 }
 
 // Validate reports whether a model can be stored.
