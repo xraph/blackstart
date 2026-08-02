@@ -156,8 +156,19 @@ power-systems bug class, and the type system is arranged to make it hard.
 
 ## Status
 
-Phase 0 of nine. Building the foundation: host application, dependency injection,
-storage and migrations, and the identity, provenance, and audit extensions.
+Phase 0 of nine, partway through.
+
+What works today: the host application starts against Postgres, Redis and FalkorDB and
+serves health, liveness and readiness endpoints. The shared primitives are complete and
+tested — typed electrical quantities, type-prefixed identifiers, bitemporal intervals
+with their SQL predicate and exclusion constraint, the error vocabulary, the actor and
+event bus, and the store conventions. CI runs lint, build, unit tests, containerized
+integration tests, CodeQL, license compliance, commit hygiene, and the advisory-only
+boundary check.
+
+What does not exist yet: any domain extension. `bsctl entities` correctly reports that
+the system models nothing so far. The identity, provenance and audit extensions are next,
+along with the trivial end-to-end extension that proves the seven-stage contract.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -172,12 +183,30 @@ Nothing here is ready to be relied upon. There are no releases yet.
 ## Building
 
 Requires Go 1.26+, Rust (see `rust/rust-toolchain.toml`), Node 22+ with pnpm, and Docker
-for integration tests.
+for the integration suite.
 
 ```bash
 make setup      # install git hooks and development tooling
 make dev-up     # start Postgres+PostGIS, Redis, FalkorDB
 make lint test  # what CI runs
+```
+
+Three services are required rather than optional, because every entity write goes
+through the data fabric: Postgres is the source of truth, Redis drains the transactional
+outbox, and FalkorDB holds the graph projection. Host ports are deliberately non-default
+so the stack does not collide with a Postgres or Redis you already have running.
+
+```bash
+export BLACKSTART_DATABASE_DSN='postgres://blackstart:blackstart@localhost:55432/blackstart?sslmode=disable'
+export BLACKSTART_REDIS_ADDR=localhost:56379
+export BLACKSTART_FALKORDB_ADDR=localhost:56380
+
+make build-go
+./bin/blackstart                 # the host; /health, /livez, /readyz
+./bin/bsctl entities             # what the system models
+./bin/bsctl version              # build identity and whether it is reproducible
+
+make test-integration            # containerized, needs Docker
 ```
 
 ## Contributing
