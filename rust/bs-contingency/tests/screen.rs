@@ -13,7 +13,7 @@
 #![allow(clippy::float_cmp)]
 
 use bs_case::{Branch, Bus, Case};
-use bs_contingency::{ScreenOutcome, all_branches, screen};
+use bs_contingency::{ScreenOutcome, ScreenResult, all_branches, screen};
 use bs_factors::Lodf;
 use bs_powerflow::solve_dc;
 use bs_quantity::Base;
@@ -54,7 +54,7 @@ fn the_screen_agrees_with_a_full_resolve() {
     let pre = solve_dc(&case).unwrap();
     let lodf = Lodf::build(&case).unwrap();
 
-    let results = screen(&case, &lodf, &pre.flows, &all_branches(&case)).unwrap();
+    let results = screen(&case, &lodf, &pre.flows, &all_branches(&case), 1.0).unwrap();
     assert_eq!(results.len(), case.n_branch());
 
     let mut ever_violated = false;
@@ -102,7 +102,7 @@ fn the_reported_loading_is_the_flow_over_the_rating() {
     let pre = solve_dc(&case).unwrap();
     let lodf = Lodf::build(&case).unwrap();
 
-    let results = screen(&case, &lodf, &pre.flows, &all_branches(&case)).unwrap();
+    let results = screen(&case, &lodf, &pre.flows, &all_branches(&case), 1.0).unwrap();
 
     for result in &results {
         let ScreenOutcome::Screened { violations, .. } = &result.outcome else {
@@ -132,7 +132,7 @@ fn violations_are_ordered_worst_first() {
     let pre = solve_dc(&case).unwrap();
     let lodf = Lodf::build(&case).unwrap();
 
-    for result in screen(&case, &lodf, &pre.flows, &all_branches(&case)).unwrap() {
+    for result in screen(&case, &lodf, &pre.flows, &all_branches(&case), 1.0).unwrap() {
         let ScreenOutcome::Screened { violations, .. } = &result.outcome else {
             continue;
         };
@@ -159,7 +159,7 @@ fn results_carry_the_contingency_they_came_from() {
     let lodf = Lodf::build(&case).unwrap();
 
     let contingencies = all_branches(&case);
-    let results = screen(&case, &lodf, &pre.flows, &contingencies).unwrap();
+    let results = screen(&case, &lodf, &pre.flows, &contingencies, 1.0).unwrap();
 
     for (result, contingency) in results.iter().zip(&contingencies) {
         assert_eq!(&result.contingency, contingency);
@@ -174,12 +174,53 @@ fn repeated_screens_are_bit_identical() {
     let lodf = Lodf::build(&case).unwrap();
     let contingencies = all_branches(&case);
 
-    let first = screen(&case, &lodf, &pre.flows, &contingencies).unwrap();
+    let first = screen(&case, &lodf, &pre.flows, &contingencies, 1.0).unwrap();
 
     for _ in 0..10 {
         assert_eq!(
             first,
-            screen(&case, &lodf, &pre.flows, &contingencies).unwrap()
+            screen(&case, &lodf, &pre.flows, &contingencies, 1.0).unwrap()
         );
     }
+}
+
+/// The caller's threshold has to change what comes back.
+///
+/// It did not. `assess` hardcoded 1.0 while the service filtered the result
+/// again by the request's value, so a threshold below the rating could only
+/// ever remove violations and never add them — and nothing said so. Every
+/// existing test passed, because every one of them used the default.
+#[test]
+fn a_lower_threshold_reports_more() {
+    let case = rated_mesh();
+    let pre = solve_dc(&case).unwrap();
+    let lodf = Lodf::build(&case).unwrap();
+    let outages = all_branches(&case);
+
+    let at_rating = count_violations(&screen(&case, &lodf, &pre.flows, &outages, 1.0).unwrap());
+    let at_half = count_violations(&screen(&case, &lodf, &pre.flows, &outages, 0.5).unwrap());
+    let at_double = count_violations(&screen(&case, &lodf, &pre.flows, &outages, 2.0).unwrap());
+
+    assert!(
+        at_half > at_rating,
+        "halving the threshold reported {at_half} violations, not more than the \
+         {at_rating} at the rating — the threshold is being ignored"
+    );
+
+    assert!(
+        at_double <= at_rating,
+        "doubling the threshold reported {at_double}, more than the {at_rating} \
+         at the rating"
+    );
+}
+
+/// Counts violations across a whole sweep.
+fn count_violations(results: &[ScreenResult]) -> usize {
+    results
+        .iter()
+        .map(|result| match &result.outcome {
+            ScreenOutcome::Screened { violations, .. } => violations.len(),
+            _ => 0,
+        })
+        .sum()
 }

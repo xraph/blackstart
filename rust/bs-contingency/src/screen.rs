@@ -132,6 +132,7 @@ pub fn screen(
     lodf: &Lodf,
     pre_outage: &[f64],
     contingencies: &[Contingency],
+    threshold: f64,
 ) -> Result<Vec<ScreenResult>, FactorError> {
     assert_eq!(
         pre_outage.len(),
@@ -147,7 +148,7 @@ pub fn screen(
                 Screenability::OutOfService => ScreenOutcome::NotApplicable,
                 Screenability::Screenable => {
                     let flows = lodf.outage(contingency.branch, pre_outage)?;
-                    assess(case, &flows)
+                    assess(case, &flows, threshold)
                 }
             };
 
@@ -160,7 +161,13 @@ pub fn screen(
 }
 
 /// Turns post-contingency flows into violations and a worst loading.
-fn assess(case: &Case, flows: &[f64]) -> ScreenOutcome {
+///
+/// The threshold is the caller's, not a constant. It used to be hardcoded at
+/// 1.0 here while the service filtered the result again by the request's
+/// value — so a caller asking for anything below the rating got nothing extra
+/// and no indication why. Filtering once, at the point the violations are
+/// collected, is the only place a threshold can honestly be applied.
+fn assess(case: &Case, flows: &[f64], threshold: f64) -> ScreenOutcome {
     let mut violations = Vec::new();
     let mut worst_loading = 0.0_f64;
 
@@ -175,7 +182,7 @@ fn assess(case: &Case, flows: &[f64]) -> ScreenOutcome {
         let loading = flow.abs() / spec.rating;
         worst_loading = worst_loading.max(loading);
 
-        if loading > 1.0 {
+        if loading > threshold {
             violations.push(Violation {
                 branch,
                 flow,

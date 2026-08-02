@@ -313,14 +313,18 @@ impl proto::solver_service_server::SolverService for Solver {
                 .collect()
         };
 
-        let results = screen(&case, &lodf, &pre.flows, &contingencies)
-            .map_err(|e| Status::internal(format!("screen: {e}")))?;
-
+        // Resolved before screening, because the screen collects at this
+        // threshold rather than collecting at the rating and filtering after.
+        // Filtering a filtered list is what let a request for anything below
+        // 1.0 be silently ignored.
         let threshold = if request.violation_threshold > 0.0 {
             request.violation_threshold
         } else {
             1.0
         };
+
+        let results = screen(&case, &lodf, &pre.flows, &contingencies, threshold)
+            .map_err(|e| Status::internal(format!("screen: {e}")))?;
 
         // A bounded channel so a slow client applies backpressure rather than
         // letting the server buffer an entire sweep in memory. The screen is
@@ -331,7 +335,7 @@ impl proto::solver_service_server::SolverService for Solver {
 
         tokio::spawn(async move {
             for result in results {
-                let wire = to_wire(&result, &model, threshold);
+                let wire = to_wire(&result, &model);
                 if tx.send(Ok(wire)).await.is_err() {
                     // The client hung up. Stopping is correct — nobody is
                     // waiting for the rest.
@@ -368,7 +372,6 @@ fn branch_results(
 fn to_wire(
     result: &bs_contingency::ScreenResult,
     model: &proto::NetworkModel,
-    threshold: f64,
 ) -> proto::ScreenContingenciesResponse {
     let contingency = Some(proto::Contingency {
         id: result.contingency.id.clone(),
@@ -382,9 +385,11 @@ fn to_wire(
         } => proto::ScreenContingenciesResponse {
             contingency,
             screenability: proto::Screenability::Screened as i32,
+            // Not filtered again. The screen already collected at the
+            // caller's threshold, and a second filter here is what hid the
+            // fact that the first one ignored it.
             violations: violations
                 .iter()
-                .filter(|v| v.loading > threshold)
                 .map(|v| proto::Violation {
                     branch: index(v.branch),
                     p_flow_w: to_watts(v.flow, model),

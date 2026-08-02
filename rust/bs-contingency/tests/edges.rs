@@ -68,7 +68,7 @@ fn an_unscreenable_contingency_is_not_reported_as_safe() {
     let pre = solve_dc(&case).unwrap();
     let lodf = Lodf::build(&case).unwrap();
 
-    let results = screen(&case, &lodf, &pre.flows, &all_branches(&case)).unwrap();
+    let results = screen(&case, &lodf, &pre.flows, &all_branches(&case), 1.0).unwrap();
 
     let radial = &results[2];
     assert_eq!(radial.outcome, ScreenOutcome::Radial);
@@ -107,7 +107,7 @@ fn ranking_puts_the_unknown_before_the_merely_loaded() {
 
     let pre = solve_dc(&case).unwrap();
     let lodf = Lodf::build(&case).unwrap();
-    let ranked = rank(screen(&case, &lodf, &pre.flows, &all_branches(&case)).unwrap());
+    let ranked = rank(screen(&case, &lodf, &pre.flows, &all_branches(&case), 1.0).unwrap());
 
     assert_eq!(
         ranked[0].outcome,
@@ -141,7 +141,7 @@ fn an_open_branch_is_excluded_and_named_separately() {
     assert!(listed.iter().all(|c| c.branch != 4));
 
     // Asked about it explicitly, the screen says so rather than guessing.
-    let forced = screen(&case, &lodf, &pre.flows, &[Contingency::new("gone", 4)]).unwrap();
+    let forced = screen(&case, &lodf, &pre.flows, &[Contingency::new("gone", 4)], 1.0).unwrap();
     assert_eq!(forced[0].outcome, ScreenOutcome::NotApplicable);
 }
 
@@ -157,7 +157,7 @@ fn unrated_branches_are_never_violations() {
     let pre = solve_dc(&case).unwrap();
     let lodf = Lodf::build(&case).unwrap();
 
-    for result in screen(&case, &lodf, &pre.flows, &all_branches(&case)).unwrap() {
+    for result in screen(&case, &lodf, &pre.flows, &all_branches(&case), 1.0).unwrap() {
         assert!(!result.has_violations(), "an unrated branch was flagged");
         assert_eq!(result.worst_loading(), Some(0.0));
     }

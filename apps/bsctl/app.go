@@ -66,7 +66,10 @@ func TemporalFlags() []cli.Flag {
 // Commands returns the domain commands this CLI adds beyond the ones Forge
 // provides for free — serve, migrate, health, info and extensions.
 func Commands() []cli.Command {
-	return []cli.Command{entitiesCommand(), modelCommand(), geoCommand(), sclCommand()}
+	return []cli.Command{
+		entitiesCommand(), modelCommand(), geoCommand(), sclCommand(),
+		solveCommand(), n1Command(),
+	}
 }
 
 // entitiesCommand lists what the system models.

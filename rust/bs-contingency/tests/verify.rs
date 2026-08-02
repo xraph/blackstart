@@ -117,7 +117,7 @@ fn verification_finds_voltage_violations_the_screen_cannot() {
     // Nothing thermal in the DC screen, so anything found below is voltage.
     let pre = solve_dc(&case).unwrap();
     let lodf = Lodf::build(&case).unwrap();
-    let screened = screen(&case, &lodf, &pre.flows, &all_branches(&case)).unwrap();
+    let screened = screen(&case, &lodf, &pre.flows, &all_branches(&case), 1.0).unwrap();
     assert!(
         screened.iter().all(|r| !r.has_violations()),
         "the screen found a thermal problem; this test would prove nothing"
@@ -270,7 +270,7 @@ fn verify_top_respects_the_ranking_it_was_given() {
     let case = healthy();
     let pre = solve_dc(&case).unwrap();
     let lodf = Lodf::build(&case).unwrap();
-    let ranked = rank(screen(&case, &lodf, &pre.flows, &all_branches(&case)).unwrap());
+    let ranked = rank(screen(&case, &lodf, &pre.flows, &all_branches(&case), 1.0).unwrap());
 
     let verified = verify_top(
         &case,
