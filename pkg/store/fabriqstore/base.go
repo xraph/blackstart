@@ -8,6 +8,7 @@ import (
 
 	"github.com/xraph/fabriq"
 	"github.com/xraph/fabriq/core/command"
+	"github.com/xraph/fabriq/core/query"
 	"github.com/xraph/fabriq/core/tenant"
 
 	"github.com/xraph/blackstart/pkg/bitemporal"
@@ -196,4 +197,35 @@ func (b *Base) Ping(ctx context.Context) error {
 // the database with a missing column, which is loud and therefore fine.
 func (b *Base) Query(ctx context.Context, into any, sql string, args ...any) error {
 	return Translate(b.fab.Relational().Query(b.Scoped(ctx), into, sql, args...))
+}
+
+// Spatial writes a geometry through Fabriq's PostGIS port.
+//
+// Direct-write rather than part of the aggregate's command, which is what the
+// port is: geometry does not pass through the outbox. The consequence is that
+// a crash between the row write and this one leaves an entity with no
+// geometry, so every caller also stores the well-known text on the row itself
+// — the geometry column is then a rebuildable index rather than the only copy.
+//
+// # Errors
+//
+// Returns a translated error. A geometry port that is not configured — plain
+// Postgres with no PostGIS — reports so rather than silently storing nothing.
+func (b *Base) Spatial(
+	ctx context.Context, entity string, aggID id.ID, wkt string, srid int,
+	meta map[string]any,
+) error {
+	spatial := b.fab.Spatial()
+	if spatial == nil {
+		return fmt.Errorf(
+			"%w: no geometry port; the database has no PostGIS extension, so "+
+				"%s geometry cannot be indexed", bserr.ErrUnavailable, entity)
+	}
+
+	if err := spatial.Upsert(b.Scoped(ctx), entity, aggID.String(),
+		query.Geometry{WKT: wkt, SRID: srid}, meta); err != nil {
+		return fmt.Errorf("writing %s geometry: %w", entity, Translate(err))
+	}
+
+	return nil
 }

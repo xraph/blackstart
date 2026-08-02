@@ -51,3 +51,6 @@ func NewFootprint() id.ID { return id.MustNew(Footprint) }
 
 // ParseRoute reads a route identifier, rejecting any other type.
 func ParseRoute(s string) (id.ID, error) { return id.ParseWithPrefix(s, Route) }
+
+// ParseSpan reads a span identifier, rejecting any other type.
+func ParseSpan(s string) (id.ID, error) { return id.ParseWithPrefix(s, Span) }
