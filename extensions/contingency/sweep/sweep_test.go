@@ -11,15 +11,13 @@ import (
 	"github.com/xraph/blackstart/pkg/id"
 )
 
-func loading(v float64) *float64 { return &v }
-
 func screened(branch uint32, worst float64, violations ...sweep.Violation) sweep.Candidate {
 	return sweep.Candidate{
 		ContingencyID: "line",
 		Branch:        branch,
 		Screenability: sweep.Screened,
 		Violations:    violations,
-		WorstLoading:  loading(worst),
+		WorstLoading:  new(worst),
 	}
 }
 
