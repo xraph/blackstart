@@ -276,3 +276,14 @@ var ErrStopScreening = errors.New("solver: stop screening")
 func isModelMissing(err error) bool {
 	return status.Code(err) == codes.FailedPrecondition
 }
+
+// HashOnly returns a model's content hash without its serialized bytes.
+//
+// For callers that need to name a model — recording which network a result
+// came from — rather than send it. Returning the body too would invite holding
+// a megabyte alive for the sake of a 64-character string.
+func HashOnly(model *solverv1.NetworkModel) (string, error) {
+	hash, _, err := Hash(model)
+
+	return hash, err
+}
