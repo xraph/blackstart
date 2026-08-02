@@ -123,6 +123,13 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		}
 	}
 
+	// Forge builds a HealthManager and runs its checks but wires no route for
+	// it on the application router, so without this the platform reports its
+	// health to nobody.
+	if err := app.RegisterController(&healthController{app: app}); err != nil {
+		return nil, fmt.Errorf("app: registering the health controller: %w", err)
+	}
+
 	return app, nil
 }
 
