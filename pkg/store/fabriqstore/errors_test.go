@@ -121,3 +121,79 @@ func TestTranslatedErrorsCarryUsefulRetryAdvice(t *testing.T) {
 		}
 	}
 }
+
+// Fabriq's structured codes cover far more ground than its exported sentinels
+// — a unique-index violation arrives as CodeAlreadyExists with no matching
+// sentinel at all. An earlier version of Translate checked only the sentinels
+// and passed that through as an internal error, which the datasource
+// integration suite caught by asserting a duplicate slug is a conflict.
+func TestTranslateMapsStructuredCodes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		code fabriqerr.Code
+		want error
+	}{
+		{fabriqerr.CodeNotFound, bserr.ErrNotFound},
+		{fabriqerr.CodeAlreadyExists, bserr.ErrConflict},
+		{fabriqerr.CodeConstraintViolation, bserr.ErrConflict},
+		{fabriqerr.CodeVersionConflict, bserr.ErrConflict},
+		{fabriqerr.CodeSerialization, bserr.ErrConflict},
+		{fabriqerr.CodeInvalidInput, bserr.ErrInvalid},
+		{fabriqerr.CodeUnauthorized, bserr.ErrPermission},
+		{fabriqerr.CodePermissionDenied, bserr.ErrPermission},
+		{fabriqerr.CodeUnavailable, bserr.ErrUnavailable},
+		{fabriqerr.CodeTimeout, bserr.ErrUnavailable},
+		{fabriqerr.CodeNotConfigured, bserr.ErrUnsupported},
+		{fabriqerr.CodeSchemaMismatch, bserr.ErrInternal},
+		{fabriqerr.CodeInternal, bserr.ErrInternal},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.code), func(t *testing.T) {
+			t.Parallel()
+
+			got := Translate(fabriqerr.New(tt.code, "test"))
+			if !errors.Is(got, tt.want) {
+				t.Errorf("code %q translated to %v, want %v", tt.code, got, tt.want)
+			}
+		})
+	}
+}
+
+// Every code Fabriq defines must map to something. An unmapped one falls
+// through to a 500, which is safe but uninformative — and this test is how a
+// new code in a Fabriq upgrade gets noticed rather than silently degrading.
+func TestEveryFabriqCodeIsMapped(t *testing.T) {
+	t.Parallel()
+
+	all := []fabriqerr.Code{
+		fabriqerr.CodeNotFound, fabriqerr.CodeAlreadyExists,
+		fabriqerr.CodeConstraintViolation, fabriqerr.CodeSchemaMismatch,
+		fabriqerr.CodeInvalidInput, fabriqerr.CodeVersionConflict,
+		fabriqerr.CodeUnauthorized, fabriqerr.CodePermissionDenied,
+		fabriqerr.CodeUnavailable, fabriqerr.CodeTimeout,
+		fabriqerr.CodeSerialization, fabriqerr.CodeNotConfigured,
+		fabriqerr.CodeInternal,
+	}
+
+	for _, code := range all {
+		if kindForCode(code) == nil {
+			t.Errorf("fabriq code %q has no mapping; it would fall through to a "+
+				"generic internal error", code)
+		}
+	}
+}
+
+// A schema mismatch means the model and the table disagree — a missed
+// migration, not anything the caller did.
+func TestSchemaMismatchIsNotAClientError(t *testing.T) {
+	t.Parallel()
+
+	got := Translate(fabriqerr.New(fabriqerr.CodeSchemaMismatch, "column missing"))
+
+	if bserr.IsClientError(got) {
+		t.Error("a schema mismatch was reported as the client's fault; it means " +
+			"a migration was missed")
+	}
+}

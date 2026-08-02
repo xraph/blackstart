@@ -8,8 +8,11 @@ import (
 	"testing"
 
 	"github.com/xraph/fabriq/fabriqtest"
+	fabriqmigrations "github.com/xraph/fabriq/migrations"
 	"github.com/xraph/grove"
 	"github.com/xraph/grove/drivers/pgdriver"
+	_ "github.com/xraph/grove/drivers/pgdriver/pgmigrate"
+	"github.com/xraph/grove/migrate"
 
 	"github.com/xraph/blackstart/pkg/bitemporal"
 )
@@ -103,4 +106,60 @@ func redact(dsn string) string {
 	}
 
 	return dsn[:scheme+3] + "***" + dsn[at:]
+}
+
+// Migrate runs Fabriq's migration group together with the given groups,
+// through a single orchestrator.
+//
+// One orchestrator is the point. Grove resolves migrate.DependsOn
+// topologically only when every group is handed to the same one; running each
+// extension's separately ignores the declaration silently, which grove's own
+// source notes. Since every blackstart group depends on Fabriq's — its outbox
+// and projection-state tables underpin every write — getting this wrong would
+// produce tables in the wrong order and a failure that reads like a bad
+// migration rather than a bad harness.
+func Migrate(t testing.TB, dsn string, groups ...*migrate.Group) {
+	t.Helper()
+
+	drv := pgdriver.New()
+	if err := drv.Open(context.Background(), dsn); err != nil {
+		t.Fatalf("testsupport: opening %s for migrations: %v", redact(dsn), err)
+	}
+
+	defer func() { _ = drv.Close() }()
+
+	exec, err := migrate.NewExecutorFor(drv)
+	if err != nil {
+		t.Fatalf("testsupport: building the migration executor: %v", err)
+	}
+
+	all := append([]*migrate.Group{fabriqmigrations.Group()}, groups...)
+
+	if _, err := migrate.NewOrchestrator(exec, all...).Migrate(context.Background()); err != nil {
+		t.Fatalf("testsupport: migrating: %v", err)
+	}
+}
+
+// Rollback reverses the given groups together with Fabriq's, through one
+// orchestrator. Used by the tests that assert migrations run both ways.
+func Rollback(t testing.TB, dsn string, groups ...*migrate.Group) error {
+	t.Helper()
+
+	drv := pgdriver.New()
+	if err := drv.Open(context.Background(), dsn); err != nil {
+		return err
+	}
+
+	defer func() { _ = drv.Close() }()
+
+	exec, err := migrate.NewExecutorFor(drv)
+	if err != nil {
+		return err
+	}
+
+	all := append([]*migrate.Group{fabriqmigrations.Group()}, groups...)
+
+	_, err = migrate.NewOrchestrator(exec, all...).Rollback(context.Background())
+
+	return err
 }
