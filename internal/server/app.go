@@ -29,6 +29,8 @@ import (
 	"github.com/xraph/blackstart/extensions/datasource"
 	dsmigrations "github.com/xraph/blackstart/extensions/datasource/store/fabriq"
 	"github.com/xraph/blackstart/extensions/fabric"
+	"github.com/xraph/blackstart/extensions/geo"
+	geomigrations "github.com/xraph/blackstart/extensions/geo/store/fabriq"
 	"github.com/xraph/blackstart/extensions/networkmodel"
 	nmmigrations "github.com/xraph/blackstart/extensions/networkmodel/store/fabriq"
 	"github.com/xraph/blackstart/extensions/powerflow"
@@ -147,6 +149,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 			fabriqmigrations.Group(),
 			dsmigrations.Group(),
 			nmmigrations.Group(),
+			geomigrations.Group(),
 		),
 	)
 
@@ -166,7 +169,8 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 
 	extensions := []forge.Extension{
 		groveExt, fabricExt, auditExt,
-		provenance.New(), networkmodel.New(), datasource.New(), topology.New(),
+		provenance.New(), networkmodel.New(), datasource.New(),
+		topology.New(), geo.New(),
 	}
 
 	// The solver-backed extensions are registered only when there is a solver
