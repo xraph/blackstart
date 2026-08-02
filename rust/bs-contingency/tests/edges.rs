@@ -141,7 +141,14 @@ fn an_open_branch_is_excluded_and_named_separately() {
     assert!(listed.iter().all(|c| c.branch != 4));
 
     // Asked about it explicitly, the screen says so rather than guessing.
-    let forced = screen(&case, &lodf, &pre.flows, &[Contingency::new("gone", 4)], 1.0).unwrap();
+    let forced = screen(
+        &case,
+        &lodf,
+        &pre.flows,
+        &[Contingency::new("gone", 4)],
+        1.0,
+    )
+    .unwrap();
     assert_eq!(forced[0].outcome, ScreenOutcome::NotApplicable);
 }
 
