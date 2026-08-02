@@ -121,6 +121,13 @@ func (e *Extension) Start(context.Context) error {
 
 	e.engine = engine
 
+	// Registered here rather than in Register, because the controller needs
+	// the engine and the engine needs the store. Forge accepts a controller
+	// after startup; it would not accept a nil engine behind one.
+	if err := app.RegisterController(NewController(engine)); err != nil {
+		return fmt.Errorf("scl: registering the HTTP controller: %w", err)
+	}
+
 	return nil
 }
 

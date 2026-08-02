@@ -298,6 +298,11 @@ func (e *Engine) Device(ctx context.Context, name string) (device.IED, error) {
 	return e.store.Devices().IEDByName(ctx, name)
 }
 
+// DeviceByID reads one device.
+func (e *Engine) DeviceByID(ctx context.Context, want id.ID) (device.IED, error) {
+	return e.store.Devices().Get(ctx, want)
+}
+
 // Publications lists what a device publishes.
 func (e *Engine) Publications(ctx context.Context, ied id.ID) ([]device.Publication, error) {
 	return e.store.Devices().Publications(ctx, ied)

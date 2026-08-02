@@ -75,6 +75,17 @@ func (d *devices) PutIED(ctx context.Context, in device.IED) (device.IED, error)
 	return in, nil
 }
 
+// Get reads one device by identifier.
+func (d *devices) Get(ctx context.Context, want id.ID) (device.IED, error) {
+	var row iedRow
+
+	if err := d.base.Get(ctx, IEDEntity, want, &row); err != nil {
+		return device.IED{}, err
+	}
+
+	return row.toDomain()
+}
+
 // IEDByName finds a device by the name every ExtRef resolves against.
 func (d *devices) IEDByName(ctx context.Context, name string) (device.IED, error) {
 	var rows []iedRow

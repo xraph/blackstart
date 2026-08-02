@@ -68,6 +68,7 @@ type Subscription struct {
 // Store reads and writes the communication model.
 type Store interface {
 	PutIED(ctx context.Context, in IED) (IED, error)
+	Get(ctx context.Context, want id.ID) (IED, error)
 	IEDByName(ctx context.Context, name string) (IED, error)
 	IEDs(ctx context.Context, limit int) ([]IED, error)
 

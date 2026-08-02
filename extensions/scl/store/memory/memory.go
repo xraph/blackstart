@@ -76,6 +76,18 @@ func (d *devices) PutIED(_ context.Context, in device.IED) (device.IED, error) {
 	return in, nil
 }
 
+func (d *devices) Get(_ context.Context, want id.ID) (device.IED, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	found, ok := d.ieds[want]
+	if !ok {
+		return device.IED{}, fmt.Errorf("%w: device %s", bserr.ErrNotFound, want)
+	}
+
+	return found, nil
+}
+
 func (d *devices) IEDByName(_ context.Context, name string) (device.IED, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
