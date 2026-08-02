@@ -17,7 +17,7 @@ import (
 	"github.com/xraph/blackstart/pkg/store"
 )
 
-const tenant = "blackstart"
+const tenantID = "blackstart"
 
 // harness brings up Postgres, runs both migration groups through one
 // orchestrator, provisions the restricted application role, and opens Fabriq.
@@ -51,7 +51,7 @@ func harness(t *testing.T) *dsfabriq.Store {
 
 	t.Cleanup(func() { _ = fab.Close() })
 
-	s, err := dsfabriq.New(fab, tenant)
+	s, err := dsfabriq.New(fab, tenantID)
 	if err != nil {
 		t.Fatalf("building the store: %v", err)
 	}
