@@ -3,6 +3,7 @@ module github.com/xraph/blackstart
 go 1.26.0
 
 require (
+	github.com/xraph/confy v0.5.2
 	github.com/xraph/fabriq v0.0.6
 	github.com/xraph/forge v1.9.1
 	github.com/xraph/grove v1.5.9
@@ -150,7 +151,6 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	github.com/xraph/confy v0.5.2 // indirect
 	github.com/xraph/go-utils v1.1.3 // indirect
 	github.com/xraph/grove/kv v1.5.9 // indirect
 	github.com/xraph/grove/kv/drivers/redisdriver v1.5.9 // indirect
