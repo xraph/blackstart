@@ -1,0 +1,20 @@
+[package]
+name = "bs-contingency"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bs-case = { path = "../bs-case" }
+bs-factors = { path = "../bs-factors" }
+bs-powerflow = { path = "../bs-powerflow" }
+
+[dev-dependencies]
+bs-quantity = { path = "../bs-quantity" }

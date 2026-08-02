@@ -10,6 +10,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bs-contingency"
+version = "0.0.0"
+dependencies = [
+ "bs-case",
+ "bs-factors",
+ "bs-powerflow",
+ "bs-quantity",
+]
+
+[[package]]
 name = "bs-factors"
 version = "0.0.0"
 dependencies = [
