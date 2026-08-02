@@ -1,0 +1,30 @@
+{
+  "name": "viewer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The 3D grid viewer: a network on a WGS84 globe",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@blackstart/globe": "workspace:*",
+    "@blackstart/ui": "workspace:*",
+    "@react-three/fiber": "9.3.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "three": "0.183.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.2.4",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@vitejs/plugin-react": "5.1.0",
+    "tailwindcss": "4.2.4",
+    "vite": "7.2.4"
+  }
+}

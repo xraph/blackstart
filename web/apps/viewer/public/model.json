@@ -1,0 +1,16 @@
+{
+  "modelId": "nmdl_01kz20b5h3fq8s5099fmbj7h27",
+  "contentHash": "3abc210a3c3f98d959974d7738c37504b6bfb88f583e832c2274dc6bad8e02ac",
+  "buses": {
+    "ids": ["bus-1", "bus-2", "bus-3"],
+    "names": ["bus-1", "bus-2", "bus-3"],
+    "coordinates": [-97.7856, 32.2983, 240, -96.797, 32.7767, 130, 0, 0, 0],
+    "nominalKv": [138, 138, 138]
+  },
+  "branches": {
+    "ids": ["branch-0", "branch-1", "branch-2"],
+    "from": [0, 1, 0],
+    "to": [1, 2, 2],
+    "inService": [true, true, true]
+  }
+}
