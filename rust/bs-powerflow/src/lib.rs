@@ -16,4 +16,5 @@
 pub mod dc;
 pub mod reduce;
 
-pub use dc::{DcSolution, PowerFlowError, solve_dc};
+pub use dc::{DcSolution, PowerFlowError, branch_flows, solve_dc};
+pub use reduce::{ReduceError, Reduction};
