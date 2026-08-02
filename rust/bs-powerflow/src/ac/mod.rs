@@ -9,6 +9,7 @@
 //! contingencies cheaply; only the worst few are verified here, because each
 //! verification costs a factorization per iteration.
 
+pub mod jacobian;
 pub mod layout;
 pub mod power;
 
