@@ -125,11 +125,11 @@ pub fn solve_dc(case: &Case) -> Result<DcSolution, PowerFlowError> {
         full_of.push(bus);
     }
 
-    let m = full_of.len();
+    let reduced_n = full_of.len();
 
     // A single-bus network is degenerate but legitimate: the slack supplies
     // everything and there is nothing to solve.
-    if m == 0 {
+    if reduced_n == 0 {
         return Ok(DcSolution {
             angles: vec![0.0; n],
             flows: vec![0.0; case.n_branch()],
@@ -140,8 +140,8 @@ pub fn solve_dc(case: &Case) -> Result<DcSolution, PowerFlowError> {
     // Assemble the reduced susceptance matrix. Branches are walked in case
     // order, which is canonical, so the triplet sequence — and therefore the
     // summation order once compressed — is identical every run.
-    let mut b = Triplets::new(m, m);
-    b.reserve(case.n_branch() * 4);
+    let mut susceptances = Triplets::new(reduced_n, reduced_n);
+    susceptances.reserve(case.n_branch() * 4);
 
     for branch in &case.branches {
         if !branch.in_service {
@@ -149,36 +149,35 @@ pub fn solve_dc(case: &Case) -> Result<DcSolution, PowerFlowError> {
         }
 
         let susceptance = 1.0 / branch.x;
-        let (i, j) = (branch.from, branch.to);
-        let (ri, rj) = (reduced_of[i], reduced_of[j]);
+        let (from, to) = (reduced_of[branch.from], reduced_of[branch.to]);
 
         // Diagonal terms accumulate from every incident branch; off-diagonals
         // are negative. Rows and columns belonging to the slack are simply
         // never emitted, which is what deleting them means here.
-        if ri != usize::MAX {
-            b.add(ri, ri, susceptance)?;
+        if from != usize::MAX {
+            susceptances.add(from, from, susceptance)?;
         }
-        if rj != usize::MAX {
-            b.add(rj, rj, susceptance)?;
+        if to != usize::MAX {
+            susceptances.add(to, to, susceptance)?;
         }
-        if ri != usize::MAX && rj != usize::MAX {
-            b.add(ri, rj, -susceptance)?;
-            b.add(rj, ri, -susceptance)?;
+        if from != usize::MAX && to != usize::MAX {
+            susceptances.add(from, to, -susceptance)?;
+            susceptances.add(to, from, -susceptance)?;
         }
     }
 
-    let p: Vec<f64> = full_of
+    let injections: Vec<f64> = full_of
         .iter()
         .map(|&bus| case.buses[bus].p_injection)
         .collect();
 
     let lu = DenseLu;
-    let factors = lu.factor(&b.compress())?;
-    let reduced_angles = lu.solve(&factors, &p)?;
+    let factors = lu.factor(&susceptances.compress())?;
+    let reduced_angles = lu.solve(&factors, &injections)?;
 
     let mut angles = vec![0.0; n];
-    for (r, &bus) in full_of.iter().enumerate() {
-        angles[bus] = reduced_angles[r];
+    for (reduced, &bus) in full_of.iter().enumerate() {
+        angles[bus] = reduced_angles[reduced];
     }
 
     let flows = branch_flows(case, &angles);

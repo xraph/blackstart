@@ -4,8 +4,8 @@
 //! regression is attributable to a specific term rather than to "the answer
 //! moved". The oracle-independent invariant checks live in `invariants.rs`.
 
-use bs_case::{Branch, Bus, Case, CaseError};
-use bs_powerflow::{PowerFlowError, solve_dc};
+use bs_case::{Branch, Bus, Case};
+use bs_powerflow::solve_dc;
 use bs_quantity::Base;
 
 fn base() -> Base {
