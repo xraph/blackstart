@@ -1,0 +1,161 @@
+// Package app is the composition root shared by both binaries.
+//
+// blackstart (the server) and bsctl (the CLI) are the same application with
+// different entry points. Wiring them separately would mean two places to
+// forget an extension, and a CLI that quietly disagrees with the server about
+// what the system contains — which for a tool whose job is to import and
+// inspect a network model is the worst possible divergence.
+package app
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/xraph/fabriq"
+	"github.com/xraph/fabriq/core/registry"
+	fabriqmigrations "github.com/xraph/fabriq/migrations"
+	"github.com/xraph/forge"
+	_ "github.com/xraph/grove/drivers/pgdriver"           // registers the "postgres" driver
+	_ "github.com/xraph/grove/drivers/pgdriver/pgmigrate" // registers its migration executor
+	groveext "github.com/xraph/grove/extension"
+
+	"github.com/xraph/blackstart/extensions/fabric"
+	"github.com/xraph/blackstart/internal/entities"
+	"github.com/xraph/blackstart/pkg/buildinfo"
+)
+
+// Config is everything the host needs to start.
+type Config struct {
+	// Name distinguishes the two binaries in logs and health output.
+	Name string
+
+	// HTTPAddress is where the server listens. Empty means no listener, which
+	// is what bsctl wants — it runs commands and exits.
+	HTTPAddress string
+
+	// Environment is "development", "staging" or "production".
+	Environment string
+
+	// DatabaseDSN is the PostgreSQL connection string.
+	DatabaseDSN string
+
+	// RedisAddr is required whenever the outbox worker runs.
+	RedisAddr string
+
+	// FalkorDBAddr enables the graph projection. Required whenever any entity
+	// declares one, which the fabric extension asserts.
+	FalkorDBAddr string
+
+	// Tenant is the single tenant every call is scoped to.
+	Tenant string
+
+	// RunWorker starts the outbox relay in this process. The server does; the
+	// CLI does not, because a short-lived command should not take over draining
+	// a shared queue and then exit mid-batch.
+	RunWorker bool
+}
+
+// DefaultConfig returns a configuration suitable for local development.
+func DefaultConfig(name string) Config {
+	return Config{
+		Name:        name,
+		Environment: "development",
+		Tenant:      fabric.DefaultTenant,
+	}
+}
+
+// Validate reports whether the configuration can start.
+func (c Config) Validate() error {
+	if c.DatabaseDSN == "" {
+		return errors.New("app: a database DSN is required")
+	}
+
+	if c.RunWorker && c.RedisAddr == "" {
+		return errors.New(
+			"app: the outbox worker needs a Redis address; without a worker " +
+				"draining it, fabriq_outbox grows without bound")
+	}
+
+	return nil
+}
+
+// Build assembles the application.
+//
+// The order here is load-bearing and is the reason this function exists rather
+// than each binary wiring its own: the entity registry must be complete before
+// the fabric extension is constructed, because Fabriq validates it inside Open
+// and Forge's default lifecycle interleaves Register and Start per extension.
+// See internal/entities.
+func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	reg, err := entities.Build(contributors...)
+	if err != nil {
+		return nil, err
+	}
+
+	groveExt := groveext.New(
+		groveext.WithDSN("postgres", cfg.DatabaseDSN),
+		// Migrations are a discrete deploy step, never something a starting
+		// replica does. Fabriq's own documentation is explicit about it, and a
+		// migration racing N replicas coming up is a bad way to learn why.
+		groveext.WithDisableMigrate(),
+		groveext.WithMigrations(fabriqmigrations.Group()),
+	)
+
+	fabricExt := fabric.New(reg, fabric.WithConfig(fabricConfig(cfg)))
+
+	app := forge.New(
+		forge.WithAppName(cfg.Name),
+		forge.WithAppVersion(buildinfo.Get().Version),
+		forge.WithAppDescription("Weather-driven outage risk and cascade analysis"),
+		forge.WithAppEnvironment(cfg.Environment),
+		forge.WithHTTPAddress(cfg.HTTPAddress),
+		// Migrations are run by `bsctl migrate`, not at startup.
+		forge.WithDisableMigrations(),
+	)
+
+	for _, ext := range []forge.Extension{groveExt, fabricExt} {
+		if err := app.RegisterExtension(ext); err != nil {
+			return nil, fmt.Errorf("app: registering %s: %w", ext.Name(), err)
+		}
+	}
+
+	return app, nil
+}
+
+func fabricConfig(cfg Config) fabric.Config {
+	fc := fabric.DefaultConfig()
+	fc.Tenant = cfg.Tenant
+	fc.RunWorker = cfg.RunWorker
+	fc.Fabriq.Redis.Addr = cfg.RedisAddr
+	fc.Fabriq.FalkorDB.Addr = cfg.FalkorDBAddr
+
+	// Graph and search projections only advance when a worker drains the
+	// outbox, so declaring them without one would be a lie about what the
+	// system maintains.
+	fc.Fabriq.Projections.Graph = cfg.FalkorDBAddr != "" && cfg.RunWorker
+
+	return fc
+}
+
+// Fabric resolves the Fabriq facade from a built application.
+//
+// Callers get an error rather than a nil when the application has not started,
+// because a nil facade fails on first use somewhere far from the cause.
+func Fabric(app forge.App) (*fabriq.Fabriq, error) {
+	fab, err := forge.Inject[*fabriq.Fabriq](app.Container())
+	if err != nil {
+		return nil, fmt.Errorf("app: resolving the data fabric: %w", err)
+	}
+
+	return fab, nil
+}
+
+// Registry is exported for commands that need to inspect what is registered
+// without opening a connection — `bsctl entities`, and the startup log line.
+func Registry(contributors ...entities.Contributor) (*registry.Registry, error) {
+	return entities.Build(contributors...)
+}
