@@ -69,3 +69,7 @@ configs/config.local.yml
 
 # ---- Agent and tooling scratch ---------------------------------------------
 .claude/
+
+# The forge CLI's local state directory: build caches and dev-server bookkeeping,
+# regenerated on demand and specific to one machine.
+.forge/
