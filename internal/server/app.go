@@ -129,10 +129,15 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 
 	groveExt := groveext.New(
 		groveext.WithDSN("postgres", cfg.DatabaseDSN),
-		// Migrations are a discrete deploy step, never something a starting
-		// replica does. Fabriq's own documentation is explicit about it, and a
-		// migration racing N replicas coming up is a bad way to learn why.
-		groveext.WithDisableMigrate(),
+		// Not groveext.WithDisableMigrate(): that flag refuses the explicit
+		// Migrate call too, so `blackstart migrate up` fails with "migrations
+		// are disabled via configuration" — which reads as a configuration
+		// mistake and is actually the code refusing its own command.
+		//
+		// forge.WithDisableMigrations() below is the right knob. It stops the
+		// automatic run at startup, which is the thing worth preventing: a
+		// migration racing N replicas coming up is a bad way to learn why
+		// Fabriq's documentation insists migrations are a discrete deploy step.
 		// Every extension's migration group is handed to one orchestrator, in
 		// dependency order. Grove resolves that ordering topologically, but only
 		// within a single orchestrator — registering each extension's group
