@@ -42,7 +42,7 @@ help h:
 .PHONY: setup
 setup:
 	@git config core.hooksPath .githooks
-	@printf "git hooks installed (core.hooksPath = .githooks)\n"
+	@printf "git hooks installed (core.hooksPath = .githooks): commit-msg, pre-commit\n"
 	@cd $(WEB_DIR) && $(PNPM) install --frozen-lockfile
 
 ## dev-up: Start Postgres+PostGIS, Redis and FalkorDB

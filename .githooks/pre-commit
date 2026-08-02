@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+#
+# Refuse a commit that adds more hand-written lines than the limit.
+#
+# The same limit is enforced in CI over the pull request range, and
+# scripts/check-commit-size.sh can be run by hand against any range. Neither
+# helps at the moment it matters: a range check runs after the commit exists,
+# so the answer arrives too late to act on and the only remedy left is
+# rewriting history — which this project does not do. This hook is the one
+# place the check can still say no.
+#
+# Installed by `make setup`, which sets core.hooksPath to .githooks.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+LIMIT=500
+
+# Generated and vendored paths are excluded, read from .gitattributes rather
+# than a second list here, so the two cannot drift. check-attr reports the
+# `=true` assignment form as "true" and the bare form as "set"; matching only
+# one of them is how this exclusion was silently inert once already.
+is_excluded() {
+	local path="$1" value
+	value=$(git check-attr linguist-generated -- "$path" | sed 's/.*: //')
+	[[ $value == "set" || $value == "true" ]]
+}
+
+total=0
+offenders=()
+
+while IFS=$'\t' read -r added _ path; do
+	# Binary files report additions as "-".
+	[[ $added == "-" ]] && continue
+	[[ -z $path ]] && continue
+
+	if is_excluded "$path"; then
+		continue
+	fi
+
+	total=$((total + added))
+	offenders+=("$(printf '%7d\t%s' "$added" "$path")")
+done < <(git diff --cached --numstat --diff-filter=ACMR)
+
+if ((total <= LIMIT)); then
+	exit 0
+fi
+
+printf 'pre-commit: rejected — %d hand-written lines staged (limit %d)\n\n' "$total" "$LIMIT" >&2
+printf '%s\n' "${offenders[@]}" >&2
+cat >&2 <<EOF
+
+Decompose the work into smaller commits. If a file above is
+generated or vendored, mark it in .gitattributes rather than
+raising the limit.
+
+To commit anyway — for a genuinely atomic change that cannot be
+split — use: git commit --no-verify
+EOF
+
+exit 1
