@@ -71,7 +71,7 @@ func Model(name string, in canonical.Model) (*solverv1.NetworkModel, error) {
 	index := make(map[string]uint32, len(in.Buses))
 
 	for position, bus := range in.Buses {
-		index[bus.ID] = uint32(position) //nolint:gosec // bounded by len(in.Buses)
+		index[bus.ID] = uint32(position)
 
 		out.Buses = append(out.Buses, busOf(bus, in.SBaseVA, in.VBaseV, zBase))
 	}

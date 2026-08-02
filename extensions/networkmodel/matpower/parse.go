@@ -130,7 +130,7 @@ func Parse(source string) (Case, error) {
 	// canonical form currently cannot say so.
 	out.Model.VBaseV = firstVoltageBase(busRows)
 
-	branches, err := buildBranches(branchRows, byNumber, out.Aliases)
+	branches, err := buildBranches(branchRows, baseMVA.value, byNumber, out.Aliases)
 	if err != nil {
 		return Case{}, err
 	}
@@ -269,7 +269,7 @@ func buildBuses(
 
 // buildBranches turns branch rows into canonical branches.
 func buildBranches(
-	rows [][]float64, byNumber map[int]string, aliases map[string]string,
+	rows [][]float64, baseMVA float64, byNumber map[int]string, aliases map[string]string,
 ) ([]canonical.Branch, error) {
 	branches := make([]canonical.Branch, 0, len(rows))
 
@@ -304,13 +304,17 @@ func buildBranches(
 		}
 
 		branches = append(branches, canonical.Branch{
-			ID:        identifier,
-			FromID:    fromID,
-			ToID:      toID,
-			R:         row[branchR],
-			X:         row[branchX],
-			B:         row[branchB],
-			Rating:    row[branchRateA] / 100,
+			ID:     identifier,
+			FromID: fromID,
+			ToID:   toID,
+			R:      row[branchR],
+			X:      row[branchX],
+			B:      row[branchB],
+			// Against the case's own base, like every other conversion here.
+			// This divided by a literal 100 until it was noticed: correct on
+			// the overwhelming majority of MATPOWER cases, which state a
+			// 100 MVA base, and silently wrong on any that do not.
+			Rating:    row[branchRateA] / baseMVA,
 			InService: row[branchStatus] > 0,
 			Tap:       tap,
 			Shift:     row[branchShift] * math.Pi / 180,

@@ -2,6 +2,7 @@ package matpower_test
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/xraph/blackstart/extensions/networkmodel/canonical"
@@ -161,5 +162,42 @@ func TestAZeroRatioBecomesTheIdentity(t *testing.T) {
 
 	if !found {
 		t.Error("the stated 0.98 ratio was lost")
+	}
+}
+
+// Ratings convert against the case's own base, like every other quantity.
+//
+// This divided by a literal 100 until a test used a different base. Every
+// MATPOWER case in the repository states 100 MVA, so the bug was invisible to
+// all of them — and a rating wrong by a constant factor makes N-1 report
+// overloads that are not there, or miss ones that are.
+func TestRatingsUseTheCasesOwnBase(t *testing.T) {
+	// The same network on a 250 MVA base. A 200 MVA rating is 0.8 per unit
+	// here and would be 2.0 against a hardcoded 100.
+	onBase250 := strings.Replace(threeBus, "mpc.baseMVA = 100;", "mpc.baseMVA = 250;", 1)
+
+	got := parse(t, onBase250)
+
+	if got.BaseMVA != 250 {
+		t.Fatalf("baseMVA is %v", got.BaseMVA)
+	}
+
+	var found bool
+
+	for _, branch := range got.Model.Branches {
+		if branch.ID != "branch-0" {
+			continue
+		}
+
+		found = true
+
+		if math.Abs(branch.Rating-0.8) > 1e-12 {
+			t.Errorf("a 200 MVA rating on a 250 MVA base is %v per unit, want 0.8",
+				branch.Rating)
+		}
+	}
+
+	if !found {
+		t.Fatal("branch-0 is missing")
 	}
 }
