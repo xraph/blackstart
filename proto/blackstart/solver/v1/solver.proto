@@ -1,0 +1,365 @@
+syntax = "proto3";
+
+package blackstart.solver.v1;
+
+// The power-flow solver service.
+//
+// Two rules govern this contract, and both exist because of how the solver is
+// actually used rather than because of protobuf convention.
+//
+// First: ALL WIRE UNITS ARE SI. Watts, volt-amperes reactive, volts, ohms,
+// radians. Per-unit conversion happens exactly twice — once on each side of
+// this boundary — and never on the wire. A per-unit number is meaningless
+// without the base it was computed against, and a wire format that carries one
+// without the other is an invitation to combine two cases on different bases
+// and get a plausible answer. Every field below states its unit.
+//
+// Second: a network model is uploaded once and referenced by content hash
+// thereafter. A contingency sweep runs thousands of solves against one model,
+// and re-sending 2000 buses each time would make the transport cost more than
+// the mathematics.
+//
+// ADVISORY ONLY. Nothing in this service writes to any control system, and no
+// method here will ever accept a setpoint, a breaker command, or anything else
+// a device could act on. That is architectural, not a phase-one limitation.
+// See docs/SAFETY.md.
+
+service SolverService {
+  // Uploads a network model, in chunks, and returns its content hash.
+  //
+  // Client-streaming because a 2000-bus model does not belong in one message,
+  // and because the server verifies the hash as it goes rather than buffering
+  // the whole thing and discovering a mismatch at the end.
+  rpc PutNetworkModel(stream PutNetworkModelRequest) returns (PutNetworkModelResponse);
+
+  // Reports whether a model is already cached, so a client can skip an upload
+  // it does not need.
+  rpc HasNetworkModel(HasNetworkModelRequest) returns (HasNetworkModelResponse);
+
+  // Solves one power flow.
+  rpc SolvePowerFlow(SolvePowerFlowRequest) returns (SolvePowerFlowResponse);
+
+  // Screens contingencies, streaming one result per contingency.
+  //
+  // Server-streaming so the caller can rank and stop early. On a large network
+  // the first few hundred results usually settle which contingencies matter,
+  // and waiting for all of them before seeing any is a worse experience for no
+  // gain.
+  rpc ScreenContingencies(ScreenContingenciesRequest) returns (stream ScreenContingenciesResponse);
+}
+
+// How a bus participates in the power flow.
+enum BusKind {
+  BUS_KIND_UNSPECIFIED = 0;
+  // Load bus: real and reactive injection known, voltage unknown.
+  BUS_KIND_PQ = 1;
+  // Generator bus: real injection and voltage magnitude known.
+  BUS_KIND_PV = 2;
+  // Reference bus. Exactly one is required: without it the equations have no
+  // absolute angle reference and are singular.
+  BUS_KIND_SLACK = 3;
+}
+
+// A bus in the network.
+message Bus {
+  // Stable identifier from the platform, carried through so a result can name
+  // the bus it belongs to without a lookup table.
+  string id = 1;
+
+  BusKind kind = 2;
+
+  // Net real power injection, WATTS. Generation positive, load negative.
+  double p_injection_w = 3;
+  // Net reactive power injection, VOLT-AMPERES REACTIVE.
+  double q_injection_var = 4;
+
+  // Voltage magnitude, VOLTS (line-to-line RMS). Fixed for PV and slack buses;
+  // a starting value elsewhere.
+  double v_magnitude_v = 5;
+  // Voltage angle, RADIANS. Fixed for the slack bus.
+  double v_angle_rad = 6;
+
+  // Reactive output limits, VOLT-AMPERES REACTIVE.
+  //
+  // Optional because absent means unlimited, which is not the same as zero. A
+  // generator with no stated limits has unknown limits, and defaulting a
+  // missing value to zero would turn missing data into a voltage collapse
+  // indistinguishable from a real finding.
+  optional double q_min_var = 7;
+  optional double q_max_var = 8;
+
+  // Shunt admittance to ground, SIEMENS.
+  double g_shunt_s = 9;
+  double b_shunt_s = 10;
+}
+
+// A branch: a line, cable, or transformer.
+message Branch {
+  // Stable identifier from the platform.
+  string id = 1;
+
+  // Indices into the model's bus list.
+  uint32 from_bus = 2;
+  uint32 to_bus = 3;
+
+  // Series impedance, OHMS.
+  double r_ohm = 4;
+  // Must be non-zero: a zero-impedance branch is a bus merge that topology
+  // processing should already have collapsed.
+  double x_ohm = 5;
+
+  // Total line charging susceptance, SIEMENS.
+  double b_shunt_s = 6;
+
+  // Long-term rating, VOLT-AMPERES. Zero means unrated, which means the limit
+  // is unknown rather than zero — an unrated branch is never reported as
+  // overloaded.
+  double rating_va = 7;
+
+  // Whether the branch is in service. An out-of-service branch stays in the
+  // model so a contingency can restore it without shifting every index.
+  bool in_service = 8;
+
+  // Off-nominal turns ratio, applied at the from-end. 1.0 for a line.
+  //
+  // Dimensionless, so it is one of the few fields here with no unit suffix.
+  double tap = 9;
+  // Phase shift, RADIANS, applied at the from-end. Zero for a line.
+  double shift_rad = 10;
+}
+
+// A complete network model.
+message NetworkModel {
+  // Human-readable name, for logs and result provenance.
+  string name = 1;
+
+  // The per-unit base the server will convert to. Carried explicitly rather
+  // than assumed, so that a model and the base it is interpreted against
+  // travel together and cannot be mismatched.
+  double s_base_va = 2;
+  double v_base_v = 3;
+
+  repeated Bus buses = 4;
+  repeated Branch branches = 5;
+}
+
+message PutNetworkModelRequest {
+  oneof payload {
+    // Sent once, before any chunk.
+    PutNetworkModelHeader header = 1;
+    // A slice of the serialized NetworkModel.
+    bytes chunk = 2;
+  }
+}
+
+message PutNetworkModelHeader {
+  // The sha256 the client expects, hex-encoded lowercase.
+  //
+  // Sent up front so the server can verify as it receives rather than
+  // buffering the whole model and discovering a mismatch at the end — and so
+  // that a server which already has this model can say so immediately.
+  string content_hash = 1;
+
+  // Total size in bytes, for preallocation and for rejecting a stream that
+  // does not deliver what it promised.
+  uint64 size_bytes = 2;
+}
+
+message PutNetworkModelResponse {
+  // The hash the server computed. It equals the header's hash, or the call
+  // failed — this is returned rather than assumed so a client can log what was
+  // actually stored.
+  string content_hash = 1;
+
+  // Whether the server already had this model, so the upload was redundant.
+  // Reported rather than hidden because a client uploading the same model
+  // repeatedly has a caching bug worth surfacing.
+  bool already_present = 2;
+}
+
+message HasNetworkModelRequest {
+  string content_hash = 1;
+}
+
+message HasNetworkModelResponse {
+  bool present = 1;
+}
+
+// An override applied to a cached model for one solve.
+//
+// Contingency analysis changes one branch's status or one bus's injection
+// against an otherwise fixed network. Without overrides every contingency
+// would re-upload the whole model, which is the cost this design exists to
+// avoid.
+message Override {
+  oneof change {
+    BranchStatus branch_status = 1;
+    BusInjection bus_injection = 2;
+  }
+}
+
+message BranchStatus {
+  uint32 branch = 1;
+  bool in_service = 2;
+}
+
+message BusInjection {
+  uint32 bus = 1;
+  // WATTS and VOLT-AMPERES REACTIVE, as everywhere on this wire.
+  double p_injection_w = 2;
+  double q_injection_var = 3;
+}
+
+// Which power flow to run.
+enum Method {
+  METHOD_UNSPECIFIED = 0;
+  // Linearized: real power only, no voltages. What the contingency screen uses.
+  METHOD_DC = 1;
+  // Full nonlinear solve by Newton-Raphson.
+  METHOD_AC = 2;
+}
+
+message SolvePowerFlowRequest {
+  // The model to solve, by hash. Never the model itself: a client that has
+  // lost the server's cache should re-upload deliberately rather than have
+  // every request silently carry a megabyte.
+  //
+  // An unknown hash returns FAILED_PRECONDITION with a ModelNotCached detail,
+  // so the client can upload and retry exactly once — which makes a server
+  // restart invisible.
+  string content_hash = 1;
+
+  Method method = 2;
+
+  // Applied in order, so a later override wins over an earlier one on the same
+  // element.
+  repeated Override overrides = 3;
+
+  // Enforce generator reactive limits. Off by default because a limited and an
+  // unlimited solve answer different questions, and the caller has to say
+  // which one it is asking.
+  bool enforce_reactive_limits = 4;
+
+  // Convergence threshold on the largest bus mismatch, WATTS. Zero means the
+  // server's default.
+  double tolerance_w = 5;
+
+  // Maximum Newton iterations. Zero means the server's default.
+  uint32 max_iterations = 6;
+}
+
+message BusResult {
+  // Voltage magnitude, VOLTS.
+  double v_magnitude_v = 1;
+  // Voltage angle, RADIANS.
+  double v_angle_rad = 2;
+  // Net injection the solution required, WATTS and VOLT-AMPERES REACTIVE. At
+  // the slack this is what the reference had to supply.
+  double p_injection_w = 3;
+  double q_injection_var = 4;
+}
+
+message BranchResult {
+  // Real power at the from-end, WATTS, positive in the from→to direction.
+  double p_flow_w = 1;
+  // Flow magnitude over rating. Zero for an unrated branch.
+  double loading = 2;
+}
+
+message SolvePowerFlowResponse {
+  repeated BusResult buses = 1;
+  repeated BranchResult branches = 2;
+
+  // Iterations taken. Part of the result rather than a log line: a golden that
+  // captures convergence behaviour catches a change in the Jacobian that still
+  // lands on the same answer.
+  uint32 iterations = 3;
+
+  // Largest bus mismatch at convergence, WATTS.
+  double residual_w = 4;
+
+  // Buses whose generators are pinned at a reactive limit. Not violations
+  // themselves, but the reason a voltage violation happened — reporting the
+  // symptom without the cause sends an operator looking in the wrong place.
+  repeated uint32 binding_generators = 5;
+
+  // The versions this result came from, so it can be reproduced. A number
+  // without these is not reproducible, which is the one thing this platform
+  // cannot ship.
+  string solver_version = 6;
+  string model_hash = 7;
+}
+
+// One contingency to screen.
+message Contingency {
+  // Stable identifier, carried into the result so a report can name what
+  // failed rather than printing an index at someone who thinks in line names.
+  string id = 1;
+  // Index of the branch taken out of service.
+  uint32 branch = 2;
+}
+
+message ScreenContingenciesRequest {
+  string content_hash = 1;
+
+  // Applied before screening, so a sweep can run against an off-nominal
+  // operating point without re-uploading the model.
+  repeated Override overrides = 2;
+
+  // Which contingencies, in the order to evaluate them.
+  //
+  // The order is the caller's, deliberately. Phase 2 fills it with every
+  // branch in index order; a risk model supplies a better one later, and that
+  // substitution is the coupling this whole project exists to demonstrate.
+  // Empty means every in-service branch.
+  repeated Contingency contingencies = 3;
+
+  // Report branches loaded above this ratio of their rating. Zero means 1.0.
+  double violation_threshold = 4;
+}
+
+// What the screen could say about one contingency.
+enum Screenability {
+  SCREENABILITY_UNSPECIFIED = 0;
+  // The outage redistributes onto other branches and was screened.
+  SCREENABILITY_SCREENED = 1;
+  // The outage disconnects the network, so its flow has nowhere to go. A real
+  // contingency, but not one a linear factor can answer — it must be
+  // simulated. This is NOT a safe result and must not be ranked as one.
+  SCREENABILITY_RADIAL = 2;
+  // The branch was already out of service, so its outage is not a contingency.
+  SCREENABILITY_NOT_APPLICABLE = 3;
+}
+
+message Violation {
+  uint32 branch = 1;
+  // Post-contingency flow, WATTS.
+  double p_flow_w = 2;
+  // The rating it exceeded, VOLT-AMPERES.
+  double rating_va = 3;
+  // Flow magnitude over rating, above the threshold by construction.
+  double loading = 4;
+}
+
+// One contingency's result. The RPC streams one of these per contingency, so
+// "response" here names a single element of the stream rather than the whole
+// sweep — buf's naming convention, which is worth following even though the
+// singular reading is the useful one.
+message ScreenContingenciesResponse {
+  Contingency contingency = 1;
+
+  Screenability screenability = 2;
+
+  // Branches over their rating, worst first, so a caller that truncates keeps
+  // what matters.
+  repeated Violation violations = 3;
+
+  // Worst loading seen anywhere, including branches within their rating, so a
+  // contingency with no violations still ranks against others.
+  //
+  // Optional, and absent when screenability is not SCREENED. Absent rather
+  // than zero: a contingency that could not be evaluated is not a safe one,
+  // and sorting it as though it had no loading buries exactly the case that
+  // most needs a simulation.
+  optional double worst_loading = 4;
+}
