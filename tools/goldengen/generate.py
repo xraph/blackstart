@@ -88,8 +88,19 @@ def commit() -> str:
         sha = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
         ).strip()
+        # Tracked changes only. An untracked file does not change what the
+        # committed code is, and counting it makes the first generation of a
+        # new golden directory permanently untraceable — the directory cannot
+        # be tracked until the goldens exist, and the goldens cannot be
+        # traceable until the directory is tracked.
+        #
+        # The trade is that a new, untracked *source* file would not be
+        # noticed. That is the lesser risk: it cannot change the behaviour of
+        # code that does not import it.
         dirty = subprocess.check_output(
-            ["git", "status", "--porcelain"], text=True, stderr=subprocess.DEVNULL
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            text=True,
+            stderr=subprocess.DEVNULL,
         ).strip()
         return f"{sha}-dirty" if dirty else sha
     except (subprocess.CalledProcessError, FileNotFoundError):
