@@ -7,7 +7,7 @@ import (
 
 	pvid "github.com/xraph/blackstart/extensions/provenance/id"
 	"github.com/xraph/blackstart/extensions/provenance/record"
-	"github.com/xraph/blackstart/pkg/bserr"
+	"github.com/xraph/blackstart/pkg/httperr"
 )
 
 // --- Request DTOs ---
@@ -134,7 +134,7 @@ func (c *Controller) GetRun(ctx forge.Context) error {
 
 	trace, err := c.engine.Trace(ctx.Request().Context(), want)
 	if err != nil {
-		return failed(err)
+		return httperr.From(err)
 	}
 
 	return ctx.JSON(http.StatusOK, traceResponse{
@@ -159,7 +159,7 @@ func (c *Controller) GetDataset(ctx forge.Context) error {
 
 	found, err := c.engine.GetDataset(ctx.Request().Context(), want)
 	if err != nil {
-		return failed(err)
+		return httperr.From(err)
 	}
 
 	return ctx.JSON(http.StatusOK, found)
@@ -179,25 +179,8 @@ func (c *Controller) GetModel(ctx forge.Context) error {
 
 	found, err := c.engine.GetModel(ctx.Request().Context(), want)
 	if err != nil {
-		return failed(err)
+		return httperr.From(err)
 	}
 
 	return ctx.JSON(http.StatusOK, found)
-}
-
-// failed maps a domain error onto an HTTP one, through bserr.HTTPStatus so
-// every extension's API agrees on what a missing record looks like.
-func failed(err error) error {
-	status := bserr.HTTPStatus(err)
-
-	switch status {
-	case http.StatusNotFound:
-		return forge.NotFound(err.Error())
-	case http.StatusBadRequest:
-		return forge.BadRequest(err.Error())
-	case http.StatusForbidden:
-		return forge.Forbidden(err.Error())
-	}
-
-	return forge.NewHTTPError(status, err.Error())
 }

@@ -11,7 +11,7 @@ import (
 	dsid "github.com/xraph/blackstart/extensions/datasource/id"
 	"github.com/xraph/blackstart/extensions/datasource/source"
 	"github.com/xraph/blackstart/pkg/bitemporal"
-	"github.com/xraph/blackstart/pkg/bserr"
+	"github.com/xraph/blackstart/pkg/httperr"
 	"github.com/xraph/blackstart/pkg/id"
 	pkgstore "github.com/xraph/blackstart/pkg/store"
 )
@@ -169,7 +169,7 @@ func (c *Controller) ListSources(ctx forge.Context) error {
 
 	found, err := c.engine.ListSources(scoped, filter, paging)
 	if err != nil {
-		return failed(err)
+		return httperr.From(err)
 	}
 
 	return ctx.JSON(http.StatusOK, sourcesResponse{Sources: found})
@@ -193,7 +193,7 @@ func (c *Controller) GetSource(ctx forge.Context) error {
 	if parsed, parseErr := dsid.ParseSource(req.ID); parseErr == nil {
 		found, err := c.engine.GetSource(scoped, parsed)
 		if err != nil {
-			return failed(err)
+			return httperr.From(err)
 		}
 
 		return ctx.JSON(http.StatusOK, found)
@@ -201,7 +201,7 @@ func (c *Controller) GetSource(ctx forge.Context) error {
 
 	found, err := c.engine.GetSourceBySlug(scoped, req.ID)
 	if err != nil {
-		return failed(err)
+		return httperr.From(err)
 	}
 
 	return ctx.JSON(http.StatusOK, found)
@@ -231,7 +231,7 @@ func (c *Controller) ListFeeds(ctx forge.Context) error {
 
 	found, err := c.engine.ListFeeds(scoped, feed.Filter{SourceID: owner}, paging)
 	if err != nil {
-		return failed(err)
+		return httperr.From(err)
 	}
 
 	return ctx.JSON(http.StatusOK, feedsResponse{Feeds: found})
@@ -256,7 +256,7 @@ func (c *Controller) GetFeed(ctx forge.Context) error {
 
 	found, err := c.engine.GetFeed(scoped, want)
 	if err != nil {
-		return failed(err)
+		return httperr.From(err)
 	}
 
 	return ctx.JSON(http.StatusOK, found)
@@ -302,25 +302,4 @@ func page(limit int, after string) (pkgstore.Page, error) {
 	out.After = cursor
 
 	return out, nil
-}
-
-// failed maps a domain error onto an HTTP one.
-//
-// Through bserr.HTTPStatus rather than a switch per handler, so every
-// extension's API agrees on what a missing row or a conflict looks like. An
-// endpoint that invented its own mapping would be the one callers write a
-// special case for.
-func failed(err error) error {
-	status := bserr.HTTPStatus(err)
-
-	switch status {
-	case http.StatusNotFound:
-		return forge.NotFound(err.Error())
-	case http.StatusBadRequest:
-		return forge.BadRequest(err.Error())
-	case http.StatusForbidden:
-		return forge.Forbidden(err.Error())
-	}
-
-	return forge.NewHTTPError(status, err.Error())
 }

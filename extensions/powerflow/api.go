@@ -7,7 +7,7 @@ import (
 
 	pfid "github.com/xraph/blackstart/extensions/powerflow/id"
 	"github.com/xraph/blackstart/extensions/powerflow/solution"
-	"github.com/xraph/blackstart/pkg/bserr"
+	"github.com/xraph/blackstart/pkg/httperr"
 )
 
 // --- Request DTOs ---
@@ -139,7 +139,7 @@ func (c *Controller) ListSolutions(ctx forge.Context) error {
 
 	found, err := c.engine.ListByModel(ctx.Request().Context(), req.Hash, req.Limit)
 	if err != nil {
-		return failed(err)
+		return httperr.From(err)
 	}
 
 	return ctx.JSON(http.StatusOK, solutionsResponse{Solutions: found})
@@ -159,7 +159,7 @@ func (c *Controller) GetSolution(ctx forge.Context) error {
 
 	found, err := c.engine.Get(ctx.Request().Context(), want)
 	if err != nil {
-		return failed(err)
+		return httperr.From(err)
 	}
 
 	return ctx.JSON(http.StatusOK, found)
@@ -179,7 +179,7 @@ func (c *Controller) GetViolations(ctx forge.Context) error {
 
 	found, err := c.engine.Get(ctx.Request().Context(), want)
 	if err != nil {
-		return failed(err)
+		return httperr.From(err)
 	}
 
 	threshold := req.Threshold
@@ -192,21 +192,4 @@ func (c *Controller) GetViolations(ctx forge.Context) error {
 		Threshold:  threshold,
 		Branches:   found.Violations(threshold),
 	})
-}
-
-// failed maps a domain error onto an HTTP one, through bserr.HTTPStatus so
-// every extension's API agrees on what a missing record looks like.
-func failed(err error) error {
-	status := bserr.HTTPStatus(err)
-
-	switch status {
-	case http.StatusNotFound:
-		return forge.NotFound(err.Error())
-	case http.StatusBadRequest:
-		return forge.BadRequest(err.Error())
-	case http.StatusForbidden:
-		return forge.Forbidden(err.Error())
-	}
-
-	return forge.NewHTTPError(status, err.Error())
 }
