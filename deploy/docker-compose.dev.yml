@@ -1,0 +1,78 @@
+# Local development services.
+#
+#   make dev-up      start
+#   make dev-down    stop
+#   make dev-reset   stop and delete the volumes
+#
+# Three services, and all three are required rather than optional. That is a
+# consequence of routing every entity write through Fabriq: Postgres is the
+# source of truth, Redis drains the transactional outbox, and FalkorDB holds
+# the graph projection. Without the outbox worker nothing projects and
+# fabriq_outbox grows without bound; without the graph engine the fabric
+# extension refuses to start rather than maintaining an empty graph view.
+#
+# Images are pinned. The Postgres image matches the one the integration suite
+# starts through testcontainers, so a test that passes locally and a service a
+# developer is poking at are the same PostgreSQL.
+#
+# Host ports are deliberately non-default. Anyone working on this is likely to
+# have a Postgres on 5432 and a Redis on 6379 already, and a dev stack that
+# refuses to start because of an unrelated container is a bad first impression.
+# The matching environment is:
+#
+#   export BLACKSTART_DATABASE_DSN=postgres://blackstart:blackstart@localhost:55432/blackstart?sslmode=disable
+#   export BLACKSTART_REDIS_ADDR=localhost:56379
+#   export BLACKSTART_FALKORDB_ADDR=localhost:56380
+
+name: blackstart-dev
+
+services:
+  postgres:
+    # timescaledb-ha bundles PostGIS, pgvector and TimescaleDB. PostGIS carries
+    # network geometry; btree_gist, created by the migration, carries the
+    # bitemporal exclusion constraint.
+    image: timescale/timescaledb-ha:pg16-all
+    environment:
+      POSTGRES_USER: blackstart
+      POSTGRES_PASSWORD: blackstart
+      POSTGRES_DB: blackstart
+    ports:
+      - "55432:5432"
+    volumes:
+      - postgres-data:/home/postgres/pgdata/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blackstart -d blackstart"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "56379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  falkordb:
+    # Pinned to the version Fabriq's own conformance suite runs against;
+    # earlier releases differ on multi-label node handling.
+    image: falkordb/falkordb:v4.2.2
+    ports:
+      - "56380:6379"
+    volumes:
+      - falkordb-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:
+  redis-data:
+  falkordb-data:
