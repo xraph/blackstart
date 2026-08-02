@@ -1,12 +1,25 @@
-@import "tailwindcss";
+/*
+ * The token layer brings Tailwind with it, so this file imports one thing.
+ * Colours come from the tokens rather than being set here — the console has
+ * two grounds and a hardcoded background would only ever be right in one.
+ */
+@import "@blackstart/ui/tokens.css";
+
+/*
+ * Tailwind v4 detects sources relative to the stylesheet it starts from, which
+ * would miss the component package entirely. Without these the utilities used
+ * inside `@blackstart/ui` are never generated and every panel renders unstyled.
+ */
+@source "../src";
+@source "../../../packages/ui/src";
 
 html,
 body,
 #root {
   height: 100%;
   margin: 0;
-  background: #05070c;
-  color: #e2e8f0;
+  background: var(--bs-bg);
+  color: var(--bs-fg);
   font-family:
     ui-sans-serif,
     system-ui,
@@ -14,4 +27,5 @@ body,
     "Segoe UI",
     Roboto,
     sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
