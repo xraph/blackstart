@@ -32,6 +32,12 @@ proto/gen/**            linguist-generated=true -diff
 # machine-produced; provenance lives in the adjacent SOURCES.md.
 data/**                 linguist-generated=true -diff
 
+# Package-local golden files, produced by `go test -update`. Marked by
+# extension rather than by directory: a testdata/ directory also holds
+# hand-authored fixtures — a small SCD written from the schema, a MATPOWER
+# case trimmed by hand — and those are hand-written work that should count.
+**/*.golden             linguist-generated=true
+
 # Dependency lockfiles.
 go.sum                  linguist-generated=true -diff
 rust/Cargo.lock         linguist-generated=true -diff
