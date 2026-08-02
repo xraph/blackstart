@@ -21,11 +21,25 @@
           <Terminal name="T1" connectivityNode="RINGBUS/V230/BAY1/N2" cNodeName="N2"/>
         </ConductingEquipment>
       </Bay>
-      <PowerTransformer name="TR1" type="PTR">
+      <PowerTransformer name="TR1" type="PTR" desc="230/66 kV transformer">
         <TransformerWinding name="W1" type="PTW">
           <Terminal name="T1" connectivityNode="RINGBUS/V230/BAY1/N2" cNodeName="N2"/>
         </TransformerWinding>
+        <TransformerWinding name="W2" type="PTW">
+          <Terminal name="T2" connectivityNode="RINGBUS/V66/BAY2/N3" cNodeName="N3"/>
+        </TransformerWinding>
       </PowerTransformer>
+    </VoltageLevel>
+    <VoltageLevel name="V66" desc="66 kV">
+      <Voltage unit="V" multiplier="k">66</Voltage>
+      <Bay name="BAY2">
+        <ConnectivityNode name="N3" pathName="RINGBUS/V66/BAY2/N3"/>
+        <ConnectivityNode name="N4" pathName="RINGBUS/V66/BAY2/N4"/>
+        <ConductingEquipment name="DS1" type="DIS" desc="Isolator">
+          <Terminal name="T1" connectivityNode="RINGBUS/V66/BAY2/N3" cNodeName="N3"/>
+          <Terminal name="T2" connectivityNode="RINGBUS/V66/BAY2/N4" cNodeName="N4"/>
+        </ConductingEquipment>
+      </Bay>
     </VoltageLevel>
   </Substation>
   <Communication>
