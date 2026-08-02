@@ -54,8 +54,17 @@ func WithStore(s store.Store) Option {
 // Supplied by the host because the screen stream does not carry it: the
 // contract puts version fields on the solve response, since repeating them
 // across thousands of streamed results would be noise.
+// An empty version leaves the default rather than overwriting it. A host that
+// has not configured one passes empty, and letting that through would replace
+// the conspicuous placeholder with a value NewEngine rejects — turning an
+// unconfigured field into a startup failure for every command, including the
+// ones that never screen anything.
 func WithSolverVersion(version string) Option {
-	return func(e *Extension) { e.solverVersion = version }
+	return func(e *Extension) {
+		if version != "" {
+			e.solverVersion = version
+		}
+	}
 }
 
 // New builds the extension.
