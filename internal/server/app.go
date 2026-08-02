@@ -25,6 +25,7 @@ import (
 	groveext "github.com/xraph/grove/extension"
 
 	"github.com/xraph/blackstart/extensions/contingency"
+	"github.com/xraph/blackstart/extensions/datasource"
 	"github.com/xraph/blackstart/extensions/fabric"
 	"github.com/xraph/blackstart/extensions/powerflow"
 	"github.com/xraph/blackstart/internal/entities"
@@ -132,7 +133,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 
 	fabricExt := fabric.New(reg, fabric.WithConfig(fabricConfig(cfg)))
 
-	extensions := []forge.Extension{groveExt, fabricExt}
+	extensions := []forge.Extension{groveExt, fabricExt, datasource.New()}
 
 	// The solver-backed extensions are registered only when there is a solver
 	// to reach. Registering them without one would mean every startup logs a
