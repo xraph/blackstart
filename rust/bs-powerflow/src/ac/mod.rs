@@ -13,7 +13,9 @@ pub mod jacobian;
 pub mod layout;
 pub mod newton;
 pub mod power;
+pub mod qlimit;
 
 pub use layout::Layout;
 pub use newton::{AcError, AcSolution, Options, solve_ac, solve_ac_from};
 pub use power::{Injections, Voltages, injections, max_mismatch, mismatch};
+pub use qlimit::{Enforcement, LimitedSolution, solve_with_limits};
