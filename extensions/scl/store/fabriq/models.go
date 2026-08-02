@@ -8,7 +8,13 @@
 package fabriq
 
 import (
+	"fmt"
+
 	"github.com/xraph/grove"
+
+	"github.com/xraph/blackstart/extensions/scl/device"
+	sclid "github.com/xraph/blackstart/extensions/scl/id"
+	"github.com/xraph/blackstart/pkg/id"
 )
 
 // Table names, prefixed with the extension so a shared schema stays legible.
@@ -88,4 +94,89 @@ type subscriptionRow struct {
 	// edge property so a graph query can ask for confirmed subscriptions only
 	// — an unresolved one is the subscriber's assertion, not a fact.
 	Resolved bool `grove:"resolved,notnull"`
+}
+
+// toIEDRow maps a device onto the persistence shape.
+func toIEDRow(in device.IED) iedRow {
+	return iedRow{
+		ID:            in.ID.String(),
+		Name:          in.Name,
+		Type:          in.Type,
+		Manufacturer:  in.Manufacturer,
+		ConfigVersion: in.ConfigVersion,
+		Description:   in.Description,
+	}
+}
+
+// toDomain maps a stored device back.
+func (r iedRow) toDomain() (device.IED, error) {
+	deviceID, err := sclid.ParseIED(r.ID)
+	if err != nil {
+		return device.IED{}, fmt.Errorf("scl: stored device id %q: %w", r.ID, err)
+	}
+
+	return device.IED{
+		ID:            deviceID,
+		Name:          r.Name,
+		Type:          r.Type,
+		Manufacturer:  r.Manufacturer,
+		ConfigVersion: r.ConfigVersion,
+		Description:   r.Description,
+	}, nil
+}
+
+// toDomain maps a stored publication back.
+func (r publicationRow) toDomain() (device.Publication, error) {
+	publicationID, err := id.Parse(r.ID)
+	if err != nil {
+		return device.Publication{}, fmt.Errorf("scl: stored publication id %q: %w", r.ID, err)
+	}
+
+	iedID, err := sclid.ParseIED(r.IEDID)
+	if err != nil {
+		return device.Publication{}, fmt.Errorf("scl: stored device id %q: %w", r.IEDID, err)
+	}
+
+	return device.Publication{
+		ID:           publicationID,
+		IEDID:        iedID,
+		IEDName:      r.IEDName,
+		LDInst:       r.LDInst,
+		CBName:       r.CBName,
+		AppID:        r.AppID,
+		DataSet:      r.DataSet,
+		ConfRev:      r.ConfRev,
+		MAC:          r.MAC,
+		VLAN:         r.VLAN,
+		NetworkAppID: r.NetworkAppID,
+	}, nil
+}
+
+// toDomain maps a stored subscription back.
+func (r subscriptionRow) toDomain() (device.Subscription, error) {
+	subscriptionID, err := id.Parse(r.ID)
+	if err != nil {
+		return device.Subscription{}, fmt.Errorf("scl: stored subscription id %q: %w", r.ID, err)
+	}
+
+	subscriber, err := sclid.ParseIED(r.SubscriberID)
+	if err != nil {
+		return device.Subscription{}, fmt.Errorf("scl: stored subscriber %q: %w", r.SubscriberID, err)
+	}
+
+	publisher, err := sclid.ParseIED(r.PublisherID)
+	if err != nil {
+		return device.Subscription{}, fmt.Errorf("scl: stored publisher %q: %w", r.PublisherID, err)
+	}
+
+	return device.Subscription{
+		ID:             subscriptionID,
+		SubscriberID:   subscriber,
+		PublisherID:    publisher,
+		Relation:       r.Relation,
+		SubscriberPath: r.SubscriberPath,
+		PublisherCB:    r.PublisherCB,
+		Data:           r.Data,
+		Resolved:       r.Resolved,
+	}, nil
 }
