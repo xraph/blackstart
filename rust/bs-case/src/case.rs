@@ -168,7 +168,11 @@ impl Case {
                 return Err(CaseError::ZeroReactance { branch: i });
             }
 
-            if !(branch.tap > 0.0) {
+            // is_finite first so NaN and infinity are rejected too. A plain
+            // `tap <= 0.0` is false for NaN, which would let a corrupt import
+            // through to produce a matrix of NaNs and a solver that reports
+            // "did not converge" about a problem that is nothing of the kind.
+            if !branch.tap.is_finite() || branch.tap <= 0.0 {
                 return Err(CaseError::BadTap {
                     branch: i,
                     tap: branch.tap,
