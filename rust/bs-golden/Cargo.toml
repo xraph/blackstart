@@ -1,0 +1,19 @@
+[package]
+name = "bs-golden"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bs-case = { path = "../bs-case" }
+bs-powerflow = { path = "../bs-powerflow" }
+bs-quantity = { path = "../bs-quantity" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
