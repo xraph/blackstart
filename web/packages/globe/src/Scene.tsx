@@ -1,12 +1,13 @@
-import { Canvas } from '@react-three/fiber'
+import { Canvas } from "@react-three/fiber";
 
-import { Globe } from './Globe'
-import { Network, type Selection } from './Network'
-import type { ViewerModel } from './model'
+import { Controls } from "./Controls";
+import { Globe } from "./Globe";
+import { Network, type Selection } from "./Network";
+import type { ViewerModel } from "./model";
 
 interface SceneProps {
-  model: ViewerModel
-  onSelect?: ((selection: Selection | null) => void) | undefined
+  model: ViewerModel;
+  onSelect?: ((selection: Selection | null) => void) | undefined;
 }
 
 /**
@@ -21,18 +22,19 @@ interface SceneProps {
 export function Scene({ model, onSelect }: SceneProps): React.JSX.Element {
   return (
     <Canvas
-      camera={{ position: [2.2, -1.6, 1.4], near: 0.001, far: 100, fov: 40 }}
+      camera={{ position: [-1.4, -2.2, 1.4], near: 0.001, far: 100, fov: 40 }}
       // Clicking away from any object clears the selection. Without this the
       // inspector keeps showing whatever was last clicked, which reads as the
       // click having failed.
       onPointerMissed={() => onSelect?.(null)}
     >
-      <color attach="background" args={['#05070c']} />
-      <ambientLight intensity={0.55} />
+      <color attach="background" args={["#05070c"]} />
+      <ambientLight intensity={0.9} />
       <directionalLight position={[5, -3, 4]} intensity={1.6} />
 
+      <Controls />
       <Globe />
       <Network model={model} onSelect={onSelect} />
     </Canvas>
-  )
+  );
 }

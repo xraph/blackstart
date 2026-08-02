@@ -13,18 +13,18 @@
  */
 
 /** Semi-major axis of the WGS84 ellipsoid, in metres. */
-export const SEMI_MAJOR_M = 6_378_137.0
+export const SEMI_MAJOR_M = 6_378_137.0;
 
 /** Flattening of the WGS84 ellipsoid. */
-export const FLATTENING = 1 / 298.257223563
+export const FLATTENING = 1 / 298.257223563;
 
 /** Semi-minor axis, derived. */
-export const SEMI_MINOR_M = SEMI_MAJOR_M * (1 - FLATTENING)
+export const SEMI_MINOR_M = SEMI_MAJOR_M * (1 - FLATTENING);
 
 /** First eccentricity squared, derived. */
-const E2 = FLATTENING * (2 - FLATTENING)
+const E2 = FLATTENING * (2 - FLATTENING);
 
-const DEG = Math.PI / 180
+const DEG = Math.PI / 180;
 
 /**
  * A position on the ellipsoid.
@@ -35,17 +35,17 @@ const DEG = Math.PI / 180
  * with.
  */
 export interface Geodetic {
-  lon: number
-  lat: number
+  lon: number;
+  lat: number;
   /** Height above the ellipsoid in metres. */
-  elevation?: number
+  elevation?: number;
 }
 
 /** A position in earth-centred, earth-fixed metres. */
 export interface Ecef {
-  x: number
-  y: number
-  z: number
+  x: number;
+  y: number;
+  z: number;
 }
 
 /**
@@ -58,14 +58,14 @@ export interface Ecef {
  * on what shape the earth is.
  */
 export function toEcef({ lon, lat, elevation = 0 }: Geodetic): Ecef {
-  const sinLat = Math.sin(lat * DEG)
-  const cosLat = Math.cos(lat * DEG)
-  const sinLon = Math.sin(lon * DEG)
-  const cosLon = Math.cos(lon * DEG)
+  const sinLat = Math.sin(lat * DEG);
+  const cosLat = Math.cos(lat * DEG);
+  const sinLon = Math.sin(lon * DEG);
+  const cosLon = Math.cos(lon * DEG);
 
   // Radius of curvature in the prime vertical. This is what makes it an
   // ellipsoid rather than a sphere: it varies with latitude.
-  const n = SEMI_MAJOR_M / Math.sqrt(1 - E2 * sinLat * sinLat)
+  const n = SEMI_MAJOR_M / Math.sqrt(1 - E2 * sinLat * sinLat);
 
   return {
     x: (n + elevation) * cosLat * cosLon,
@@ -75,7 +75,7 @@ export function toEcef({ lon, lat, elevation = 0 }: Geodetic): Ecef {
     // looks plausible, and every latitude away from the equator is wrong by up
     // to 21 km.
     z: (n * (1 - E2) + elevation) * sinLat,
-  }
+  };
 }
 
 /**
@@ -92,17 +92,17 @@ export function toEcef({ lon, lat, elevation = 0 }: Geodetic): Ecef {
  * the depth buffer collapses into z-fighting across the whole scene.
  */
 export function toEcefArray(points: readonly Geodetic[]): Float32Array {
-  const out = new Float32Array(points.length * 3)
+  const out = new Float32Array(points.length * 3);
 
   for (let index = 0; index < points.length; index++) {
-    const { x, y, z } = toEcef(points[index]!)
+    const { x, y, z } = toEcef(points[index]!);
 
-    out[index * 3] = x / SEMI_MAJOR_M
-    out[index * 3 + 1] = y / SEMI_MAJOR_M
-    out[index * 3 + 2] = z / SEMI_MAJOR_M
+    out[index * 3] = x / SEMI_MAJOR_M;
+    out[index * 3 + 1] = y / SEMI_MAJOR_M;
+    out[index * 3 + 2] = z / SEMI_MAJOR_M;
   }
 
-  return out
+  return out;
 }
 
 /**
@@ -114,31 +114,32 @@ export function toEcefArray(points: readonly Geodetic[]): Float32Array {
  * the network but cannot answer "what is here".
  */
 export function toGeodetic({ x, y, z }: Ecef): Geodetic {
-  const p = Math.hypot(x, y)
+  const p = Math.hypot(x, y);
 
   // The poles, where longitude is undefined and the closed form divides by
   // zero. Reported as longitude zero rather than NaN, which would propagate
   // into the scene as an invisible object rather than an error.
   if (p < 1e-9) {
-    return { lon: 0, lat: z >= 0 ? 90 : -90, elevation: Math.abs(z) - SEMI_MINOR_M }
+    return { lon: 0, lat: z >= 0 ? 90 : -90, elevation: Math.abs(z) - SEMI_MINOR_M };
   }
 
-  const ep2 = (SEMI_MAJOR_M * SEMI_MAJOR_M - SEMI_MINOR_M * SEMI_MINOR_M) / (SEMI_MINOR_M * SEMI_MINOR_M)
-  const theta = Math.atan2(z * SEMI_MAJOR_M, p * SEMI_MINOR_M)
-  const sinTheta = Math.sin(theta)
-  const cosTheta = Math.cos(theta)
+  const ep2 =
+    (SEMI_MAJOR_M * SEMI_MAJOR_M - SEMI_MINOR_M * SEMI_MINOR_M) / (SEMI_MINOR_M * SEMI_MINOR_M);
+  const theta = Math.atan2(z * SEMI_MAJOR_M, p * SEMI_MINOR_M);
+  const sinTheta = Math.sin(theta);
+  const cosTheta = Math.cos(theta);
 
   const lat = Math.atan2(
     z + ep2 * SEMI_MINOR_M * sinTheta * sinTheta * sinTheta,
     p - E2 * SEMI_MAJOR_M * cosTheta * cosTheta * cosTheta,
-  )
+  );
 
-  const sinLat = Math.sin(lat)
-  const n = SEMI_MAJOR_M / Math.sqrt(1 - E2 * sinLat * sinLat)
+  const sinLat = Math.sin(lat);
+  const n = SEMI_MAJOR_M / Math.sqrt(1 - E2 * sinLat * sinLat);
 
   return {
     lon: Math.atan2(y, x) / DEG,
     lat: lat / DEG,
     elevation: p / Math.cos(lat) - n,
-  }
+  };
 }

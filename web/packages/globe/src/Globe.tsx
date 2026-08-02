@@ -1,7 +1,7 @@
-import { useMemo } from 'react'
-import * as THREE from 'three'
+import { useMemo } from "react";
+import * as THREE from "three";
 
-import { SEMI_MAJOR_M, SEMI_MINOR_M } from './wgs84'
+import { SEMI_MAJOR_M, SEMI_MINOR_M } from "./wgs84";
 
 /**
  * A shaded WGS84 ellipsoid.
@@ -20,24 +20,24 @@ import { SEMI_MAJOR_M, SEMI_MINOR_M } from './wgs84'
  */
 export function Globe(): React.JSX.Element {
   const geometry = useMemo(() => {
-    const sphere = new THREE.SphereGeometry(1, 96, 64)
+    const sphere = new THREE.SphereGeometry(1, 96, 64);
 
     // Squashed, not re-derived. A SphereGeometry scaled on one axis is exactly
     // an ellipsoid of revolution, which is what WGS84 is.
-    sphere.scale(1, 1, SEMI_MINOR_M / SEMI_MAJOR_M)
+    sphere.scale(1, 1, SEMI_MINOR_M / SEMI_MAJOR_M);
 
     // three.js builds spheres around +Y; ECEF puts the pole on +Z. Rotating
     // the geometry once here is cheaper than rotating every position in the
     // network, and keeps the conversion functions free of renderer
     // conventions.
-    sphere.rotateX(Math.PI / 2)
+    sphere.rotateX(Math.PI / 2);
 
-    return sphere
-  }, [])
+    return sphere;
+  }, []);
 
   return (
     <mesh geometry={geometry}>
-      <meshStandardMaterial color="#0f1b2d" roughness={0.95} metalness={0} />
+      <meshStandardMaterial color="#1c2f4a" roughness={0.9} metalness={0} />
     </mesh>
-  )
+  );
 }

@@ -16,25 +16,25 @@
 /** The wire format `bsctl model export --format viewer` writes. */
 export interface ViewerModel {
   /** Identifies the model these coordinates came from. */
-  modelId: string
+  modelId: string;
 
   /**
    * The content hash of the network. Present so a view can be cited: a
    * screenshot of a network nobody can reproduce is not evidence of anything.
    */
-  contentHash: string
+  contentHash: string;
 
-  buses: ViewerBuses
-  branches: ViewerBranches
+  buses: ViewerBuses;
+  branches: ViewerBranches;
 }
 
 /** Substations and buses, drawn as instanced points. */
 export interface ViewerBuses {
   /** Identifiers, in the same order as the coordinates. */
-  ids: string[]
+  ids: string[];
 
   /** Human names, same order. Empty strings where a source gave none. */
-  names: string[]
+  names: string[];
 
   /**
    * Longitude, latitude, elevation triples in degrees and metres — not ECEF.
@@ -43,19 +43,19 @@ export interface ViewerBuses {
    * payload stays readable and diffable, and so a fix to the geodetic maths
    * does not require re-exporting every model.
    */
-  coordinates: number[]
+  coordinates: number[];
 
   /** Nominal voltage in kilovolts, one per bus. Zero where unknown. */
-  nominalKv: number[]
+  nominalKv: number[];
 }
 
 /** Branches, drawn as instanced line segments. */
 export interface ViewerBranches {
-  ids: string[]
+  ids: string[];
 
   /** Index into the bus arrays for each end. */
-  from: number[]
-  to: number[]
+  from: number[];
+  to: number[];
 
   /**
    * Whether each branch is in service. Drawn differently rather than omitted:
@@ -63,16 +63,16 @@ export interface ViewerBranches {
    * it would make the picture disagree with the model about how many lines
    * exist.
    */
-  inService: boolean[]
+  inService: boolean[];
 }
 
 /** An empty model, for a viewer that has not loaded one yet. */
 export const emptyModel: ViewerModel = {
-  modelId: '',
-  contentHash: '',
+  modelId: "",
+  contentHash: "",
   buses: { ids: [], names: [], coordinates: [], nominalKv: [] },
   branches: { ids: [], from: [], to: [], inService: [] },
-}
+};
 
 /**
  * Checks a parsed payload before the scene tries to draw it.
@@ -85,33 +85,33 @@ export const emptyModel: ViewerModel = {
  * @throws {Error} naming the array that does not match.
  */
 export function assertConsistent(model: ViewerModel): void {
-  const busCount = model.buses.ids.length
+  const busCount = model.buses.ids.length;
 
   if (model.buses.coordinates.length !== busCount * 3) {
     throw new Error(
       `viewer model: ${busCount} buses but ${model.buses.coordinates.length} coordinate ` +
         `values; three are needed per bus (lon, lat, elevation)`,
-    )
+    );
   }
 
   for (const [name, array] of [
-    ['names', model.buses.names],
-    ['nominalKv', model.buses.nominalKv],
+    ["names", model.buses.names],
+    ["nominalKv", model.buses.nominalKv],
   ] as const) {
     if (array.length !== busCount) {
-      throw new Error(`viewer model: ${busCount} buses but ${array.length} ${name}`)
+      throw new Error(`viewer model: ${busCount} buses but ${array.length} ${name}`);
     }
   }
 
-  const branchCount = model.branches.ids.length
+  const branchCount = model.branches.ids.length;
 
   for (const [name, array] of [
-    ['from', model.branches.from],
-    ['to', model.branches.to],
-    ['inService', model.branches.inService],
+    ["from", model.branches.from],
+    ["to", model.branches.to],
+    ["inService", model.branches.inService],
   ] as const) {
     if (array.length !== branchCount) {
-      throw new Error(`viewer model: ${branchCount} branches but ${array.length} ${name}`)
+      throw new Error(`viewer model: ${branchCount} branches but ${array.length} ${name}`);
     }
   }
 
@@ -121,7 +121,7 @@ export function assertConsistent(model: ViewerModel): void {
         throw new Error(
           `viewer model: branch ${model.branches.ids[index]} names bus index ` +
             `${end}, and there are ${busCount} buses`,
-        )
+        );
       }
     }
   }
