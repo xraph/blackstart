@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/xraph/forge"
 	"github.com/xraph/forge/cli"
@@ -127,7 +128,15 @@ func n1Command() cli.Command {
 				return err
 			}
 
-			ctx.Printf("screened %s (threshold %.2f)\n", run.ID, float64(ctx.Int("threshold-percent"))/100)
+			ctx.Printf("screened %s\n", run.ID)
+
+			// Said as words rather than as a number, because zero means "the
+			// rating" and printing 0.00 reads as "report everything".
+			if percent := ctx.Int("threshold-percent"); percent > 0 {
+				ctx.Printf("  threshold  %d%% of rating\n", percent)
+			} else {
+				ctx.Printf("  threshold  the rating itself\n")
+			}
 			ctx.Printf("  model      %s\n", run.ModelHash[:16])
 			ctx.Printf("  evaluated  %d contingencies\n", len(run.Candidates))
 
@@ -155,7 +164,19 @@ func report(ctx cli.CommandContext, run sweep.Run, top int) {
 		return
 	}
 
-	ctx.Printf("  concerning %d\n\n", len(concerning))
+	ctx.Printf("  concerning %d\n", len(concerning))
+
+	// A branch already over its rating before any outage appears in every
+	// contingency, which buries the ones that actually make things worse.
+	// Saying so is the difference between a ranking an operator can act on and
+	// a wall of findings they learn to ignore.
+	if base := alwaysViolated(ranked); len(base) > 0 {
+		ctx.Printf("  note: branch(es) %v are over their rating in every "+
+			"evaluated contingency, which usually means the base case is "+
+			"already violating\n", base)
+	}
+
+	ctx.Println()
 
 	for index, candidate := range ranked {
 		if index >= top {
@@ -260,4 +281,48 @@ func startApp(ctx context.Context) (forge.App, func(), error) {
 	}
 
 	return app, func() { _ = app.Stop(context.WithoutCancel(ctx)) }, nil
+}
+
+// alwaysViolated finds branches violated in every evaluated contingency.
+//
+// Those are almost never caused by the outage — a branch over its rating
+// before anything is switched stays over it afterwards — so reporting them
+// alongside genuine post-contingency overloads makes the list unreadable.
+func alwaysViolated(ranked []sweep.Candidate) []uint32 {
+	counts := map[uint32]int{}
+	evaluated := 0
+
+	for _, candidate := range ranked {
+		if !candidate.Screenability.Evaluated() {
+			continue
+		}
+
+		evaluated++
+
+		for _, violation := range candidate.Violations {
+			counts[violation.Branch]++
+		}
+	}
+
+	if evaluated == 0 {
+		return nil
+	}
+
+	var out []uint32
+
+	for branch, count := range counts {
+		if count == evaluated {
+			out = append(out, branch)
+		}
+	}
+
+	slices.Sort(out)
+
+	// Truncated, because a network with fifty base-case violations should say
+	// so in a sentence rather than list them all here.
+	if len(out) > 5 {
+		out = out[:5]
+	}
+
+	return out
 }
