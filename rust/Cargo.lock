@@ -3,6 +3,22 @@
 version = 4
 
 [[package]]
+name = "bs-case"
+version = "0.0.0"
+dependencies = [
+ "bs-quantity",
+]
+
+[[package]]
+name = "bs-powerflow"
+version = "0.0.0"
+dependencies = [
+ "bs-case",
+ "bs-quantity",
+ "bs-sparse",
+]
+
+[[package]]
 name = "bs-quantity"
 version = "0.0.0"
 
