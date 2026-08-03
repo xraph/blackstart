@@ -88,8 +88,9 @@ export function abbreviateTypeId(id: string, tail = 6): string {
  * An external identifier that resolved to a TypeID.
  *
  * `system` is the source of record and `authority` says what that source is
- * trusted for — HIFLD is authoritative for geometry and useless for electrical
- * parameters, and an operator reading a conflict needs to know which.
+ * trusted for — OpenStreetMap is authoritative for structure geometry and
+ * carries no impedances or ratings at all, ACTIVSg is exactly the reverse, and
+ * an operator reading a conflict needs to know which.
  */
 export const Alias = z.object({
   system: z.string().min(1),
