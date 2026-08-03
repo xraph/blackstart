@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["bs-case", "bs-contingency", "bs-factors", "bs-golden",
+members = ["bs-case", "bs-contingency", "bs-factors", "bs-frequency", "bs-golden",
     "bs-grib", "bs-powerflow", "bs-protection", "bs-quantity", "bs-solver",
     "bs-sparse"]
 

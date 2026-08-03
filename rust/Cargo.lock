@@ -158,6 +158,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bs-frequency"
+version = "0.0.0"
+dependencies = [
+ "bs-case",
+ "bs-quantity",
+]
+
+[[package]]
 name = "bs-golden"
 version = "0.0.0"
 dependencies = [
@@ -186,6 +194,7 @@ name = "bs-protection"
 version = "0.0.0"
 dependencies = [
  "bs-case",
+ "bs-quantity",
 ]
 
 [[package]]
