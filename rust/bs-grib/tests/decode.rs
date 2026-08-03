@@ -115,6 +115,38 @@ fn constant_field_has_no_data_section() {
     );
 }
 
+/// The lightning field is a real varied one: 12 bits per value over 10733
+/// groups, with first-order spatial differencing. This is the path that
+/// actually exercises complex packing.
+#[test]
+fn varied_field_decodes_to_plausible_values() {
+    let message = bs_grib::parse(&fixture("hrrr_ltng_atmos.grib2")).expect("parsing HRRR");
+
+    assert_eq!(message.values.len(), 1799 * 1059);
+
+    assert!(
+        message.values.iter().all(|v| v.is_finite()),
+        "a NaN or infinity means the bit stream was misread"
+    );
+
+    let min = message.values.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = message
+        .values
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    // A lightning threat index is non-negative and does not reach far into
+    // double digits. This is a plausibility band, not a reference comparison —
+    // see the note in SOURCES.md about the missing oracle.
+    assert!(min >= 0.0, "minimum {min} is negative");
+    assert!(max > 0.0, "maximum {max} means nothing was decoded");
+    assert!(
+        max < 1000.0,
+        "maximum {max} is not a lightning threat index"
+    );
+}
+
 /// An unsupported template is an error naming the number, never a best-effort
 /// parse. A misread packing produces plausible wrong numbers, which is the
 /// failure mode this project's numerical lints exist to prevent everywhere.
