@@ -80,6 +80,10 @@ pub fn to_case(model: &proto::NetworkModel) -> Result<Case, ConvertError> {
             // with no stated limits has unknown limits.
             q_min: wire.q_min_var.map_or(f64::NEG_INFINITY, |q| q / s_base),
             q_max: wire.q_max_var.map_or(f64::INFINITY, |q| q / s_base),
+            p_min: f64::NEG_INFINITY,
+            p_max: f64::INFINITY,
+            inertia_h: None,
+            droop_r: None,
             // Admittance base is the reciprocal of the impedance base.
             g_shunt: wire.g_shunt_s * z_base,
             b_shunt: wire.b_shunt_s * z_base,
