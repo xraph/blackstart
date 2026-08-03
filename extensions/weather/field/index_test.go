@@ -22,7 +22,7 @@ import (
 // The fixtures live in testdata with their provenance, so the check runs
 // offline and keeps running when the cycle they came from has long rolled out
 // of NOAA's archive. Not under data/weather: .gitignore reserves that for the
-// bulk products fetched on demand and catalogued by content hash, which is a
+// bulk products fetched on demand and cataloged by content hash, which is a
 // different thing from a fixture a test reads.
 func TestEverySpecAppearsInARealIndex(t *testing.T) {
 	t.Parallel()
