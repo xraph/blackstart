@@ -35,12 +35,23 @@ export type ProvenanceKind = (typeof PROVENANCE_KINDS)[number];
 /**
  * The links without which a number is not citable.
  *
- * `feature-set` and `network` are excluded because a raw observation display —
- * a gust reading straight off HRRR — legitimately has neither, and demanding
- * them would push callers toward inventing placeholder links, which is the
- * failure mode this is trying to prevent.
+ * `feature-set` is excluded because a raw observation display — a gust reading
+ * straight off HRRR — legitimately has none, and demanding one would push
+ * callers toward inventing a placeholder, which is the failure mode this is
+ * trying to prevent.
  */
-export const REQUIRED_KINDS: readonly ProvenanceKind[] = ["dataset", "run", "commit"];
+export const REQUIRED_KINDS: readonly ProvenanceKind[] = ["run", "commit"];
+
+/**
+ * The kinds that count as an input.
+ *
+ * A result must be traceable to at least one of these, but not to any
+ * particular one: a contingency sweep reads a network case and no weather,
+ * while a hazard score reads a weather cycle and no case. Requiring "dataset"
+ * specifically marked the first of those incomplete, which the platform's own
+ * first trace demonstrated.
+ */
+export const INPUT_KINDS: readonly ProvenanceKind[] = ["dataset", "network"];
 
 export const ProvenanceLink = z.object({
   kind: z.enum(PROVENANCE_KINDS),
@@ -59,21 +70,32 @@ export const ProvenanceLink = z.object({
 export type ProvenanceLink = z.infer<typeof ProvenanceLink>;
 
 /**
- * A chain, at most one link per kind.
+ * The kinds of which a result has exactly one.
  *
- * Two links of the same kind means two answers to "which model produced this",
- * which is not a display problem — it is a corrupt manifest, and it fails here.
+ * Two models, two runs or two commits are two answers to "what produced this",
+ * which is not a display problem — it is a corrupt manifest.
+ *
+ * Datasets are deliberately absent from this list. A run legitimately consumes
+ * several inputs — a network case and a weather cycle and a terrain tile set —
+ * and the platform's own trace returns them as an array with a role on each.
+ * The original rule forbade that, and the first real trace said so.
  */
+const SINGULAR_KINDS: readonly ProvenanceKind[] = ["network", "feature-set", "model", "run", "commit"];
+
 export const ProvenanceChain = z.array(ProvenanceLink).superRefine((links, ctx) => {
   const seen = new Set<ProvenanceKind>();
+
   for (const link of links) {
+    if (!SINGULAR_KINDS.includes(link.kind)) continue;
+
     if (seen.has(link.kind)) {
       ctx.addIssue({
         code: "custom",
-        message: `duplicate provenance link of kind "${link.kind}"`,
+        message: `two ${link.kind} links: a result has exactly one`,
         path: ["kind"],
       });
     }
+
     seen.add(link.kind);
   }
 });
@@ -95,6 +117,11 @@ export interface ChainCompleteness {
 export function chainCompleteness(chain: ProvenanceChain): ChainCompleteness {
   const byKind = new Map(chain.map((l) => [l.kind, l]));
   const missing = REQUIRED_KINDS.filter((k) => !byKind.has(k));
+
+  // At least one input, of whichever kind this result actually consumed.
+  if (!INPUT_KINDS.some((k) => byKind.has(k))) {
+    missing.push("dataset");
+  }
   const unverified = PROVENANCE_KINDS.filter((k) => {
     const link = byKind.get(k);
     return link !== undefined && !link.verified;

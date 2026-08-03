@@ -275,8 +275,24 @@ describe("provenance", () => {
     expect(c.unverified).toContain("commit");
   });
 
-  it("rejects two links of the same kind", () => {
-    expect(ProvenanceChain.safeParse([...chain, chain[0]]).success).toBe(false);
+  it("rejects two models, runs or commits — a result has exactly one", () => {
+    const twoCommits = [
+      ...chain,
+      { kind: "commit" as const, label: "blackstart", ref: "deadbee", verified: true },
+    ];
+    expect(ProvenanceChain.safeParse(twoCommits).success).toBe(false);
+  });
+
+  it("allows several datasets, because a run consumes several inputs", () => {
+    // A cascade run reads a network case, a weather cycle and a terrain tile
+    // set. The first real provenance trace from the platform returned exactly
+    // that, and the original one-per-kind rule forbade it.
+    const manyInputs = ProvenanceChain.safeParse([
+      ...chain,
+      { kind: "dataset", label: "activsg2000@v3", ref: "tx_01k2", verified: true },
+      { kind: "dataset", label: "3dep.10m.tx", ref: "dem_7f", verified: true },
+    ]);
+    expect(manyInputs.success).toBe(true);
   });
 });
 
