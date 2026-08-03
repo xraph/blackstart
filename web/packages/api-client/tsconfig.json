@@ -3,14 +3,13 @@
   "compilerOptions": {
     "lib": ["ES2023", "DOM"],
 
-    // The generated sources are held to the compiler's correctness checks but
-    // not to this workspace's stylistic strictness. `noUncheckedIndexedAccess`
-    // and `exactOptionalPropertyTypes` are rules for code we write and review;
-    // applying them to a generator's output would mean either patching every
-    // regeneration or turning the whole package off, and the second is how a
-    // generated client stops being typechecked at all.
-    "noUncheckedIndexedAccess": false,
-    "exactOptionalPropertyTypes": false
+    // `noUncheckedIndexedAccess` stays off for the generated sources: indexing
+    // a lookup table it just built is not a case worth guarding, and the check
+    // exists for code a person writes. Everything else — including
+    // exactOptionalPropertyTypes — the generator now satisfies, which is where
+    // it belongs. A relaxation here would only have hidden the fact that the
+    // output could not be consumed by a strict project at all.
+    "noUncheckedIndexedAccess": false
   },
   "include": ["src"]
 }

@@ -12,10 +12,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@blackstart/api-client": "workspace:*",
     "@blackstart/globe": "workspace:*",
     "@blackstart/schema": "workspace:*",
     "@blackstart/ui": "workspace:*",
     "@react-three/fiber": "9.3.0",
+    "@tanstack/react-query": "5.101.4",
     "@tanstack/react-router": "1.170.18",
     "react": "19.2.0",
     "react-dom": "19.2.0",

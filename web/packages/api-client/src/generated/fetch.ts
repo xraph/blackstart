@@ -33,10 +33,10 @@ export class HTTPError extends Error {
 export interface RequestConfig {
   method: string;
   url: string;
-  headers?: Record<string, string>;
-  body?: any;
-  signal?: AbortSignal;
-  retry?: RetryConfig;
+  headers?: Record<string, string> | undefined;
+  body?: any | undefined;
+  signal?: AbortSignal | undefined;
+  retry?: RetryConfig | undefined;
   // Set by the generated method when its declared return type has a
   // no-content 2xx response (i.e. includes `void`). Only then does an
   // empty response body mean "there is legitimately nothing here" —
@@ -352,7 +352,7 @@ export class HTTPClient {
       let response = await fetch(url, {
         method: requestConfig.method,
         headers,
-        body,
+        ...(body === undefined ? {} : { body }),
         signal,
       });
 

@@ -5,7 +5,7 @@ import { createError } from './errors';
 
 export class Client {
   protected httpClient: HTTPClient;
-  private auth?: AuthConfig;
+  private auth?: AuthConfig | undefined;
 
   constructor(config: ClientConfig) {
     this.auth = config.auth;
