@@ -45,10 +45,11 @@ web/packages/api-client/src/generated/** linguist-generated=true -diff
 # case trimmed by hand — and those are hand-written work that should count.
 **/*.golden             linguist-generated=true
 
-# GRIB2 index sidecars, downloaded verbatim from NOAA. Publisher output rather
-# than hand-written work, so they do not count toward a commit's line budget —
-# but their SOURCES.md is hand-written and does.
+# GRIB2 index sidecars and messages, downloaded verbatim from NOAA. Publisher
+# output rather than hand-written work, so they do not count toward a commit's
+# line budget — but their SOURCES.md is hand-written and does.
 **/*.idx                linguist-generated=true -diff
+*.grib2                 linguist-generated=true
 
 # Dependency lockfiles.
 go.sum                  linguist-generated=true -diff
