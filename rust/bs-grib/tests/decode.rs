@@ -167,3 +167,54 @@ fn non_grib_input_is_refused() {
         other => panic!("garbage gave {other:?}, want NotGrib"),
     }
 }
+
+/// The whole point, end to end: a real message decoded and sampled at a real
+/// place.
+///
+/// Austin sits well inside CONUS, so a lightning threat index there is a
+/// finite non-negative number. What this really pins is that decoding and
+/// projection agree — a field decoded correctly but indexed with a flipped
+/// row order would still be finite and still be in range.
+#[test]
+fn a_real_field_samples_inside_conus() {
+    let message = bs_grib::parse(&fixture("hrrr_ltng_atmos.grib2")).expect("parsing HRRR");
+
+    let value = message
+        .sample(-97.67, 30.19)
+        .expect("Austin is inside the HRRR domain");
+
+    assert!(value.is_finite(), "sampled {value}");
+    assert!(value >= 0.0, "a lightning threat index cannot be negative");
+}
+
+/// A span outside the domain has no sample, not a zero. A fabricated calm is
+/// the failure this returns None to prevent.
+#[test]
+fn a_point_outside_conus_has_no_sample() {
+    let message = bs_grib::parse(&fixture("hrrr_ltng_atmos.grib2")).expect("parsing HRRR");
+
+    assert_eq!(
+        message.sample(0.0, 0.0),
+        None,
+        "the Gulf of Guinea is not in the HRRR domain"
+    );
+}
+
+/// Sampling at the first grid point returns that point's own value, which is
+/// the check that the interpolation weights are not shifted by half a cell.
+#[test]
+fn sampling_the_origin_returns_the_first_value() {
+    let message = bs_grib::parse(&fixture("hrrr_ltng_atmos.grib2")).expect("parsing HRRR");
+
+    let bs_grib::Grid::Lambert { la1, lo1, .. } = message.header.grid else {
+        panic!("expected Lambert");
+    };
+
+    let sampled = message.sample(lo1, la1).expect("the origin is in domain");
+
+    assert!(
+        (sampled - message.values[0]).abs() < 1e-9,
+        "sampling the origin gave {sampled}, the stored first value is {}",
+        message.values[0]
+    );
+}
