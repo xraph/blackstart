@@ -1658,7 +1658,7 @@
     "case": "case57",
     "enforce_q_lims": false,
     "generator": "tools/goldengen/generate.py",
-    "generator_commit": "7bf6269565a5604e071d851956d85ae911dbe579",
+    "generator_commit": "9cd947d86e26dc6467716f29e49f40d6a466cd88",
     "method": "newton-raphson",
     "note": "Generated from pandapower's internal MATPOWER-format ppc, which is already per-unit. Regenerate with tools/goldengen/generate.py; never hand-edit.",
     "oracle": "pandapower",
