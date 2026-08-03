@@ -36,15 +36,15 @@ const EarthRadiusM = 6371008.8
 // Point is one position on the ellipsoid.
 type Point struct {
 	// Lon is degrees east, in the range [-180, 180].
-	Lon float64
+	Lon float64 `json:"lon"`
 
 	// Lat is degrees north, in the range [-90, 90].
-	Lat float64
+	Lat float64 `json:"lat"`
 
 	// Elevation is meters above the ellipsoid. Zero when unknown, which is
 	// most of the time in Phase 1 — the viewer draws conductors above ground
 	// and a structure height is what lifts them.
-	Elevation float64
+	Elevation float64 `json:"elevation"`
 }
 
 // Validate reports whether a point is on the earth.

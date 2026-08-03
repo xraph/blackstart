@@ -125,6 +125,12 @@ func (e *Extension) Start(context.Context) error {
 
 	e.engine = engine
 
+	// Registered here rather than in Register, because the controller needs
+	// the engine and the engine needs the store.
+	if err := app.RegisterController(NewController(engine)); err != nil {
+		return fmt.Errorf("geo: registering the HTTP controller: %w", err)
+	}
+
 	return nil
 }
 

@@ -49,23 +49,28 @@ func (p Provenance) Valid() bool {
 }
 
 // Route is a branch's path over the ground.
+//
+// The json tags matter beyond tidiness: these types cross the HTTP boundary,
+// and every other response in this platform is snake_case. A single camelCase
+// island is the kind of inconsistency a client library papers over once and
+// then depends on forever.
 type Route struct {
 	// ID identifies this route.
-	ID id.ID
+	ID id.ID `json:"id"`
 
 	// BranchID names the electrical branch it carries. A route belongs to one
 	// branch; a branch has one route.
-	BranchID id.ID
+	BranchID id.ID `json:"branch_id"`
 
 	// Provenance says whether the path was surveyed or interpolated.
-	Provenance Provenance
+	Provenance Provenance `json:"provenance"`
 
 	// LengthM is the summed length of its spans, in meters.
 	//
 	// Stored rather than recomputed on read, because it is what a per-unit
 	// impedance is checked against and a report should not depend on whether
 	// the geometry happened to be loaded.
-	LengthM float64
+	LengthM float64 `json:"length_m"`
 }
 
 // Validate reports whether a route can be stored.
@@ -93,26 +98,26 @@ func (r Route) Validate() error {
 // Span is one segment of a route, between two structures.
 type Span struct {
 	// ID identifies this span.
-	ID id.ID
+	ID id.ID `json:"id"`
 
 	// RouteID names the route it belongs to.
-	RouteID id.ID
+	RouteID id.ID `json:"route_id"`
 
 	// Sequence orders spans along the route from its first end.
-	Sequence int
+	Sequence int `json:"sequence"`
 
 	// Geometry is the path between the two structures.
-	Geometry shape.Line
+	Geometry shape.Line `json:"geometry"`
 
 	// LengthM is its great-circle length in meters.
-	LengthM float64
+	LengthM float64 `json:"length_m"`
 
 	// AzimuthDeg is the initial bearing, clockwise from true north.
 	//
 	// Stored because it is what a wind loading is resolved against: a
 	// crosswind on a span is the component perpendicular to it, and a span
 	// aligned with the wind carries almost none of it.
-	AzimuthDeg float64
+	AzimuthDeg float64 `json:"azimuth_deg"`
 }
 
 // Validate reports whether a span can be stored.
@@ -127,28 +132,28 @@ func (s Span) Validate() error {
 // Structure is a tower or pole.
 type Structure struct {
 	// ID identifies this structure.
-	ID id.ID
+	ID id.ID `json:"id"`
 
 	// Location is where it stands.
-	Location shape.Point
+	Location shape.Point `json:"location"`
 
 	// HeightM is its height above ground in meters. Zero when unknown.
-	HeightM float64
+	HeightM float64 `json:"height_m"`
 
 	// Kind is what it is: "lattice", "monopole", "wood". Free text, because
 	// the vocabularies differ per source and forcing them into one enumeration
 	// would discard the distinction the source drew.
-	Kind string
+	Kind string `json:"kind"`
 }
 
 // Footprint is the area an entity occupies.
 type Footprint struct {
 	// ID identifies this footprint.
-	ID id.ID
+	ID id.ID `json:"id"`
 
 	// EntityID names what it belongs to — usually a substation.
-	EntityID id.ID
+	EntityID id.ID `json:"entity_id"`
 
 	// Boundary is the outline, closed by repeating its first point.
-	Boundary shape.Line
+	Boundary shape.Line `json:"boundary"`
 }
