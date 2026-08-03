@@ -18,6 +18,7 @@ import (
 	nmfabriq "github.com/xraph/blackstart/extensions/networkmodel/store/fabriq"
 	pffabriq "github.com/xraph/blackstart/extensions/powerflow/store/fabriq"
 	sclfabriq "github.com/xraph/blackstart/extensions/scl/store/fabriq"
+	wxfabriq "github.com/xraph/blackstart/extensions/weather/store/fabriq"
 	"github.com/xraph/blackstart/internal/entities"
 	"github.com/xraph/blackstart/internal/server"
 )
@@ -40,6 +41,7 @@ var Contributors = []entities.Contributor{
 	sclfabriq.Contributor{},
 	pffabriq.Contributor{},
 	ctgfabriq.Contributor{},
+	wxfabriq.Contributor{},
 }
 
 // New builds the server application.

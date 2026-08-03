@@ -53,6 +53,8 @@ import (
 	"github.com/xraph/blackstart/extensions/scl"
 	sclmigrations "github.com/xraph/blackstart/extensions/scl/store/fabriq"
 	"github.com/xraph/blackstart/extensions/topology"
+	"github.com/xraph/blackstart/extensions/weather"
+	wxmigrations "github.com/xraph/blackstart/extensions/weather/store/fabriq"
 	"github.com/xraph/blackstart/internal/entities"
 	"github.com/xraph/blackstart/pkg/buildinfo"
 )
@@ -193,6 +195,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 			sclmigrations.Group(),
 			pfmigrations.Group(),
 			ctgmigrations.Group(),
+			wxmigrations.Group(),
 		),
 	)
 
@@ -214,7 +217,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 	extensions := []forge.Extension{
 		groveExt, fabricExt, auditExt,
 		provenance.New(), networkmodel.New(), datasource.New(),
-		topology.New(), geo.New(), scl.New(),
+		topology.New(), geo.New(), scl.New(), weather.New(),
 	}
 
 	// Authsome, this application's own authentication authority.
