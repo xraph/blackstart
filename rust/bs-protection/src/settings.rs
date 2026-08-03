@@ -1,0 +1,1 @@
+//! Resolved relay settings.
