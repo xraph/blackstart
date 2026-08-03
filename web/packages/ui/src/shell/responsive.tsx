@@ -13,6 +13,32 @@ import { cn } from "../cn";
 import type { NavItem } from "./app-shell";
 
 /**
+ * A media query as state.
+ *
+ * Exists so a layout can *choose* which of two structures to mount rather
+ * than mounting both and hiding one with CSS. Duplicating a subtree is not
+ * free — the hidden copy still renders, still holds state, and on a list of
+ * sparklines still does the work — and it puts two copies of every control in
+ * the document, which assistive technology and tests both trip over.
+ */
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const sync = (): void => setMatches(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, [query]);
+
+  return matches;
+}
+
+/** The width at which a docked rail fits beside the stage. Matches Tailwind's `md`. */
+export const RAIL_BREAKPOINT = "(min-width: 768px)";
+
+/**
  * Whether the primary pointer is coarse.
  *
  * Gated on pointer rather than viewport width, deliberately. A touch laptop
@@ -22,17 +48,7 @@ import type { NavItem } from "./app-shell";
  * minimum while leaving the 32px pointer density alone.
  */
 export function useCoarsePointer(): boolean {
-  const [coarse, setCoarse] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(pointer: coarse)");
-    const sync = (): void => setCoarse(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-
-  return coarse;
+  return useMediaQuery("(pointer: coarse)");
 }
 
 export interface BottomSheetProps {
