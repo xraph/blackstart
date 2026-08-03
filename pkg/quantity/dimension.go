@@ -70,6 +70,28 @@ var (
 
 	// Admittance is the reciprocal of impedance.
 	Admittance = Dimension{L: -2, M: -1, T: 3, I: 2}
+
+	// Velocity: m s^-1. Wind speed and gust.
+	//
+	// Named rather than written as Length.Div(Time) at each use, because a
+	// gust is a quantity engineers name, and an anonymous dimension in a unit
+	// declaration reads as an accident rather than a decision.
+	Velocity = Dimension{L: 1, T: -1}
+
+	// SurfaceDensity: kg m^-2. Radial ice load on a conductor, and the unit
+	// GRIB2 reports freezing-rain accumulation in.
+	SurfaceDensity = Dimension{M: 1, L: -2}
+
+	// PrecipitationRate: kg m^-2 s^-1.
+	//
+	// Mass flux, not depth per unit time. The meteorological convention is
+	// mass, and converting to a depth assumes a density that varies with
+	// precipitation type — so the conversion belongs where the type is known,
+	// which is not here.
+	PrecipitationRate = Dimension{M: 1, L: -2, T: -1}
+
+	// SpecificEnergy: m^2 s^-2. Energy per unit mass, which is what CAPE is.
+	SpecificEnergy = Dimension{L: 2, T: -2}
 )
 
 // Mul returns the dimension of a product: exponents add.
