@@ -32,6 +32,13 @@ proto/gen/**            linguist-generated=true -diff
 # machine-produced; provenance lives in the adjacent SOURCES.md.
 data/**                 linguist-generated=true -diff
 
+# The platform API client, produced by `forge client generate` from the host's
+# own OpenAPI document. Committed so the viewer builds without a running
+# server, and marked generated so it does not inflate the hand-written line
+# count this project treats as a deliverable. The wrapper beside it in
+# src/index.ts is hand-written and deliberately not covered by this rule.
+web/packages/api-client/src/generated/** linguist-generated=true -diff
+
 # Package-local golden files, produced by `go test -update`. Marked by
 # extension rather than by directory: a testdata/ directory also holds
 # hand-authored fixtures — a small SCD written from the schema, a MATPOWER
