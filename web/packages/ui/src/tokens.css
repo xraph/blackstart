@@ -236,3 +236,32 @@
 @utility tabular {
   font-variant-numeric: tabular-nums lining-nums;
 }
+
+/*
+ * Touch targets.
+ *
+ * Gated on pointer rather than viewport width: a touch laptop needs the
+ * larger target at 1440px and a mouse-driven narrow window does not. Width is
+ * a poor proxy for how the thing is actually being touched.
+ *
+ * These grow the control itself rather than overlaying an invisible hit area.
+ * An overlay is the tidier trick and it is wrong for anything in a row — the
+ * 44px regions of adjacent 22px buttons overlap, so the tap lands on whichever
+ * happens to be painted last.
+ *
+ * Unlayered on purpose. Tailwind's utilities sit in `@layer utilities`, and
+ * unlayered rules beat layered ones regardless of source order, so `h-8` on
+ * the element does not have to be removed for this to take effect.
+ */
+@media (pointer: coarse) {
+  /* Isolated controls: a checkbox, a copy button, a transport key. */
+  .touch-target {
+    min-block-size: 44px;
+    min-inline-size: 44px;
+  }
+
+  /* Rows in a dense grid, where growing the row is what moves the target. */
+  .touch-row {
+    block-size: 44px;
+  }
+}

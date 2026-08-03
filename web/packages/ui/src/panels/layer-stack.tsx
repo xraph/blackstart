@@ -54,7 +54,7 @@ function LayerRow({
         aria-label={layer.label}
         onClick={() => onToggle?.(layer.id)}
         className={cn(
-          "flex size-[11px] shrink-0 items-center justify-center rounded-[2px] border",
+          "touch-target flex size-[11px] shrink-0 items-center justify-center rounded-[2px] border",
           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-fg-2",
           layer.state === "on"
             ? "border-fg bg-fg"

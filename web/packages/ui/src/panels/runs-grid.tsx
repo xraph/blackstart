@@ -15,7 +15,7 @@ import { ReproBadge, StatusGlyph } from "../instrument/status";
 
 const TH =
   "sticky top-0 h-[30px] whitespace-nowrap border-b border-line-2 bg-panel px-2.5 text-left text-[9px] font-normal uppercase tracking-[0.1em] text-fg-3";
-const TD = "h-8 whitespace-nowrap border-b border-line-t px-2.5 text-fg-2";
+const TD = "touch-row h-8 whitespace-nowrap border-b border-line-t px-2.5 text-fg-2";
 
 export function RunsGrid({
   runs,

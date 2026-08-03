@@ -39,7 +39,7 @@ export function TypeIdChip({ id, full = false, className }: TypeIdChipProps): Re
       <button
         type="button"
         onClick={copy}
-        className="rounded-[2px] border border-line-2 px-1 text-[8.5px] tracking-[0.06em] text-fg-3 hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-fg-2"
+        className="touch-target rounded-[2px] border border-line-2 px-1 text-[8.5px] tracking-[0.06em] text-fg-3 hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-fg-2"
         aria-label={`Copy identifier ${id}`}
       >
         {copied ? "COPIED" : "COPY"}

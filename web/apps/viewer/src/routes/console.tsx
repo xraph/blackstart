@@ -179,6 +179,7 @@ export function ConsoleScreen(): React.JSX.Element {
         temporal={temporal}
         horizon={HORIZON}
         leadHour={search.lead}
+        mode={asOf ? "as-of" : "live"}
         onScrubValid={(lead) => void navigate({ search: (prev) => ({ ...prev, lead }) })}
         transport={<Transport playing={false} />}
       />

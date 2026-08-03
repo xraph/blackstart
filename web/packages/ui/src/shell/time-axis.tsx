@@ -17,6 +17,7 @@ import {
   temporalMode,
   type BitemporalRef,
   type ForecastHorizon,
+  type TemporalMode,
 } from "@blackstart/schema";
 import { cn } from "../cn";
 
@@ -27,6 +28,17 @@ export interface TimeAxisProps {
   readonly leadHour: number;
   readonly onScrubValid?: (leadHour: number) => void;
   readonly onScrubKnowledge?: (t: string) => void;
+  /**
+   * Whether the view is following the present or pinned to a past knowledge
+   * time.
+   *
+   * Passed in rather than derived from the wall clock. A component whose
+   * output depends on `new Date()` renders differently depending on when you
+   * look at it and cannot be tested; worse, "live" is a claim about the data
+   * the caller fetched, not about what time it happens to be. The caller
+   * knows — it is whether the reader asked to be pinned.
+   */
+  readonly mode?: TemporalMode;
   readonly transport?: ReactElement;
 }
 
@@ -35,6 +47,7 @@ export function TimeAxis({
   horizon,
   leadHour,
   onScrubValid,
+  mode: modeProp,
   transport,
 }: TimeAxisProps): ReactElement {
   const hours = horizon.leadHours;
@@ -42,7 +55,7 @@ export function TimeAxis({
   const last = hours[hours.length - 1] ?? 1;
   const span = last - first || 1;
   const pct = ((leadHour - first) / span) * 100;
-  const mode = temporalMode(temporal);
+  const mode = modeProp ?? temporalMode(temporal);
 
   return (
     <div className="flex h-14 shrink-0 items-stretch border-t border-line bg-panel">
@@ -73,19 +86,36 @@ export function TimeAxis({
           </div>
           <div className="absolute inset-x-0 top-[13px] h-px bg-line-2" />
           <div className="absolute left-0 top-[13px] h-px bg-fg-3" style={{ width: `${pct}%` }} />
+          {/* Decorative. The hours were nineteen one-pixel buttons, which is
+              unusable with a finger and barely usable with a mouse. */}
           {hours.map((h) => (
-            <button
+            <span
               key={h}
-              type="button"
-              aria-label={`forecast hour ${h}`}
-              onClick={() => onScrubValid?.(h)}
-              className="absolute top-2 h-1.5 w-px bg-line-3 focus-visible:outline focus-visible:outline-1 focus-visible:outline-fg-2"
+              aria-hidden="true"
+              className="absolute top-2 h-1.5 w-px bg-line-3"
               style={{ left: `${((h - first) / span) * 100}%` }}
             />
           ))}
+
           <div
+            aria-hidden="true"
             className="absolute top-1 h-[19px] w-0.5 rounded-[1px] bg-fg after:absolute after:-left-1 after:-top-1 after:h-[5px] after:w-2.5 after:rounded-[1.5px] after:bg-fg after:content-['']"
             style={{ left: `${pct}%` }}
+          />
+
+          {/* One control for every input method: draggable by finger and
+              mouse, arrow-key steppable, and announced with its value. The
+              visible handle above is drawn from the same state. */}
+          <input
+            type="range"
+            min={first}
+            max={last}
+            step={1}
+            value={leadHour}
+            onChange={(e) => onScrubValid?.(Number(e.target.value))}
+            aria-label="Forecast hour"
+            aria-valuetext={`forecast hour plus ${leadHour}`}
+            className="absolute inset-x-0 top-0 h-6 w-full cursor-pointer opacity-0"
           />
         </div>
 
@@ -100,12 +130,7 @@ export function TimeAxis({
             style={{ background: "var(--bs-amber-line)" }}
           />
           <div className="absolute right-0 top-0.5 h-3.5 w-0.5 rounded-[1px] bg-amber after:absolute after:-left-[3.5px] after:-top-[3px] after:h-1 after:w-[9px] after:rounded-[1.5px] after:bg-amber after:content-['']" />
-          <span
-            className={cn(
-              "absolute -top-px right-0 font-mono text-[8.5px] tracking-[0.08em]",
-              mode === "live" ? "text-amber" : "text-amber",
-            )}
-          >
+          <span className="absolute -top-px right-0 font-mono text-[8.5px] tracking-[0.08em] text-amber">
             {mode === "live" ? "NOW · LIVE" : `AS OF ${formatInstant(temporal.knowledgeTime)}`}
           </span>
         </div>
@@ -135,7 +160,7 @@ export function Transport({
   readonly trailing?: ReactElement;
 }): ReactElement {
   const btn =
-    "flex h-5 w-[22px] items-center justify-center rounded-[2px] border border-line-2 bg-panel-2 text-fg-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-fg-2";
+    "touch-target flex h-5 w-[22px] items-center justify-center rounded-[2px] border border-line-2 bg-panel-2 text-fg-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-fg-2";
   return (
     <div className="flex gap-1">
       <button type="button" className={btn} aria-label="Step back" onClick={() => onStep?.(-1)}>
