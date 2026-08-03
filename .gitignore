@@ -78,3 +78,7 @@ configs/config.local.yml
 # are rebuildable from their source cases by re-importing — the content hash is
 # what makes that safe — so the bytes themselves are not repository content.
 .data/
+
+# Subagent-driven-development scratch: ledgers, briefs, review packages.
+# Per-plan working state, reconstructible from git history.
+.superpowers/
