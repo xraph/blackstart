@@ -9,7 +9,10 @@
 
 #![forbid(unsafe_code)]
 
+pub mod distance;
 pub mod overcurrent;
 pub mod settings;
 
+pub use distance::{Distance, Zone};
 pub use overcurrent::{Curve, Overcurrent};
+pub use settings::{Protection, Settings, TripCandidate, TripCause, collect};

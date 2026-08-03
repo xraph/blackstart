@@ -13,3 +13,6 @@ workspace = true
 
 [dependencies]
 bs-case = { path = "../bs-case" }
+
+[dev-dependencies]
+bs-quantity = { path = "../bs-quantity" }
