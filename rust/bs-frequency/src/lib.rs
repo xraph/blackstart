@@ -12,6 +12,10 @@
 
 #![forbid(unsafe_code)]
 
+pub mod integrate;
 pub mod machine;
+pub mod model;
 
+pub use integrate::{Trajectory, integrate};
 pub use machine::{Aggregate, Defaults};
+pub use model::{Model, State};
