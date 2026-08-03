@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+
+    // The generated sources are held to the compiler's correctness checks but
+    // not to this workspace's stylistic strictness. `noUncheckedIndexedAccess`
+    // and `exactOptionalPropertyTypes` are rules for code we write and review;
+    // applying them to a generator's output would mean either patching every
+    // regeneration or turning the whole package off, and the second is how a
+    // generated client stops being typechecked at all.
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false
+  },
+  "include": ["src"]
+}

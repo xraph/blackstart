@@ -1,0 +1,41 @@
+# How the platform client is generated.
+#
+# Regenerate with `pnpm generate` from this directory, against a running host.
+# Nothing under src/generated is written by hand — see the note in src/index.ts
+# for why the wrapper is separate.
+
+source:
+  type: url
+  url: http://localhost:8080/openapi.json
+
+defaults:
+  language: typescript
+  package: "@blackstart/api-client"
+  base_url: http://localhost:8080
+  output: src/generated
+
+  # Only the source files. The package manifest, tsconfig, linting and CI
+  # config are this repository's to own — a generator that rewrites them every
+  # regeneration would silently revert the workspace's own settings.
+  client_only: true
+
+  # The grid API only. The host also serves Authsome under /identity, the
+  # Forge dashboard under /_forge, and its own health and discovery routes:
+  # 125 of the 150 published paths are surfaces the viewer must never call,
+  # and generating over all of them would bury the 25 that model the network.
+  #
+  # Prefix matching is on a segment boundary, so this covers /api/v1/... and
+  # nothing that merely starts with those characters.
+  include:
+    - /api/v1
+
+  # No streaming client yet. The host publishes an AsyncAPI document and the
+  # cascade screen will want it, but nothing consumes it today and generating
+  # an unused WebSocket surface is code nobody is reading for correctness.
+  streaming: false
+  auth: true
+
+  # The list endpoints take limit and after, so the cursor helpers earn their
+  # place. Without them every caller writes the same follow-the-cursor loop.
+  pagination: true
+  error_taxonomy: true
