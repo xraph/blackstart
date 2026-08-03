@@ -44,10 +44,21 @@ func (p Point) Interpolate(other Point, fraction float64) Point {
 // Synthetic, and named so at every use. A real transmission line follows a
 // surveyed right-of-way that bends around terrain and property, and its
 // structures stand where the survey put them. This is a straight line with
-// evenly spaced imaginary structures, present to prove the per-span data model
-// carries what it claims — a per-span failure probability needs a per-span
-// geometry to condition on, and there is no public per-structure dataset in
-// Phase 1. HIFLD and OSM routes replace it without the model changing.
+// evenly spaced imaginary structures, present because a per-span failure
+// probability needs a per-span geometry to condition on.
+//
+// OpenStreetMap supplies real structures where the route itself is real: a
+// power=line way's vertices are the tower nodes, so such a route maps onto
+// Route, Structure and Span without reconciliation. HIFLD does not, and the
+// earlier claim here that it would was wrong — it published line polylines and
+// never structures, and its portal closed in 2025.
+//
+// None of which makes this function temporary. An ACTIVSg branch is synthetic
+// and corresponds to no real circuit, so no surveyed geometry can ever attach
+// to it, and a straight line of imaginary structures is the honest geometry for
+// it rather than a placeholder awaiting one. Real spans sampled around Austin
+// run to a median of about 207 m, which is the scale nominalSpanM should be
+// chosen at to keep synthetic spans comparable to surveyed ones.
 //
 // # Errors
 //
