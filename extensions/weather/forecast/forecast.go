@@ -11,8 +11,10 @@ package forecast
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
+	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/weather/field"
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
@@ -229,4 +231,124 @@ func (g Grid) Validate() error {
 // columns that eventually will not.
 func (g Grid) ValidAt(issuedAt time.Time) time.Time {
 	return issuedAt.Add(time.Duration(g.ForecastHour) * time.Hour)
+}
+
+// Sample is one field's value at one span, from one issuance.
+type Sample struct {
+	// SpanID names where. A span rather than a route, because failure is per
+	// span: a conductor breaks between two structures, an ice load is local,
+	// and a long line crosses several weather systems at once.
+	SpanID id.ID `json:"span_id"`
+
+	// Field names what.
+	Field field.Field `json:"field"`
+
+	// IssuedAt is when the model said so; ValidAt is the moment it describes.
+	IssuedAt time.Time `json:"issued_at"`
+	ValidAt  time.Time `json:"valid_at"`
+
+	// Value is the magnitude, in the unit this field's spec names. Stored as
+	// the source reported it rather than converted — see the field package.
+	Value float64 `json:"value"`
+}
+
+// Validate reports whether a sample can be stored.
+func (s Sample) Validate() error {
+	if s.SpanID.IsZero() {
+		return fmt.Errorf("%w: a sample needs a span", bserr.ErrInvalid)
+	}
+
+	if !s.Field.Valid() {
+		return fmt.Errorf(
+			"%w: %q is not a field in the vocabulary", bserr.ErrInvalid, s.Field)
+	}
+
+	if s.IssuedAt.IsZero() || s.ValidAt.IsZero() {
+		return fmt.Errorf(
+			"%w: sample of %q at span %s needs both an issuance and a valid time",
+			bserr.ErrInvalid, s.Field, s.SpanID)
+	}
+
+	if s.ValidAt.Before(s.IssuedAt) {
+		return fmt.Errorf(
+			"%w: sample of %q at span %s is valid at %s, before its issuance at "+
+				"%s; a forecast cannot describe a moment that preceded the run "+
+				"that produced it, so this is a sampling bug rather than a datum",
+			bserr.ErrInvalid, s.Field, s.SpanID,
+			s.ValidAt.UTC().Format(time.RFC3339),
+			s.IssuedAt.UTC().Format(time.RFC3339))
+	}
+
+	return nil
+}
+
+// IssuanceLayout is how issuance is rendered inside a series key.
+//
+// RFC 3339 basic format in UTC. Pinned as a constant rather than formatted at
+// each call site, because a key written one way and composed another way for
+// reading yields an empty series rather than an error — the quietest failure
+// this package could have.
+const IssuanceLayout = "20060102T1504Z"
+
+// keyDelimiter separates a series key's three parts.
+//
+// A pipe, which appears in none of them: identifiers are prefix_ULID, field
+// names are lowercase letters, digits and underscores, and issuance is digits
+// with two letters.
+const keyDelimiter = "|"
+
+// keyParts is how many pieces a forecast series key has.
+const keyParts = 3
+
+// SampleKey composes the series key a sample is stored under.
+//
+// The Timeseries port carries one string key and one float per point, with no
+// column for issuance — so issuance lives here. That is not a workaround: a
+// series key is how a time-series store names a series, and what identifies
+// one here is exactly (span, field, issuance).
+func SampleKey(spanID id.ID, f field.Field, issuedAt time.Time) string {
+	return strings.Join([]string{
+		spanID.String(),
+		string(f),
+		issuedAt.UTC().Format(IssuanceLayout),
+	}, keyDelimiter)
+}
+
+// ParseSampleKey takes a series key apart.
+//
+// # Errors
+//
+// Returns an error wrapping bserr.ErrInvalid when the key has the wrong shape,
+// does not begin with a span identifier, names a field outside the vocabulary,
+// or carries an issuance that is not in IssuanceLayout.
+func ParseSampleKey(key string) (id.ID, field.Field, time.Time, error) {
+	piece := strings.Split(key, keyDelimiter)
+	if len(piece) != keyParts {
+		return id.Nil, "", time.Time{}, fmt.Errorf(
+			"%w: series key %q has %d parts, want %d (span, field, issuance)",
+			bserr.ErrInvalid, key, len(piece), keyParts)
+	}
+
+	spanID, err := gid.ParseSpan(piece[0])
+	if err != nil {
+		return id.Nil, "", time.Time{}, fmt.Errorf(
+			"%w: series key %q does not begin with a span identifier: %w",
+			bserr.ErrInvalid, key, err)
+	}
+
+	found := field.Field(piece[1])
+	if !found.Valid() {
+		return id.Nil, "", time.Time{}, fmt.Errorf(
+			"%w: series key %q names field %q, which is not in the vocabulary",
+			bserr.ErrInvalid, key, piece[1])
+	}
+
+	issuedAt, err := time.Parse(IssuanceLayout, piece[2])
+	if err != nil {
+		return id.Nil, "", time.Time{}, fmt.Errorf(
+			"%w: series key %q has issuance %q, which is not in layout %s: %w",
+			bserr.ErrInvalid, key, piece[2], IssuanceLayout, err)
+	}
+
+	return spanID, found, issuedAt, nil
 }
