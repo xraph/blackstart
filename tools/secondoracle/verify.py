@@ -16,49 +16,29 @@ representation — rather than rebuilding the network from pandapower. What is
 under test is whether the case blackstart stored means the same thing to a
 second solver, and rebuilding from the first oracle would test something else.
 
-# Status: a diagnostic, not a gate
+# What it found
 
-Three of the five goldens — 30, 57 and 118 — agree with pypower to machine
-precision, around 1e-15. That is strong evidence the reconstruction below is
-correct: a transposed column or a mishandled base could not produce
-fifteen-digit agreement on three networks and fail on two.
+All six goldens agree to machine precision — 4e-16 on case 14, 6e-14 on the
+2869-bus network. Getting there took finding a real bug, and the bug was here
+rather than in blackstart.
 
-Cases 14 and 300 disagree, by 1.6e-3 and 7.1e-2 per unit. That is **not
-explained**, and this tool is deliberately not wired into CI until it is.
-Two hypotheses have been ruled out already:
+Three of six disagreed at first, and the shape of the disagreement was
+misleading. Every wrong bus in case 14 was downstream of an off-nominal tap,
+which looked conclusive until case 57 — fifteen off-nominal taps — agreed to
+4e-15 while case 14 with three did not. Tap ratio was ruled out separately:
+inverting it made the error worse.
 
-  - Reactive limits. Both solvers run unlimited here — the goldens are
-    generated with enforce_q_lims=False and pypower's default is off — so the
-    disagreement cannot be a generator pinned on one side and free on the
-    other. (pypower's ENFORCE_Q_LIMS path additionally crashes on current
-    numpy, so it cannot be tested from this side at all.)
-  - The presence of stated limits in the case. All five carry them for every
-    PV bus, so limits do not separate the passing cases from the failing ones.
+What settled it was comparing the admittance matrices directly. They matched
+to 7e-15, so both solvers were solving the same network and the difference had
+to be in the injections. It was: this file clamped load at zero, so a positive
+injection at a PQ bus vanished. Bus 3 of case 14 carries exactly that — a
++0.039 pu reactive injection, a capacitor bank expressed as an injection
+rather than a shunt — and it was the bus with the largest error.
 
-A third has been ruled out since, and it narrows things usefully. Every
-disagreeing bus in case 14 is downstream of an off-nominal tap — buses 3, 4, 6
-and 8 through 13, while every voltage-fixed bus agrees exactly — so the
-difference lives in transformer branch modelling. Inverting the stored tap
-makes it worse (1.6e-3 becomes 2.8e-2), which rules out the alarming
-possibility that blackstart stores the ratio the wrong way round.
-
-That leaves a convention difference between the two oracles rather than a
-defect here: blackstart's own solver already matches pandapower to 1e-14 on
-these cases, so it is pypower that differs from pandapower, not blackstart
-that differs from both.
-
-But "transformer branch modelling" is as far as the evidence goes, and an
-earlier draft of this comment over-claimed. Off-nominal tap *count* does not
-predict which cases disagree: case 57 has fifteen and agrees to 4e-15, case
-118 has nine and agrees to 1e-15, while case 14 has three and disagrees by
-1.6e-3. Whatever the difference is, it is a property of particular
-transformers rather than of having them — the pattern within case 14 (every
-disagreeing bus downstream of a tap) is real, and the pattern across cases is
-not yet explained.
-
-Weakening the tolerance until it passes would defeat the point of having a
-second oracle. Until the difference is understood, this reports and does not
-gate.
+The lesson is the one this project keeps relearning. The correlation that
+looked like an explanation (transformers) was a coincidence of which buses sit
+downstream of which, and only a check that could not be fooled by it — Ybus,
+element by element — found the cause.
 """
 
 from __future__ import annotations
@@ -97,8 +77,13 @@ def to_ppc(case: dict) -> dict:
         bus[index] = [
             index + 1,                      # bus_i, one-based
             kind,
-            -b["p_injection"] * base if b["p_injection"] < 0 else 0.0,   # Pd
-            -b["q_injection"] * base if b["q_injection"] < 0 else 0.0,   # Qd
+            # Load is the negation of the injection, unconditionally. An
+            # earlier version clamped at zero and so dropped any positive
+            # injection at a PQ bus — a capacitor bank modelled as an
+            # injection rather than a shunt vanished, which is exactly what
+            # bus 3 of case 14 carries.
+            -b["p_injection"] * base,   # Pd
+            -b["q_injection"] * base,   # Qd
             b["g_shunt"] * base,            # Gs
             b["b_shunt"] * base,            # Bs
             1,                              # area
@@ -108,18 +93,17 @@ def to_ppc(case: dict) -> dict:
             1, 1.06, 0.94,
         ]
 
-        # A generator wherever the bus holds voltage or supplies power. The
-        # golden carries a net injection rather than a generator list, so the
-        # positive part becomes generation and the negative part became load
-        # above. Splitting it this way is what makes the two descriptions the
-        # same network rather than merely similar ones.
-        if kind in (PV, REF) or b["p_injection"] > 0:
+        # A generator only where the bus holds voltage. The golden carries a
+        # net injection rather than a generator list, and the whole injection
+        # is already expressed as load above — adding generation for the
+        # positive part as well would count it twice.
+        if kind in (PV, REF):
             q_min = b["q_min"]
             q_max = b["q_max"]
             gen_rows.append([
                 index + 1,
-                max(b["p_injection"], 0.0) * base,
-                max(b["q_injection"], 0.0) * base,
+                0.0,
+                0.0,
                 (q_max * base) if q_max is not None else 1e6,
                 (q_min * base) if q_min is not None else -1e6,
                 b["v_magnitude"],
