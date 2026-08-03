@@ -27,16 +27,22 @@ Byte ranges: CICEP 60262945–60263132, LTNG 34694076–34764933, CLMR
 164421814–164421992. Each range came from the product's index sidecar, which
 is the same mechanism the ingest pipeline uses.
 
-## The missing oracle
+## The oracle
 
 Spec §10 asks for tolerance tests against an established reference
-implementation. `wgrib2` is not installed on the machine this was written on,
-so the decoded values are currently checked for physical plausibility — count,
-finiteness, and a range a lightning threat index can actually take — rather
-than compared against a known-good decode.
+implementation. That reference is **ecCodes 2.48.0**, ECMWF's own GRIB
+library, run out of process: `tests/golden/generate.sh` produces the golden
+files and nothing in the build or the test path links against it.
 
-That is weaker and is recorded as such. The count check is not nothing: it
-caught a real offset error that produced 74,743 values for a grid of
-1,905,141. But a decoder that is wrong by a constant factor would pass every
-assertion here, and closing that gap needs either `wgrib2` or `eccodes`
-installed as an out-of-process oracle.
+The goldens carry ecCodes' whole-field statistics plus a strided sample of
+241 points per message — position and value at each. That checks two things a
+self-consistent test cannot: that the values are right in absolute terms, and
+that they are in the right places.
+
+Both halves were confirmed to fail on a deliberately broken decoder before
+being trusted. A 0.01% scaling error is caught by the maximum; a flipped row
+order is caught by the geometry.
+
+`wgrib2` was the oracle originally named for this. It has no Homebrew formula;
+ecCodes is bottled, is the ECMWF reference implementation, and reports point
+positions as well as values, which `wgrib2` would not have made as easy.
