@@ -169,12 +169,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "bs-grib"
+version = "0.0.0"
+
+[[package]]
 name = "bs-powerflow"
 version = "0.0.0"
 dependencies = [
  "bs-case",
  "bs-quantity",
  "bs-sparse",
+]
+
+[[package]]
+name = "bs-protection"
+version = "0.0.0"
+dependencies = [
+ "bs-case",
 ]
 
 [[package]]
