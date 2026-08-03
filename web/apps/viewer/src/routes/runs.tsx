@@ -1,39 +1,40 @@
 /**
- * The scenario runs index.
+ * Contingency sweeps, from the platform.
  *
- * The dense, non-globe surface. Comparison selection lives in the URL, so a
- * diff between two runs can be linked rather than described.
+ * This screen shows what the platform actually serves today: N-1 screening
+ * sweeps, ranked by worst branch loading. The reviewed design showed *scenario
+ * runs* — expected unserved energy, a reproducibility verdict, both time axes
+ * — and none of that exists yet: risk and cascade are phases 3 and 4, and the
+ * API publishes no probability, no unserved energy and no cascade at all.
  *
- * Below the rail breakpoint the table becomes a card list carrying the run,
- * both time axes, status and the repro verdict — the columns a reader
- * actually scans. A horizontally scrolling twelve-column grid is not a
- * narrow-viewport design, it is a desktop grid someone has to drag.
+ * Rendering the design's columns against this data would have meant inventing
+ * the numbers. The schema refused it outright — ScenarioRun requires a
+ * complete run to report an EUE, and a screening sweep has none — which is the
+ * invariant doing its job. So the screen shows sweeps as sweeps, and the
+ * scenario-run grid waits for scenario runs.
+ *
+ * Selection stays in the URL, so a comparison can be linked rather than
+ * described.
  */
 
 import { useNavigate } from "@tanstack/react-router";
-import {
-  QuantityValue,
-  RAIL_BREAKPOINT,
-  ReproBadge,
-  RunsGrid,
-  StatusGlyph,
-  useMediaQuery,
-} from "@blackstart/ui";
-import { compareRuns, formatInstant, isBacktest, type ScenarioRun } from "@blackstart/schema";
+import { useContingencyRunsList, type SweepRun } from "@blackstart/api-client";
+import { RAIL_BREAKPOINT, useMediaQuery } from "@blackstart/ui";
 
 import { runsRoute } from "../router";
-import { RUNS } from "../fixtures/derecho";
+import { useApiClient } from "../api/provider";
 
 export function RunsScreen(): React.JSX.Element {
   const search = runsRoute.useSearch();
   const navigate = useNavigate({ from: runsRoute.fullPath });
+  const client = useApiClient();
   const wide = useMediaQuery(RAIL_BREAKPOINT);
 
+  const { data, isPending, isError, error } = useContingencyRunsList(client, undefined, 50);
+
+  const runs = data?.runs ?? [];
   const selected = new Set(search.compare);
 
-  /* Keeps the two most recent picks. Silently ignoring a third would leave
-   * the reader wondering which one took; dropping the oldest is at least
-   * predictable. */
   const toggle = (id: string): void => {
     void navigate({
       search: (prev) => ({
@@ -45,28 +46,39 @@ export function RunsScreen(): React.JSX.Element {
     });
   };
 
-  const picked = RUNS.filter((r) => selected.has(r.id));
-  const [a, b] = picked;
-  const diff = a !== undefined && b !== undefined ? compareRuns(a, b) : null;
-
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-11 shrink-0 items-center gap-2 overflow-x-auto border-b border-line bg-panel px-3">
-        <Filter label="KIND" value={search.kind} />
-        <Filter label="STATUS" value={search.status} />
+        <span className="font-mono text-[10px] uppercase tracking-[0.13em] text-fg-3">
+          Contingency sweeps
+        </span>
         <span className="flex-1" />
         <span className="whitespace-nowrap font-mono text-[10px] tabular text-fg-3">
-          {RUNS.length} runs
+          {isPending ? "loading…" : `${runs.length} runs`}
         </span>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto">
-        {wide ? (
-          <RunsGrid runs={RUNS} selected={selected} onToggle={toggle} />
+        {isError ? (
+          <Notice tone="alarm" title="The platform is not reachable">
+            {error.message}
+            <br />
+            Start the host with <code className="font-mono">./bin/blackstart</code>, or point the
+            viewer elsewhere with <code className="font-mono">VITE_API_BASE_URL</code>.
+          </Notice>
+        ) : isPending ? (
+          <Notice title="Loading sweeps">Asking the platform for recent N-1 runs.</Notice>
+        ) : runs.length === 0 ? (
+          <Notice title="No sweeps recorded">
+            Run one with <code className="font-mono">bsctl contingency sweep</code>. The platform
+            is reachable and has nothing to show.
+          </Notice>
+        ) : wide ? (
+          <SweepTable runs={runs} selected={selected} onToggle={toggle} />
         ) : (
           <ul className="m-0 list-none p-0">
-            {RUNS.map((r) => (
-              <RunCard
+            {runs.map((r) => (
+              <SweepCard
                 key={r.id}
                 run={r}
                 selected={selected.has(r.id)}
@@ -78,82 +90,94 @@ export function RunsScreen(): React.JSX.Element {
       </div>
 
       <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-t border-line bg-panel px-3.5 py-2">
-        <span className="font-mono text-[9px] uppercase tracking-[0.13em] text-fg-3">
-          Selected
-        </span>
-
-        {picked.length === 0 ? (
-          <span className="text-[11px] text-fg-3">Pick two runs to compare them.</span>
+        <span className="font-mono text-[9px] uppercase tracking-[0.13em] text-fg-3">Selected</span>
+        {selected.size === 0 ? (
+          <span className="text-[11px] text-fg-3">Pick two sweeps to compare them.</span>
         ) : (
-          <div className="flex flex-col gap-0.5 font-mono text-[10px] tabular text-fg">
-            {picked.map((r) => (
-              <span key={r.id}>
-                {r.id} <span className="text-fg-3">· {r.scenario}</span>
-              </span>
-            ))}
-          </div>
+          <span className="font-mono text-[10px] tabular text-fg">
+            {[...selected].join("  ·  ")}
+          </span>
         )}
-
         <span className="flex-1" />
-
-        {diff !== null &&
-          (diff.comparable ? (
-            <span className="font-mono text-[10px] tabular text-fg-3">
-              Δ EUE{" "}
-              {diff.deltaEue === null
-                ? "—"
-                : `${diff.deltaEue > 0 ? "+" : "−"}${Math.abs(diff.deltaEue)} MW·h`}{" "}
-              · same valid and knowledge time
-            </span>
-          ) : (
-            /* Naming the reason rather than disabling a control with no
-             * explanation: a delta across different knowledge states mixes a
-             * change in the scenario with a change in what was known. */
-            <span className="max-w-[46ch] text-[11px] leading-snug text-amber">
-              These runs do not share both time axes, so a difference between them would mix
-              a change in the scenario with a change in what was known.
-            </span>
-          ))}
+        <span className="max-w-[52ch] text-[11px] leading-snug text-fg-3">
+          Expected unserved energy and the reproducibility verdict are not served yet — the
+          platform models power flow and N-1 screening, not risk or cascade.
+        </span>
       </div>
     </div>
   );
 }
 
-function Filter({
-  label,
-  value,
+const TH =
+  "sticky top-0 h-[30px] whitespace-nowrap border-b border-line-2 bg-panel px-2.5 text-left text-[9px] font-normal uppercase tracking-[0.1em] text-fg-3";
+const TD = "touch-row h-8 whitespace-nowrap border-b border-line-t px-2.5 text-fg-2";
+
+function SweepTable({
+  runs,
+  selected,
+  onToggle,
 }: {
-  readonly label: string;
-  readonly value: string;
+  readonly runs: readonly SweepRun[];
+  readonly selected: ReadonlySet<string>;
+  readonly onToggle: (id: string) => void;
 }): React.JSX.Element {
   return (
-    <span className="flex h-6 shrink-0 items-center gap-1.5 rounded-[3px] border border-line-2 bg-panel-2 px-2.5">
-      <span className="font-mono text-[9px] tracking-[0.09em] text-fg-3">{label}</span>
-      <span className="font-mono text-[10px] text-fg">{value}</span>
-      <span className="text-[8px] text-fg-3">▾</span>
-    </span>
+    <table className="w-full border-collapse font-mono text-[10.5px] tabular">
+      <thead>
+        <tr>
+          <th className={`${TH} w-[26px]`}>
+            <span className="sr-only">Select</span>
+          </th>
+          <th className={TH}>Run</th>
+          <th className={TH}>Model hash</th>
+          <th className={TH}>Solver</th>
+          <th className={`${TH} text-right`}>Candidates</th>
+          <th className={`${TH} text-right`}>Violations</th>
+          <th className={TH}>Started</th>
+          <th className={`${TH} text-right`}>Wall</th>
+        </tr>
+      </thead>
+      <tbody>
+        {runs.map((r) => {
+          const on = selected.has(r.id);
+          const violations = r.candidates.reduce((n, c) => n + c.violations.length, 0);
+
+          return (
+            <tr key={r.id} className={on ? "bg-panel-3" : undefined}>
+              <td className={`${TD}${on ? " shadow-[inset_2px_0_0_var(--bs-fg)]" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() => onToggle(r.id)}
+                  aria-label={`Select sweep ${r.id}`}
+                  className="size-[11px] accent-[var(--bs-fg)]"
+                />
+              </td>
+              <td className={`${TD} text-fg`}>{r.id}</td>
+              <td className={TD}>{r.modelHash.slice(0, 16)}</td>
+              <td className={TD}>{r.solverVersion}</td>
+              <td className={`${TD} text-right`}>{r.candidates.length}</td>
+              <td className={`${TD} text-right`}>{violations}</td>
+              <td className={TD}>{formatInstantLocal(r.startedAt)}</td>
+              <td className={`${TD} text-right`}>{wallOf(r)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
-/**
- * One run, for a narrow viewport.
- *
- * Carries both time axes rather than collapsing to one. They are the whole
- * reason this screen has two date columns, and a card showing only the valid
- * time cannot tell a backtest from a live forecast.
- */
-function RunCard({
+function SweepCard({
   run,
   selected,
   onToggle,
 }: {
-  readonly run: ScenarioRun;
+  readonly run: SweepRun;
   readonly selected: boolean;
   readonly onToggle: () => void;
 }): React.JSX.Element {
-  const back =
-    run.temporal.validTime !== undefined &&
-    isBacktest({ validTime: run.temporal.validTime, knowledgeTime: run.temporal.knowledgeTime });
+  const violations = run.candidates.reduce((n, c) => n + c.violations.length, 0);
 
   return (
     <li>
@@ -165,36 +189,53 @@ function RunCard({
           selected ? "bg-panel-3 shadow-[inset_2px_0_0_var(--bs-fg)]" : ""
         }`}
       >
-        <span className="flex items-center gap-2">
-          <span className="font-mono text-[11px] text-fg">{run.id}</span>
-          <span className="ml-auto text-[10px]">
-            <StatusGlyph status={run.status} />
-          </span>
-        </span>
-
-        <span className="text-[11px] text-fg-2">{run.scenario}</span>
-
+        <span className="font-mono text-[11px] text-fg">{run.id}</span>
         <span className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[9.5px] tabular text-fg-3">
-          <span className={back ? "text-amber" : undefined}>
-            valid{" "}
-            {run.temporal.validTime === undefined
-              ? "—"
-              : formatInstant(run.temporal.validTime)}
-          </span>
-          <span className={back ? "text-amber" : undefined}>
-            known {formatInstant(run.temporal.knowledgeTime)}
-          </span>
-          <span>
-            EUE{" "}
-            {run.expectedUnservedEnergy === null ? (
-              "—"
-            ) : (
-              <QuantityValue q={run.expectedUnservedEnergy} className="text-[9.5px]" />
-            )}
-          </span>
-          <ReproBadge verdict={run.repro} />
+          <span>{run.candidates.length} candidates</span>
+          <span>{violations} violations</span>
+          <span>solver {run.solverVersion}</span>
+          <span>{formatInstantLocal(run.startedAt)}</span>
         </span>
       </button>
     </li>
   );
+}
+
+function Notice({
+  title,
+  tone,
+  children,
+}: {
+  readonly title: string;
+  readonly tone?: "alarm";
+  readonly children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className="p-6">
+      <h2
+        className={`m-0 font-mono text-[10px] uppercase tracking-[0.13em] ${
+          tone === "alarm" ? "text-alarm" : "text-fg-3"
+        }`}
+      >
+        {title}
+      </h2>
+      <p className="mt-2 max-w-[64ch] text-[12px] leading-relaxed text-fg-2">{children}</p>
+    </div>
+  );
+}
+
+/** `2026-08-02 22:00Z`, matching the instant format used across the console. */
+function formatInstantLocal(t: string): string {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(t);
+
+  return m === null ? t : `${m[1]} ${m[2]}Z`;
+}
+
+function wallOf(run: SweepRun): string {
+  const ms = Date.parse(run.finishedAt) - Date.parse(run.startedAt);
+  if (Number.isNaN(ms) || ms < 0) return "—";
+
+  const total = Math.round(ms / 1000);
+
+  return `${Math.floor(total / 60)}m ${String(total % 60).padStart(2, "0")}s`;
 }

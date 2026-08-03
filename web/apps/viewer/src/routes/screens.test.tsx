@@ -15,8 +15,51 @@ vi.mock("@blackstart/globe", async () => {
   return { ...actual, Scene: () => <div data-testid="scene" /> };
 });
 
+/**
+ * The runs screen fetches. Stubbing the generated hook keeps these tests about
+ * the screen's states — loading, error, empty, populated — rather than about
+ * the transport, which has its own tests in the client package.
+ */
+const runsQuery = vi.hoisted(() => ({
+  current: { data: undefined, isPending: true, isError: false, error: null } as unknown,
+}));
+
+vi.mock("@blackstart/api-client", async () => {
+  const actual =
+    await vi.importActual<typeof import("@blackstart/api-client")>("@blackstart/api-client");
+  return { ...actual, useContingencyRunsList: () => runsQuery.current };
+});
+
+import { ApiProvider } from "../api/provider";
 import { routeTree } from "../router";
-import { CASCADE, RUNS } from "../fixtures/derecho";
+import { CASCADE } from "../fixtures/derecho";
+
+const SWEEP = {
+  id: "run_01k3qf8m2xw7rb4n09yvtvdhjk",
+  modelHash: "9f2c1a7e44b0d3castille",
+  solverVersion: "0.3.1",
+  startedAt: "2026-08-02T22:00:00Z",
+  finishedAt: "2026-08-02T22:04:18Z",
+  candidates: [
+    { branch: 4471, contingencyId: "c-1", screenability: "screened", violations: [
+      { branch: 4471, loading: 1.18, pFlow: 412, rating: 350 },
+    ] },
+  ],
+};
+
+const loading = { data: undefined, isPending: true, isError: false, error: null };
+const failed = {
+  data: undefined,
+  isPending: false,
+  isError: true,
+  error: new Error("Failed to fetch"),
+};
+const loaded = (runs: unknown[]) => ({
+  data: { runs },
+  isPending: false,
+  isError: false,
+  error: null,
+});
 
 function stubViewport(wide: boolean): void {
   vi.stubGlobal("matchMedia", (q: string) => ({
@@ -53,7 +96,11 @@ async function renderAt(url: string): Promise<void> {
     history: createMemoryHistory({ initialEntries: [url] }),
   });
   await router.load();
-  render(<RouterProvider router={router} />);
+  render(
+    <ApiProvider baseUrl="http://localhost:8080">
+      <RouterProvider router={router} />
+    </ApiProvider>,
+  );
 }
 
 const VALID = "2026-08-02T22:00Z";
@@ -87,44 +134,55 @@ describe("cascade screen", () => {
 });
 
 describe("runs screen", () => {
-  it("lists every run", async () => {
+  it("says the platform is unreachable rather than showing an empty table", async () => {
+    runsQuery.current = failed;
     await renderAt("/runs");
-    expect(screen.getByText(`${RUNS.length} runs`)).toBeTruthy();
+    expect(screen.getByText(/platform is not reachable/i)).toBeTruthy();
+    expect(screen.getByText(/Failed to fetch/)).toBeTruthy();
   });
 
-  it("asks for a selection before offering a comparison", async () => {
+  it("distinguishes an empty result from a failure", async () => {
+    runsQuery.current = loaded([]);
     await renderAt("/runs");
-    expect(screen.getByText(/Pick two runs to compare/)).toBeTruthy();
+    // An empty table and a broken connection look identical otherwise, and
+    // only one of them means "nothing has been run yet".
+    expect(screen.getByText(/No sweeps recorded/i)).toBeTruthy();
+    expect(screen.queryByText(/not reachable/i)).toBeNull();
   });
 
-  it("reports the delta when two runs share both time axes", async () => {
-    const [a, b] = RUNS; // both derecho, same valid and knowledge time
-    await renderAt(`/runs?compare=${a?.id}&compare=${b?.id}`);
-    expect(screen.getByText(/Δ EUE/)).toBeTruthy();
-    expect(screen.getByText(/same valid and knowledge time/)).toBeTruthy();
+  it("shows a spinner state while the request is in flight", async () => {
+    runsQuery.current = loading;
+    await renderAt("/runs");
+    expect(screen.getByText(/Loading sweeps/i)).toBeTruthy();
   });
 
-  it("refuses to difference runs from different knowledge states, and says why", async () => {
-    const live = RUNS[0];
-    const backtest = RUNS.find((r) => r.scenario.startsWith("BACKTEST"));
-    await renderAt(`/runs?compare=${live?.id}&compare=${backtest?.id}`);
-    expect(screen.getByText(/mix a change in the scenario/)).toBeTruthy();
-    expect(screen.queryByText(/Δ EUE/)).toBeNull();
+  it("lists the sweeps the platform returned", async () => {
+    runsQuery.current = loaded([SWEEP]);
+    await renderAt("/runs");
+    expect(screen.getByText("1 runs")).toBeTruthy();
+    expect(screen.getByText(SWEEP.id)).toBeTruthy();
+    expect(screen.getByText("0.3.1")).toBeTruthy();
+  });
+
+  it("says plainly which columns the platform does not serve yet", async () => {
+    runsQuery.current = loaded([SWEEP]);
+    await renderAt("/runs");
+    // The reviewed design promised expected unserved energy and a repro
+    // verdict. Neither exists at this phase, and the screen should admit that
+    // rather than render an empty column.
+    expect(screen.getByText(/not served yet/i)).toBeTruthy();
   });
 });
 
 describe("runs screen, narrow", () => {
-  beforeEach(() => stubViewport(false));
+  beforeEach(() => {
+    stubViewport(false);
+    runsQuery.current = loaded([SWEEP]);
+  });
 
   it("becomes a card list rather than a table to drag sideways", async () => {
     await renderAt("/runs");
     expect(screen.queryByRole("table")).toBeNull();
-    expect(screen.getAllByRole("button", { pressed: false }).length).toBeGreaterThan(0);
-  });
-
-  it("keeps both time axes on the card, so a backtest is still identifiable", async () => {
-    await renderAt("/runs");
-    expect(screen.getAllByText(/^valid /).length).toBe(RUNS.length);
-    expect(screen.getAllByText(/^known /).length).toBe(RUNS.length);
+    expect(screen.getByText(/1 candidates/)).toBeTruthy();
   });
 });
