@@ -18,6 +18,7 @@ import (
 
 	"github.com/xraph/blackstart/extensions/geo/shape"
 	"github.com/xraph/blackstart/extensions/weather/field"
+	wid "github.com/xraph/blackstart/extensions/weather/id"
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
 )
@@ -103,6 +104,9 @@ func (o Observation) Validate() error {
 // that a reader of either table sees one convention.
 const keyDelimiter = "|"
 
+// keyParts is how many pieces an observation series key has.
+const keyParts = 2
+
 // SampleKey composes the series key an observation is stored under.
 //
 // Two parts, not three. An observation carries no issuance, and a key with an
@@ -111,4 +115,40 @@ const keyDelimiter = "|"
 // no reason a reader could see.
 func SampleKey(stationID id.ID, f field.Field) string {
 	return stationID.String() + keyDelimiter + string(f)
+}
+
+// ParseSampleKey takes a series key apart.
+//
+// The counterpart to SampleKey, and the reason a stored reading can be turned
+// back into an Observation: the station and the field live only in the key,
+// because the series table stores one key and one float per row.
+//
+// # Errors
+//
+// Returns an error wrapping bserr.ErrInvalid when the key has the wrong shape,
+// does not begin with a station identifier, or names a field outside the
+// vocabulary.
+func ParseSampleKey(key string) (id.ID, field.Field, error) {
+	piece := strings.Split(key, keyDelimiter)
+	if len(piece) != keyParts {
+		return id.Nil, "", fmt.Errorf(
+			"%w: observation series key %q has %d parts, want %d (station, field)",
+			bserr.ErrInvalid, key, len(piece), keyParts)
+	}
+
+	stationID, err := wid.ParseStation(piece[0])
+	if err != nil {
+		return id.Nil, "", fmt.Errorf(
+			"%w: observation series key %q does not begin with a station "+
+				"identifier: %w", bserr.ErrInvalid, key, err)
+	}
+
+	found := field.Field(piece[1])
+	if !found.Valid() {
+		return id.Nil, "", fmt.Errorf(
+			"%w: observation series key %q names field %q, which is not in the "+
+				"vocabulary", bserr.ErrInvalid, key, piece[1])
+	}
+
+	return stationID, found, nil
 }

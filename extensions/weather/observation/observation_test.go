@@ -113,3 +113,49 @@ func TestSampleKeyDiffersPerField(t *testing.T) {
 		seen[key] = f
 	}
 }
+
+// The station and the field live only in the key — the series table stores one
+// key and one float per row — so a reading cannot be turned back into an
+// Observation unless the round trip holds.
+func TestSampleKeyRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	station := wid.NewStation()
+
+	for _, f := range field.Fields() {
+		key := observation.SampleKey(station, f)
+
+		gotStation, gotField, err := observation.ParseSampleKey(key)
+		if err != nil {
+			t.Errorf("ParseSampleKey(%q): %v", key, err)
+
+			continue
+		}
+
+		if gotStation != station {
+			t.Errorf("station = %s, want %s", gotStation, station)
+		}
+
+		if gotField != f {
+			t.Errorf("field = %q, want %q", gotField, f)
+		}
+	}
+}
+
+func TestParseSampleKeyRejectsMalformed(t *testing.T) {
+	t.Parallel()
+
+	station := wid.NewStation().String()
+
+	for name, key := range map[string]string{
+		"empty":         "",
+		"no delimiter":  "nothing-here",
+		"three parts":   station + "|gust10m|20260803T1200Z",
+		"unknown field": station + "|gust_10m",
+		"not a station": wid.NewGrid().String() + "|gust10m",
+	} {
+		if _, _, err := observation.ParseSampleKey(key); err == nil {
+			t.Errorf("%s: ParseSampleKey(%q) accepted a malformed key", name, key)
+		}
+	}
+}
