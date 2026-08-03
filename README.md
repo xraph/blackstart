@@ -82,10 +82,11 @@ results are reproducible by people who do not work at a utility.
 | NOAA MRMS | Radar-derived precipitation and hail |
 | NWS ASOS/METAR | Surface observations |
 | [ORNL EAGLE-I](https://eagle-i.doe.gov) | County-level historical outage counts |
-| DOE OE-417 | Major electric disturbance reports |
+| [DOE OE-417](https://doe417.pnnl.gov) | Major electric disturbance reports |
 | EIA-860 / 861 / 930 | Generator inventory, reliability metrics, hourly BA operations |
-| NERC TADS / DADS | Transmission and distribution outage statistics |
-| HIFLD Open | Substation and transmission line geospatial layers |
+| NERC TADS / DADS | Transmission and distribution outage statistics, aggregate reports only |
+| [EIA U.S. Energy Atlas](https://atlas.eia.gov) | Transmission line geospatial layer, 69–765 kV |
+| [PNNL-33587](https://www.pnnl.gov/main/publications/external/technical_reports/PNNL-33587.pdf) and the open-access fragility literature it catalogues | Published wind and ice fragility functions per structure class |
 | OpenStreetMap power layer | Supplementary network geometry |
 | USGS 3DEP | Terrain elevation |
 | NLCD / LANDFIRE | Land cover and vegetation fuel |
