@@ -31,9 +31,19 @@ type gridModel struct {
 	BlobRef          string `grove:"blob_ref,notnull"`
 	DatasetVersionID string `grove:"dataset_version_id,notnull"`
 
-	NX         int    `grove:"nx,notnull"`
-	NY         int    `grove:"ny,notnull"`
-	Projection string `grove:"projection,notnull"`
+	// The grid's shape is not known when this row is written. A grid is
+	// created as soon as its bytes are stored and its dataset version
+	// recorded, which is before anything has decoded them — so nx, ny and
+	// projection are filled in by the sampling pass, and none of them may be
+	// declared notnull here.
+	//
+	// The distinction matters because fabriq's notnull is stricter than the
+	// column's: the DDL says NOT NULL DEFAULT '', which an empty string
+	// satisfies, but fabriq refuses an empty value for a notnull field
+	// outright. Tagging projection notnull made every pre-decode create fail.
+	NX         int    `grove:"nx"`
+	NY         int    `grove:"ny"`
+	Projection string `grove:"projection"`
 
 	// SampledAt is a pointer because the column is nullable. A grid that has
 	// never been sampled has no such time, and a zero timestamp would read as
