@@ -35,6 +35,19 @@ Two hypotheses have been ruled out already:
   - The presence of stated limits in the case. All five carry them for every
     PV bus, so limits do not separate the passing cases from the failing ones.
 
+A third has been ruled out since, and it narrows things usefully. Every
+disagreeing bus in case 14 is downstream of an off-nominal tap — buses 3, 4, 6
+and 8 through 13, while every voltage-fixed bus agrees exactly — so the
+difference lives in transformer branch modelling. Inverting the stored tap
+makes it worse (1.6e-3 becomes 2.8e-2), which rules out the alarming
+possibility that blackstart stores the ratio the wrong way round.
+
+That leaves a convention difference between the two oracles rather than a
+defect here: blackstart's own solver already matches pandapower to 1e-14 on
+these cases, so it is pypower that differs from pandapower on transformer
+branches, not blackstart that differs from both. Worth confirming before
+trusting either at a tap ratio far from unity.
+
 Weakening the tolerance until it passes would defeat the point of having a
 second oracle. Until the difference is understood, this reports and does not
 gate.
