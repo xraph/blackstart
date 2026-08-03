@@ -21,7 +21,12 @@
 //! | 5, data | 5.0 simple packing | both, for constant fields |
 //! | 5, data | 5.3 complex packing, spatial differencing | both, for real fields |
 
+mod grid;
+mod product;
 mod section;
+
+pub use grid::Grid;
+pub use product::Product;
 
 /// Everything that can go wrong reading a message.
 ///
@@ -170,4 +175,53 @@ fn indicator(bytes: &[u8]) -> Result<&[u8], GribError> {
     }
 
     Ok(&bytes[..total])
+}
+
+/// What a message is, without decoding a single value.
+///
+/// Everything needed to confirm a fetched message is the field that was asked
+/// for, which is the check the ingest pipeline runs before spending anything
+/// on the data section.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Header {
+    /// The GRIB2 discipline. Zero is meteorological products.
+    pub discipline: u8,
+
+    /// Where the values sit on the earth.
+    pub grid: Grid,
+
+    /// What the values are.
+    pub product: Product,
+}
+
+/// Reads a message's header without unpacking its values.
+///
+/// Separate from a full decode because the two are wanted at different
+/// moments and cost different amounts. A fetcher locating a message by its
+/// index abbreviation needs to know the bytes that arrived carry category 2,
+/// number 22 at level type 1 — and finding out they do not should not require
+/// unpacking two million points first.
+///
+/// # Errors
+///
+/// Returns [`GribError`] naming the unsupported template or the shortfall.
+pub fn header(bytes: &[u8]) -> Result<Header, GribError> {
+    let body = indicator(bytes)?;
+
+    let mut grid = None;
+    let mut product = None;
+
+    for section in section::walk(body)? {
+        match section.number {
+            3 => grid = Some(grid::parse(section.body)?),
+            4 => product = Some(product::parse(section.body)?),
+            _ => {}
+        }
+    }
+
+    Ok(Header {
+        discipline: bytes[6],
+        grid: grid.ok_or(GribError::MissingSection(3))?,
+        product: product.ok_or(GribError::MissingSection(4))?,
+    })
 }

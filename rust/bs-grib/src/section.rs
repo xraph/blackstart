@@ -46,6 +46,33 @@ pub(crate) fn be_u32(bytes: &[u8], at: usize) -> u32 {
     out
 }
 
+/// Reads a big-endian u16.
+pub(crate) fn be_u16(bytes: &[u8], at: usize) -> u16 {
+    (u16::from(bytes[at]) << 8) | u16::from(bytes[at + 1])
+}
+
+/// Reads a GRIB2 signed integer.
+///
+/// Not two's complement. GRIB2 signs a value with the high bit of its first
+/// octet and stores the magnitude in the rest, so a naive cast reads -1 as a
+/// very large positive number — and a latitude read that way lands the grid in
+/// the wrong hemisphere.
+pub(crate) fn signed_u32(bytes: &[u8], at: usize) -> i32 {
+    let raw = be_u32(bytes, at);
+
+    // The magnitude is 31 bits, so it always fits an i32 — and returning i32
+    // rather than a wider type is what lets callers reach f64 through
+    // `f64::from`, which is infallible and lossless, instead of an `as` cast
+    // the numerical lints rightly refuse.
+    let magnitude = i32::try_from(raw & 0x7fff_ffff).unwrap_or(i32::MAX);
+
+    if raw & 0x8000_0000 != 0 {
+        -magnitude
+    } else {
+        magnitude
+    }
+}
+
 /// Walks a message's sections, stopping at the terminator.
 ///
 /// # Errors
@@ -107,9 +134,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn signed_values_use_sign_magnitude() {
+        // 0x80000005 is -5 in GRIB2's convention and 2147483653 as two's
+        // complement. Reading a latitude the second way puts the grid in the
+        // southern hemisphere.
+        assert_eq!(signed_u32(&[0x80, 0x00, 0x00, 0x05], 0), -5);
+        assert_eq!(signed_u32(&[0x00, 0x00, 0x00, 0x05], 0), 5);
+
+        // The widest magnitude still fits, which is the property that lets
+        // this return i32 at all.
+        assert_eq!(signed_u32(&[0x7f, 0xff, 0xff, 0xff], 0), i32::MAX);
+    }
+
+    #[test]
     fn big_endian_readers_agree_with_their_widths() {
         let bytes = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
 
+        assert_eq!(be_u16(&bytes, 0), 0x0102);
         assert_eq!(be_u32(&bytes, 0), 0x0102_0304);
         assert_eq!(be_u64(&bytes, 0), 0x0102_0304_0506_0708);
     }
