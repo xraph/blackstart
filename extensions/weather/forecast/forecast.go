@@ -16,38 +16,30 @@ import (
 
 	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/weather/field"
+	"github.com/xraph/blackstart/extensions/weather/model"
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
 )
 
 // Model names a numerical weather prediction model.
 //
-// A closed set, like the source registry it draws from. Adding a model is a
-// decision about which public data this platform consumes — spec §8 makes it
-// one that needs approval — and a free-text field would let one arrive
-// unnoticed.
-type Model string
+// An alias rather than a definition. The field vocabulary needs the model too
+// — HRRR and GFS agree on parameter numbers but not always on levels, and
+// three fields exist in one and not the other — and this package is built on
+// that one, so defining the type here would make the vocabulary import the
+// forecast types and close a cycle. It lives in its own package; this alias
+// keeps every existing reference working.
+type Model = model.Model
 
+// The models, re-exported so callers do not need a second import for a value
+// they were already reading from this package.
 const (
-	// ModelHRRR is NOAA's High-Resolution Rapid Refresh: 3 km, CONUS only,
-	// issued hourly. The CONUS-only part matters downstream: a span outside
-	// its domain has no sample rather than a zero.
-	ModelHRRR Model = "hrrr"
-
-	// ModelGFS is NOAA's Global Forecast System: coarser, global, issued four
-	// times daily. The fallback where HRRR does not reach, and the longer
-	// horizon where it does.
-	ModelGFS Model = "gfs"
+	ModelHRRR = model.HRRR
+	ModelGFS  = model.GFS
 )
 
 // Models returns every model in the set.
-func Models() []Model { return []Model{ModelHRRR, ModelGFS} }
-
-// Valid reports whether this is a model the platform knows.
-func (m Model) Valid() bool { return m == ModelHRRR || m == ModelGFS }
-
-// String renders the model name.
-func (m Model) String() string { return string(m) }
+func Models() []Model { return model.All() }
 
 // CycleStatus is how far a cycle has been processed.
 type CycleStatus string
