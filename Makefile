@@ -96,6 +96,17 @@ lint-web:
 	cd $(WEB_DIR) && $(PNPM) run lint
 	cd $(WEB_DIR) && $(PNPM) run typecheck
 
+## generate-client: Regenerate the platform API client from a running host
+##
+## Needs the host up (make dev-up && ./bin/blackstart). The generator reads
+## web/packages/api-client/.forge-client.yaml for the source URL, the /api/v1
+## path filter and the feature flags, so this target takes no arguments — the
+## configuration lives with the package it produces, not in a shell history.
+.PHONY: generate-client
+generate-client:
+	cd $(WEB_DIR)/packages/api-client && forge client generate
+	cd $(WEB_DIR) && $(PNPM) --filter @blackstart/api-client typecheck
+
 ## fmt: Format all code
 .PHONY: fmt f
 fmt f:
