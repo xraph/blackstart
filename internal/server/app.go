@@ -204,6 +204,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 	auditExt := chronicleext.New(
 		chronicleext.WithGroveDatabase(""),
 		chronicleext.WithCryptoErasure(true),
+		chronicleext.WithDisableRoutes(),
 	)
 
 	extensions := []forge.Extension{
@@ -230,6 +231,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		// half — roles and permissions — to Authsome's authentication half.
 		extensions = append(extensions, wardenext.New(
 			wardenext.WithGroveDatabase(""),
+			wardenext.WithDisableRoutes(),
 		))
 
 		extensions = append(extensions, authsomeext.New(
