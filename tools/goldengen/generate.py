@@ -75,6 +75,11 @@ CASES = [
     ("case57", nw.case57),
     ("case118", nw.case118),
     ("case300", nw.case300),
+    # A network at the scale the platform claims to work at. Roughly ten times
+    # the largest IEEE case, and the only golden here that exercises the
+    # sparse paths — a solver that is correct on 300 buses and quadratic
+    # somewhere is still correct, and still unusable.
+    ("case2869pegase", nw.case2869pegase),
 ]
 
 
