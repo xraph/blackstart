@@ -42,20 +42,39 @@ func New(resolve func() (forge.Middleware, error)) *Guard {
 // oversight: blackstart runs unauthenticated by default, as a single-operator
 // tool behind whatever the deployment already trusts. What must never happen
 // is a guard that exists and does nothing — a configured authority whose
-// middleware failed to resolve returns a middleware that refuses every
-// request, so the failure is visible as 500s rather than as an open API.
+// middleware cannot be resolved refuses every request instead, so the failure
+// is visible as 503s rather than as an open API.
+//
+// The returned middleware is a stable wrapper that resolves the real one on
+// the first request it serves, not here. Forge calls this during controller
+// registration, which happens inside each extension's Start — so an extension
+// that starts before the authentication authority would otherwise ask for a
+// middleware whose engine does not exist yet. The first version resolved
+// eagerly and segfaulted on exactly that: provenance registers before
+// authsome, and authsome's AuthMiddleware dereferences a nil engine.
+//
+// Resolving per request removes the ordering dependency rather than
+// documenting it, which matters because registration order is not something a
+// controller can see or control.
 func (g *Guard) Middlewares() []forge.Middleware {
 	if g == nil {
 		return nil
 	}
 
-	g.once.Do(func() { g.mw, g.err = g.resolve() })
+	return []forge.Middleware{g.middleware}
+}
 
-	if g.err != nil || g.mw == nil {
-		return []forge.Middleware{refuse(g.err)}
+// middleware defers resolution to the first request.
+func (g *Guard) middleware(next forge.Handler) forge.Handler {
+	return func(ctx forge.Context) error {
+		g.once.Do(func() { g.mw, g.err = g.resolve() })
+
+		if g.err != nil || g.mw == nil {
+			return refuse(g.err)(next)(ctx)
+		}
+
+		return g.mw(next)(ctx)
 	}
-
-	return []forge.Middleware{g.mw}
 }
 
 // ErrUnavailable is what a request meets when the authority could not be

@@ -228,6 +228,8 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 	// What remains is what a single-tenant operator console actually needs: a
 	// password credential, API keys for service-to-service and scripted
 	// access, and two factors — TOTP and passkeys — for the console itself.
+	var authority *authsomeext.Extension
+
 	if cfg.EnableAuth {
 		// Warden first, and that ordering is enforced rather than conventional:
 		// Authsome resolves *warden.Engine from the container during its own
@@ -238,7 +240,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 			wardenext.WithDisableRoutes(),
 		))
 
-		extensions = append(extensions, authsomeext.New(
+		authExt := authsomeext.New(
 			// Mounted outside /api/v1 on purpose. Authsome contributes ~84
 			// paths, and under the domain prefix they outnumber the 25 that
 			// model the grid by more than three to one — so "generate a client
@@ -259,7 +261,16 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 				mfaplugin.New(),
 				passkeyplugin.New(),
 			),
-		))
+		)
+
+		extensions = append(extensions, authExt)
+
+		// Captured rather than resolved from the container. Authsome does not
+		// provide itself there — `no service registered for type
+		// *extension.Extension` is what the guard reported until this changed —
+		// and it is constructed right here, so closing over the instance is
+		// both simpler and one fewer thing that can be absent at runtime.
+		authority = authExt
 	}
 
 	// The operator dashboard, last in the list on purpose: it calls
@@ -325,9 +336,14 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 	// at all, because the API looks protected.
 	if cfg.EnableAuth {
 		guard := apiauth.New(func() (forge.Middleware, error) {
-			ext, err := forge.Inject[*authsomeext.Extension](app.Container())
-			if err != nil {
-				return nil, err
+			// Captured rather than resolved from the container. Authsome does
+			// not provide itself there — "no service registered for type
+			// *extension.Extension" is what the guard reported until this
+			// changed — and it is constructed in this same function, so
+			// closing over it is both simpler and one fewer thing that can be
+			// absent at runtime.
+			if authority == nil {
+				return nil, errors.New("app: no authentication authority was built")
 			}
 
 			// Two middlewares, and both are needed. AuthMiddleware resolves a
@@ -336,7 +352,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 			// gate. Declaring only the first is how an API ends up looking
 			// protected and answering 200 to everyone, which is what happened
 			// on the first attempt here.
-			return chain(ext.AuthMiddleware(), authsomemw.RequireAuth()), nil
+			return chain(authority.AuthMiddleware(), authsomemw.RequireAuth()), nil
 		})
 
 		if err := vessel.ProvideValue(app.Container(), guard); err != nil {

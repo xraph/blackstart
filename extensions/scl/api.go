@@ -76,8 +76,18 @@ func (c *Controller) Name() string { return "scl:controller" }
 // Prefix returns the base path for SCL routes.
 func (c *Controller) Prefix() string { return "/api/v1/scl" }
 
-// Middlewares returns per-controller middleware.
-func (c *Controller) Middlewares() []forge.Middleware { return c.guard.Middlewares() }
+// Middleware returns per-controller middleware.
+//
+// Singular, and that is not a style choice. Forge's router type-asserts
+// ControllerWithMiddleware, whose method is Middleware() — a controller
+// declaring Middlewares() satisfies nothing, the assertion fails silently, and
+// every route registers unguarded. The assertion below makes that a compile
+// error rather than an open API.
+func (c *Controller) Middleware() []forge.Middleware { return c.guard.Middlewares() }
+
+// Guarded at compile time. Renaming this method or changing its signature
+// stops the build instead of quietly unprotecting the controller.
+var _ forge.ControllerWithMiddleware = (*Controller)(nil)
 
 // Routes registers the read endpoints.
 func (c *Controller) Routes(router forge.Router) error {
