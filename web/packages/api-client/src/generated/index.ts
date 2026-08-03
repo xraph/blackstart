@@ -6,3 +6,4 @@ export * from './client';
 
 export * from './rest';
 export * from './pagination';
+export * from './query';

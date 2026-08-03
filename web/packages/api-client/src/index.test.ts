@@ -68,3 +68,40 @@ describe("api client", () => {
     });
   });
 });
+
+describe("query hooks", () => {
+  it("exposes a cache key builder per read endpoint", async () => {
+    const { queryKeys } = await import("./index");
+    expect(Object.keys(queryKeys).length).toBe(25);
+  });
+
+  it("carries both time axes in the key, not just valid time", async () => {
+    const { queryKeys } = await import("./index");
+
+    // The failure this guards against is silent: a key on validAt alone
+    // returns what is true now to a caller that asked what was known then,
+    // and the answer looks entirely plausible.
+    const key = queryKeys.datasourceFeedsGet("feed_1", "2026-08-02T22:00Z", "2019-05-18T00:00Z");
+
+    expect(key).toEqual([
+      "datasource",
+      "feeds",
+      "get",
+      { id: "feed_1", validAt: "2026-08-02T22:00Z", knownAt: "2019-05-18T00:00Z" },
+    ]);
+  });
+
+  it("gives two knowledge times two different keys", async () => {
+    const { queryKeys } = await import("./index");
+
+    const live = queryKeys.datasourceFeedsGet("feed_1", "2026-08-02T22:00Z", undefined);
+    const asOfThen = queryKeys.datasourceFeedsGet("feed_1", "2026-08-02T22:00Z", "2019-05-18T00:00Z");
+
+    expect(JSON.stringify(live)).not.toEqual(JSON.stringify(asOfThen));
+  });
+
+  it("keys are prefixed by their group, so a group can be invalidated at once", async () => {
+    const { queryKeys } = await import("./index");
+    expect(queryKeys.networkmodelList(10)[0]).toBe("networkmodel");
+  });
+});

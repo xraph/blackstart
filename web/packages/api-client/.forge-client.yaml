@@ -39,3 +39,9 @@ defaults:
   # place. Without them every caller writes the same follow-the-cursor loop.
   pagination: true
   error_taxonomy: true
+
+  # TanStack Query hooks over the generated client, not beside it. Each hook
+  # calls the REST method rather than issuing its own request, so the API is
+  # described once. Cache keys carry every parameter including both time axes,
+  # which is what stops a live answer being served to an as-of query.
+  react_query: true
