@@ -73,6 +73,33 @@ pub(crate) fn signed_u32(bytes: &[u8], at: usize) -> i32 {
     }
 }
 
+/// Reads a GRIB2 signed 16-bit integer, with the same sign-magnitude rule.
+pub(crate) fn signed_u16(bytes: &[u8], at: usize) -> i32 {
+    let raw = be_u16(bytes, at);
+    let magnitude = i32::from(raw & 0x7fff);
+
+    if raw & 0x8000 != 0 {
+        -magnitude
+    } else {
+        magnitude
+    }
+}
+
+/// Reads an IEEE 754 single-precision float, as section 5 stores its
+/// reference value.
+pub(crate) fn be_f32(bytes: &[u8], at: usize) -> f32 {
+    f32::from_bits(be_u32(bytes, at))
+}
+
+/// Where section 6 states whether a bitmap applies, from the section start.
+pub(crate) const BITMAP_INDICATOR_AT: usize = 5;
+
+/// The indicator meaning "no bitmap applies to this product".
+pub(crate) const NO_BITMAP: u8 = 255;
+
+/// Where section 7's packed values begin, from the section start.
+pub(crate) const DATA_PAYLOAD_AT: usize = 5;
+
 /// Walks a message's sections, stopping at the terminator.
 ///
 /// # Errors
@@ -144,6 +171,9 @@ mod tests {
         // The widest magnitude still fits, which is the property that lets
         // this return i32 at all.
         assert_eq!(signed_u32(&[0x7f, 0xff, 0xff, 0xff], 0), i32::MAX);
+
+        assert_eq!(signed_u16(&[0x80, 0x05], 0), -5);
+        assert_eq!(signed_u16(&[0x00, 0x05], 0), 5);
     }
 
     #[test]

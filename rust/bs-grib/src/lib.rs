@@ -24,6 +24,7 @@
 mod grid;
 mod product;
 mod section;
+mod unpack;
 
 pub use grid::Grid;
 pub use product::Product;
@@ -223,5 +224,79 @@ pub fn header(bytes: &[u8]) -> Result<Header, GribError> {
         discipline: bytes[6],
         grid: grid.ok_or(GribError::MissingSection(3))?,
         product: product.ok_or(GribError::MissingSection(4))?,
+    })
+}
+
+/// A decoded GRIB2 message: one field, on one grid, at one level and time.
+#[derive(Debug, Clone)]
+pub struct Message {
+    /// What the message is, without its values.
+    pub header: Header,
+
+    /// The values, in grid order: `values[j * nx + i]`.
+    ///
+    /// Always `nx * ny` long, including for a constant field whose data
+    /// section is empty — a caller indexing by position must not have to ask
+    /// which packing produced it.
+    pub values: Vec<f64>,
+}
+
+/// Reads one GRIB2 message, values and all.
+///
+/// # Errors
+///
+/// Returns a [`GribError`] naming the template, section or shortfall rather
+/// than a generic parse failure — see the type's documentation for why.
+pub fn parse(bytes: &[u8]) -> Result<Message, GribError> {
+    let body = indicator(bytes)?;
+
+    let mut grid = None;
+    let mut product = None;
+    let mut packing = None;
+    let mut data: Option<&[u8]> = None;
+
+    for section in section::walk(body)? {
+        match section.number {
+            3 => grid = Some(grid::parse(section.body)?),
+            4 => product = Some(product::parse(section.body)?),
+            5 => packing = Some(unpack::parse(section.body)?),
+            6 => {
+                // 255 means "no bitmap applies", which is what every product
+                // this reads emits. Anything else is a real bitmap, and
+                // decoding values without knowing which points they belong to
+                // would misplace every one of them.
+                let indicator = section.body[section::BITMAP_INDICATOR_AT];
+
+                if indicator != section::NO_BITMAP {
+                    return Err(GribError::BitmapUnsupported(indicator));
+                }
+            }
+            7 => data = Some(&section.body[section::DATA_PAYLOAD_AT..]),
+            _ => {}
+        }
+    }
+
+    let grid = grid.ok_or(GribError::MissingSection(3))?;
+    let product = product.ok_or(GribError::MissingSection(4))?;
+    let packing = packing.ok_or(GribError::MissingSection(5))?;
+    let data = data.ok_or(GribError::MissingSection(7))?;
+
+    let expected = grid.point_count();
+    let values = unpack::decode(&packing, data, expected);
+
+    if values.len() != expected {
+        return Err(GribError::ValueCountMismatch {
+            decoded: values.len(),
+            expected,
+        });
+    }
+
+    Ok(Message {
+        header: Header {
+            discipline: bytes[6],
+            grid,
+            product,
+        },
+        values,
     })
 }
