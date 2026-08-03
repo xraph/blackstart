@@ -13,6 +13,7 @@ import (
 	"github.com/xraph/blackstart/extensions/contingency/store"
 	fabriqstore "github.com/xraph/blackstart/extensions/contingency/store/fabriq"
 	"github.com/xraph/blackstart/extensions/fabric"
+	"github.com/xraph/blackstart/pkg/apiauth"
 	"github.com/xraph/blackstart/pkg/hooks"
 	"github.com/xraph/blackstart/pkg/solver"
 )
@@ -176,7 +177,12 @@ func (e *Extension) Start(ctx context.Context) error {
 	// Registered here rather than in Register, because the controller needs the
 	// engine and the engine needs the solver connection. Forge accepts a
 	// controller after startup; it would not accept a nil engine behind one.
-	if err := app.RegisterController(NewController(engine)); err != nil {
+	// Optional: an unauthenticated deployment provides no guard, and a nil
+	// guard declares no middleware. A configured one that cannot resolve its
+	// middleware refuses every request rather than serving it open.
+	guard, _ := forge.Inject[*apiauth.Guard](app.Container())
+
+	if err := app.RegisterController(NewController(engine, guard)); err != nil {
 		return fmt.Errorf("contingency: registering the HTTP controller: %w", err)
 	}
 

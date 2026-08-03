@@ -10,6 +10,7 @@ import (
 
 	"github.com/xraph/blackstart/extensions/provenance/store"
 	"github.com/xraph/blackstart/extensions/provenance/store/memory"
+	"github.com/xraph/blackstart/pkg/apiauth"
 	"github.com/xraph/blackstart/pkg/hooks"
 )
 
@@ -120,7 +121,12 @@ func (e *Extension) Start(ctx context.Context) error {
 
 	e.engine = engine
 
-	if err := app.RegisterController(NewController(engine)); err != nil {
+	// Optional: an unauthenticated deployment provides no guard, and a nil
+	// guard declares no middleware. A configured one that cannot resolve its
+	// middleware refuses every request rather than serving it open.
+	guard, _ := forge.Inject[*apiauth.Guard](app.Container())
+
+	if err := app.RegisterController(NewController(engine, guard)); err != nil {
 		return fmt.Errorf("provenance: registering the HTTP controller: %w", err)
 	}
 

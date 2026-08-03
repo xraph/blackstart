@@ -6,6 +6,8 @@ import (
 
 	"github.com/xraph/forge"
 
+	"github.com/xraph/blackstart/pkg/apiauth"
+
 	tid "github.com/xraph/blackstart/extensions/topology/id"
 	"github.com/xraph/blackstart/extensions/topology/network"
 	"github.com/xraph/blackstart/extensions/topology/reduce"
@@ -62,11 +64,12 @@ type reductionResponse struct {
 // and every reduction derived from it would be unciteable.
 type Controller struct {
 	engine *Engine
+	guard  *apiauth.Guard
 }
 
 // NewController builds the HTTP surface over an engine.
-func NewController(engine *Engine) *Controller {
-	return &Controller{engine: engine}
+func NewController(engine *Engine, guard *apiauth.Guard) *Controller {
+	return &Controller{engine: engine, guard: guard}
 }
 
 // Name implements forge.Controller.
@@ -76,7 +79,7 @@ func (c *Controller) Name() string { return "topology:controller" }
 func (c *Controller) Prefix() string { return "/api/v1/topology" }
 
 // Middlewares returns per-controller middleware.
-func (c *Controller) Middlewares() []forge.Middleware { return nil }
+func (c *Controller) Middlewares() []forge.Middleware { return c.guard.Middlewares() }
 
 // Routes registers the read endpoints.
 func (c *Controller) Routes(router forge.Router) error {

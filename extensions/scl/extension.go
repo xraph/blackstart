@@ -15,6 +15,7 @@ import (
 	"github.com/xraph/blackstart/extensions/scl/store"
 	fabriqstore "github.com/xraph/blackstart/extensions/scl/store/fabriq"
 	"github.com/xraph/blackstart/extensions/topology"
+	"github.com/xraph/blackstart/pkg/apiauth"
 	"github.com/xraph/blackstart/pkg/hooks"
 )
 
@@ -124,7 +125,12 @@ func (e *Extension) Start(context.Context) error {
 	// Registered here rather than in Register, because the controller needs
 	// the engine and the engine needs the store. Forge accepts a controller
 	// after startup; it would not accept a nil engine behind one.
-	if err := app.RegisterController(NewController(engine)); err != nil {
+	// Optional: an unauthenticated deployment provides no guard, and a nil
+	// guard declares no middleware. A configured one that cannot resolve its
+	// middleware refuses every request rather than serving it open.
+	guard, _ := forge.Inject[*apiauth.Guard](app.Container())
+
+	if err := app.RegisterController(NewController(engine, guard)); err != nil {
 		return fmt.Errorf("scl: registering the HTTP controller: %w", err)
 	}
 

@@ -7,6 +7,8 @@ import (
 
 	"github.com/xraph/forge"
 
+	"github.com/xraph/blackstart/pkg/apiauth"
+
 	"github.com/xraph/blackstart/extensions/datasource/feed"
 	dsid "github.com/xraph/blackstart/extensions/datasource/id"
 	"github.com/xraph/blackstart/extensions/datasource/source"
@@ -75,11 +77,12 @@ type feedsResponse struct {
 // later would mean taking away an API people already use.
 type Controller struct {
 	engine *Engine
+	guard  *apiauth.Guard
 }
 
 // NewController builds the HTTP surface over an engine.
-func NewController(engine *Engine) *Controller {
-	return &Controller{engine: engine}
+func NewController(engine *Engine, guard *apiauth.Guard) *Controller {
+	return &Controller{engine: engine, guard: guard}
 }
 
 // Name implements forge.Controller.
@@ -89,7 +92,7 @@ func (c *Controller) Name() string { return "datasource:controller" }
 func (c *Controller) Prefix() string { return "/api/v1/datasources" }
 
 // Middlewares returns per-controller middleware.
-func (c *Controller) Middlewares() []forge.Middleware { return nil }
+func (c *Controller) Middlewares() []forge.Middleware { return c.guard.Middlewares() }
 
 // Routes registers the registry endpoints.
 func (c *Controller) Routes(router forge.Router) error {

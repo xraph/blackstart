@@ -5,6 +5,8 @@ import (
 
 	"github.com/xraph/forge"
 
+	"github.com/xraph/blackstart/pkg/apiauth"
+
 	cid "github.com/xraph/blackstart/extensions/contingency/id"
 	"github.com/xraph/blackstart/extensions/contingency/sweep"
 	"github.com/xraph/blackstart/pkg/httperr"
@@ -59,11 +61,12 @@ type rankedResponse struct {
 // findings with no dataset version behind them.
 type Controller struct {
 	engine *Engine
+	guard  *apiauth.Guard
 }
 
 // NewController builds the HTTP surface over an engine.
-func NewController(engine *Engine) *Controller {
-	return &Controller{engine: engine}
+func NewController(engine *Engine, guard *apiauth.Guard) *Controller {
+	return &Controller{engine: engine, guard: guard}
 }
 
 // Name implements forge.Controller.
@@ -73,7 +76,7 @@ func (c *Controller) Name() string { return "contingency:controller" }
 func (c *Controller) Prefix() string { return "/api/v1/contingency" }
 
 // Middlewares returns per-controller middleware.
-func (c *Controller) Middlewares() []forge.Middleware { return nil }
+func (c *Controller) Middlewares() []forge.Middleware { return c.guard.Middlewares() }
 
 // Routes registers the read endpoints.
 func (c *Controller) Routes(router forge.Router) error {

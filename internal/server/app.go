@@ -18,6 +18,7 @@ import (
 	"time"
 
 	authsomeext "github.com/xraph/authsome/extension"
+	authsomemw "github.com/xraph/authsome/middleware"
 	apikeyplugin "github.com/xraph/authsome/plugins/apikey"
 	mfaplugin "github.com/xraph/authsome/plugins/mfa"
 	passkeyplugin "github.com/xraph/authsome/plugins/passkey"
@@ -27,7 +28,10 @@ import (
 	"github.com/xraph/fabriq/core/registry"
 	fabriqmigrations "github.com/xraph/fabriq/migrations"
 	"github.com/xraph/forge"
+	"github.com/xraph/vessel"
 	wardenext "github.com/xraph/warden/extension"
+
+	"github.com/xraph/blackstart/pkg/apiauth"
 
 	dashboardExt "github.com/xraph/forge/extensions/dashboard"
 	_ "github.com/xraph/grove/drivers/pgdriver"           // registers the "postgres" driver
@@ -235,7 +239,16 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		))
 
 		extensions = append(extensions, authsomeext.New(
-			authsomeext.WithBasePath("/api/v1/auth"),
+			// Mounted outside /api/v1 on purpose. Authsome contributes ~84
+			// paths, and under the domain prefix they outnumber the 25 that
+			// model the grid by more than three to one — so "generate a client
+			// for /api/v1" would produce a client that is mostly identity.
+			//
+			// A separate root makes the split a prefix rule rather than a
+			// hand-maintained exclusion list, and it says something true: the
+			// grid API and the identity API are different surfaces with
+			// different audiences and different lifecycles.
+			authsomeext.WithBasePath("/identity"),
 			// The same grove database as everything else. A second connection
 			// to manage would be a second thing to get wrong in a deployment
 			// whose whole point is one binary and one database.
@@ -302,6 +315,35 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		forge.WithDisableMigrations(),
 	)
 
+	// The guard every API controller declares. Provided before the extensions
+	// register so each can resolve it in Start, and resolved lazily inside so
+	// this does not depend on Authsome having finished starting.
+	//
+	// Fail-closed: when an authority is configured and its middleware cannot
+	// be resolved, every guarded request is refused rather than served
+	// unauthenticated. A guard that exists and does nothing is worse than none
+	// at all, because the API looks protected.
+	if cfg.EnableAuth {
+		guard := apiauth.New(func() (forge.Middleware, error) {
+			ext, err := forge.Inject[*authsomeext.Extension](app.Container())
+			if err != nil {
+				return nil, err
+			}
+
+			// Two middlewares, and both are needed. AuthMiddleware resolves a
+			// credential into context and lets an anonymous request through —
+			// it is the identity producer, not the gate. RequireAuth is the
+			// gate. Declaring only the first is how an API ends up looking
+			// protected and answering 200 to everyone, which is what happened
+			// on the first attempt here.
+			return chain(ext.AuthMiddleware(), authsomemw.RequireAuth()), nil
+		})
+
+		if err := vessel.ProvideValue(app.Container(), guard); err != nil {
+			return nil, fmt.Errorf("app: providing the API guard: %w", err)
+		}
+	}
+
 	for _, ext := range extensions {
 		if err := app.RegisterExtension(ext); err != nil {
 			return nil, fmt.Errorf("app: registering %s: %w", ext.Name(), err)
@@ -366,4 +408,19 @@ func Fabric(app forge.App) (*fabriq.Fabriq, error) {
 // without opening a connection — `bsctl entities`, and the startup log line.
 func Registry(contributors ...entities.Contributor) (*registry.Registry, error) {
 	return entities.Build(contributors...)
+}
+
+// chain composes middlewares so the first wraps the rest.
+//
+// Order is load-bearing: the identity producer has to run before the gate, or
+// the gate finds nothing in context and refuses every request including the
+// authenticated ones.
+func chain(mws ...forge.Middleware) forge.Middleware {
+	return func(next forge.Handler) forge.Handler {
+		for index := len(mws) - 1; index >= 0; index-- {
+			next = mws[index](next)
+		}
+
+		return next
+	}
 }
