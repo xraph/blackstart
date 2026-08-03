@@ -44,9 +44,17 @@ possibility that blackstart stores the ratio the wrong way round.
 
 That leaves a convention difference between the two oracles rather than a
 defect here: blackstart's own solver already matches pandapower to 1e-14 on
-these cases, so it is pypower that differs from pandapower on transformer
-branches, not blackstart that differs from both. Worth confirming before
-trusting either at a tap ratio far from unity.
+these cases, so it is pypower that differs from pandapower, not blackstart
+that differs from both.
+
+But "transformer branch modelling" is as far as the evidence goes, and an
+earlier draft of this comment over-claimed. Off-nominal tap *count* does not
+predict which cases disagree: case 57 has fifteen and agrees to 4e-15, case
+118 has nine and agrees to 1e-15, while case 14 has three and disagrees by
+1.6e-3. Whatever the difference is, it is a property of particular
+transformers rather than of having them — the pattern within case 14 (every
+disagreeing bus downstream of a tap) is real, and the pattern across cases is
+not yet explained.
 
 Weakening the tolerance until it passes would defeat the point of having a
 second oracle. Until the difference is understood, this reports and does not
