@@ -40,6 +40,23 @@ pub struct Bus {
     pub q_min: f64,
     /// Upper limit on reactive output, per unit. Infinite by default.
     pub q_max: f64,
+    /// Lower limit on real output, per unit. Negative infinity by default.
+    ///
+    /// Infinity rather than `Option` for the same reason `q_min` uses it:
+    /// unbounded is a real and common state, and infinity is what it means.
+    pub p_min: f64,
+    /// Upper limit on real output, per unit. Infinite by default.
+    pub p_max: f64,
+    /// Inertia constant, seconds, on the machine's own rating.
+    ///
+    /// `Option`, unlike the limits above, because there is no numeric value
+    /// that means "unknown" here. Zero inertia says the island has no rotating
+    /// mass and collapses on any imbalance; infinite inertia says frequency
+    /// never moves. Both are confident physical claims, and an unpopulated
+    /// import must make neither.
+    pub inertia_h: Option<f64>,
+    /// Governor droop, per unit, dimensionless. Typically 0.05.
+    pub droop_r: Option<f64>,
     /// Shunt conductance to ground at this bus, per unit.
     pub g_shunt: f64,
     /// Shunt susceptance to ground at this bus, per unit. Positive is
@@ -61,6 +78,10 @@ impl Bus {
             v_angle: 0.0,
             q_min: f64::NEG_INFINITY,
             q_max: f64::INFINITY,
+            p_min: f64::NEG_INFINITY,
+            p_max: f64::INFINITY,
+            inertia_h: None,
+            droop_r: None,
             g_shunt: 0.0,
             b_shunt: 0.0,
         }
@@ -78,6 +99,10 @@ impl Bus {
             v_angle: 0.0,
             q_min: f64::NEG_INFINITY,
             q_max: f64::INFINITY,
+            p_min: f64::NEG_INFINITY,
+            p_max: f64::INFINITY,
+            inertia_h: None,
+            droop_r: None,
             g_shunt: 0.0,
             b_shunt: 0.0,
         }
@@ -121,9 +146,29 @@ impl Bus {
             v_angle: 0.0,
             q_min: f64::NEG_INFINITY,
             q_max: f64::INFINITY,
+            p_min: f64::NEG_INFINITY,
+            p_max: f64::INFINITY,
+            inertia_h: None,
+            droop_r: None,
             g_shunt: 0.0,
             b_shunt: 0.0,
         }
+    }
+
+    /// Sets the real output limits, which bound re-dispatch.
+    #[must_use]
+    pub fn with_real_limits(mut self, p_min: f64, p_max: f64) -> Self {
+        self.p_min = p_min;
+        self.p_max = p_max;
+        self
+    }
+
+    /// Sets the machine data an island frequency model needs.
+    #[must_use]
+    pub fn with_machine(mut self, inertia_h: f64, droop_r: f64) -> Self {
+        self.inertia_h = Some(inertia_h);
+        self.droop_r = Some(droop_r);
+        self
     }
 }
 
