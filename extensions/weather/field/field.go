@@ -253,24 +253,28 @@ var shared = map[Field]Spec{
 		LevelText: "surface",
 		Category:  1, Number: 7, LevelType: levelSurface,
 	},
-	// The categorical flags are NCEP local-table parameters. Each is a yes/no
-	// value, so Ratio is the honest unit — giving one a physical dimension
-	// would let it be added to something.
+	// The categorical flags carry the WMO standard numbers 33 to 36, not the
+	// NCEP local-table numbers 192 to 195 that the abbreviations suggest.
+	// Both exist; these products publish the former, which was read from the
+	// section 4 of real messages rather than guessed from the abbreviation.
+	//
+	// Each is a yes/no value, so Ratio is the honest unit — giving one a
+	// physical dimension would let it be added to something.
 	PrecipRain: {
 		Unit: quantity.Ratio, Abbrev: "CRAIN", LevelText: "surface",
-		Category: 1, Number: 192, LevelType: levelSurface,
+		Category: 1, Number: 33, LevelType: levelSurface,
 	},
 	PrecipFreezingRain: {
 		Unit: quantity.Ratio, Abbrev: "CFRZR", LevelText: "surface",
-		Category: 1, Number: 193, LevelType: levelSurface,
+		Category: 1, Number: 34, LevelType: levelSurface,
 	},
 	PrecipIcePellets: {
 		Unit: quantity.Ratio, Abbrev: "CICEP", LevelText: "surface",
-		Category: 1, Number: 194, LevelType: levelSurface,
+		Category: 1, Number: 35, LevelType: levelSurface,
 	},
 	PrecipSnow: {
 		Unit: quantity.Ratio, Abbrev: "CSNOW", LevelText: "surface",
-		Category: 1, Number: 195, LevelType: levelSurface,
+		Category: 1, Number: 36, LevelType: levelSurface,
 	},
 	PercentFrozen: {
 		Unit: quantity.Percent, Abbrev: "CPOFP", LevelText: "surface",
@@ -301,7 +305,7 @@ var hrrrOnly = map[Field]Spec{
 	FreezingRain: {
 		Unit: quantity.KilogramPerSquareMeter, Abbrev: "FRZR",
 		LevelText: "surface",
-		Category:  1, Number: 227, LevelType: levelSurface,
+		Category:  1, Number: 225, LevelType: levelSurface,
 	},
 	SnowAccum: {
 		Unit: quantity.Meter, Abbrev: "ASNOW", LevelText: "surface",
