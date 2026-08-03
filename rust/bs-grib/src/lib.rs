@@ -23,6 +23,7 @@
 
 mod grid;
 mod product;
+mod sample;
 mod section;
 mod unpack;
 
