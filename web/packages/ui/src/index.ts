@@ -28,6 +28,7 @@ export * from "./instrument/provenance";
 
 export * from "./shell/app-shell";
 export * from "./shell/time-axis";
+export * from "./shell/responsive";
 
 export * from "./panels/contingency-list";
 export * from "./panels/event-log";
