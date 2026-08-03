@@ -1,7 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["bs-case", "bs-contingency", "bs-factors", "bs-golden",
-    "bs-powerflow", "bs-protection", "bs-quantity", "bs-solver", "bs-sparse"]
+    "bs-grib", "bs-powerflow", "bs-protection", "bs-quantity", "bs-solver",
+    "bs-sparse"]
 
 # Member crates are added as they are built (Phase 2):
 #   bs-quantity     per-unit and SI newtypes, mirroring Go's pkg/quantity
@@ -10,6 +11,7 @@ members = ["bs-case", "bs-contingency", "bs-factors", "bs-golden",
 #   bs-powerflow    DC, Newton-Raphson, fast-decoupled, reactive limits
 #   bs-factors      PTDF / LODF / OTDF
 #   bs-contingency  N-1 screening, parallelized
+#   bs-grib         GRIB2 decoding and point sampling (Phase 3)
 #   bs-solver       the gRPC service binary and its model cache
 #   bs-golden       golden-file comparison harness (dev only)
 
