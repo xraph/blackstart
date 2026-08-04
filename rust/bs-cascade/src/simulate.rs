@@ -5,8 +5,7 @@
 //! those instants, so this module owns exactly the things a single step
 //! cannot: opening the branches that started it, deciding when to stop, and
 //! turning the accumulated changes into the time-ordered log an operator
-//! reads back. This half of the module is the log's vocabulary — the event
-//! and outcome types the loop fills in.
+//! reads back.
 //!
 //! Every event this module emits carries an absolute time, and every event
 //! fired within one call to [`step`] is reported at the SAME instant — that
@@ -24,7 +23,13 @@
 //!
 //! Advisory only. See `docs/SAFETY.md`.
 
-use crate::island::Islands;
+use bs_case::{Bus, Case};
+use bs_frequency::{IslandCondition, Response, Scheme};
+use bs_protection::{Protection, TripCandidate, TripCause};
+
+use crate::dispatch::Balance;
+use crate::island::{Islands, Subcase};
+use crate::step::{Options, Outcome, StepError, step};
 
 /// The five event kinds the operator console's schema recognizes.
 ///
@@ -127,10 +132,10 @@ pub struct Cascade {
     /// Load lost: the load sitting in a de-energized island at the end, plus
     /// every fraction UFLS shed along the way.
     ///
-    /// Computed once, from the final case state and a running tally kept
-    /// during the loop — not incrementally recomputed at each step and
+    /// Computed once, here, from the final case state and a running tally
+    /// kept during the loop — not incrementally recomputed at each step and
     /// folded into a second running total, which is how the two versions
-    /// drift apart.
+    /// drift apart. See [`simulate`] for where each half comes from.
     pub load_lost: f64,
     /// Steps that produced a trip or a shed. A step that found nothing to
     /// do does not count — it is the evidence the cascade is over, not a
@@ -138,6 +143,290 @@ pub struct Cascade {
     pub steps: usize,
     /// Simulated seconds elapsed.
     pub elapsed: f64,
+}
+
+/// Runs a cascade from an initiating outage to a settled, truncated, or
+/// collapsed end state.
+///
+/// Every initiating branch opens at `t = 0`, simultaneously — a real
+/// initiating event (a storm cell, a common corridor) does not stagger
+/// itself to be convenient for this loop. From there, [`step`] is called
+/// until one of three things is true: every island still carrying load has
+/// died (`Collapsed`); the step found nothing left to trip or shed
+/// (`Settled`); or the step or time budget is exhausted (`Truncated`). The
+/// collapse check runs first, on purpose — see the loop body for why a step
+/// that fires nothing can still be the step that reveals the network is
+/// gone.
+///
+/// # Panics
+///
+/// Panics if `initiating` names a branch index the case does not have. That
+/// is a caller mistake worth naming loudly: a silent no-op would report an
+/// outage that never happened as though it had been simulated.
+///
+/// # Errors
+///
+/// Returns whatever [`StepError`] the underlying [`step`] returns, unchanged.
+pub fn simulate(
+    case: &Case,
+    initiating: &[usize],
+    protection: &Protection,
+    scheme: &Scheme,
+    options: &Options,
+    limits: &Limits,
+) -> Result<Cascade, StepError> {
+    let mut case = case.clone();
+    let (mut events, mut island_count) = open_initiating(&mut case, initiating);
+
+    let mut elapsed = 0.0;
+    let mut steps = 0;
+    let mut shed_total = 0.0;
+
+    let outcome = loop {
+        if steps >= limits.max_steps || elapsed >= limits.horizon {
+            break CascadeOutcome::Truncated { steps };
+        }
+
+        // The served load per island as of the instant `step` is about to
+        // see it, captured before the call because `step` mutates `case` in
+        // place — dispatch and any UFLS shed — and there is no way to
+        // recover a pre-shed load from the post-shed injections afterward.
+        let before = Islands::of(&case);
+        let served_before: Vec<f64> = before
+            .members
+            .iter()
+            .map(|members| Balance::of(&case.buses, members).load)
+            .collect();
+
+        let out = step(&mut case, protection, scheme, options)?;
+
+        // Checked before "nothing fired": a step can find nothing left to
+        // trip or shed and still be the step that reveals every remaining
+        // island is dead. That is exactly what a lone, load-free generator
+        // island — left over from an earlier split — looks like, and
+        // reporting it `Settled` would call a fully de-energized network a
+        // steady state.
+        if is_collapsed(&out.islands, &case.buses, &out.responses) {
+            break CascadeOutcome::Collapsed;
+        }
+
+        let no_trips = out.fired.is_empty();
+        let no_sheds = out.responses.iter().flatten().all(|r| r.sheds.is_empty());
+        if no_trips && no_sheds {
+            break CascadeOutcome::Settled;
+        }
+
+        steps += 1;
+        let at = elapsed + out.at;
+
+        let effects = record_step(&case, &out, at, &served_before, island_count);
+        events.extend(effects.events);
+        shed_total += effects.shed;
+        island_count = effects.island_count;
+
+        elapsed = at;
+    };
+
+    // Computed once, here, rather than folded into the loop above: a de-
+    // energized island's load and a UFLS record kept step by step are two
+    // different kinds of number (a snapshot of the final state, and a
+    // running sum of past events), and adding them incrementally in two
+    // places is how the two come to disagree. One addition, at the end, is
+    // the only version of this number there is.
+    let final_islands = Islands::of(&case);
+    let mut dead_load = 0.0;
+    for members in &final_islands.members {
+        if Subcase::extract(&case, members).is_none() {
+            dead_load += Balance::of(&case.buses, members).load;
+        }
+    }
+    let load_lost = dead_load + shed_total;
+
+    Ok(Cascade {
+        outcome,
+        events,
+        islands: final_islands,
+        load_lost,
+        steps,
+        elapsed,
+    })
+}
+
+/// Opens every initiating branch simultaneously at `t = 0` and logs each as
+/// a `Trip`, returning the log and the island count that opening left
+/// behind — the baseline the loop's own island-count tracking starts from.
+///
+/// # Panics
+///
+/// Panics if `initiating` names a branch index `case` does not have.
+fn open_initiating(case: &mut Case, initiating: &[usize]) -> (Vec<Event>, usize) {
+    for &branch in initiating {
+        assert!(
+            branch < case.n_branch(),
+            "initiating outage names branch {branch}, which does not exist in a \
+             case with {} branches",
+            case.n_branch()
+        );
+        case.branches[branch].in_service = false;
+    }
+
+    // One partition for every initiating branch's event, rather than one
+    // computed as each branch opens: they are simultaneous at t = 0, so the
+    // islands any one of them belongs to are the islands left once all of
+    // them are already open, not a partition only some of them caused.
+    let opened = Islands::of(case);
+    let mut events = Vec::with_capacity(initiating.len());
+    for &branch in initiating {
+        let from = case.branches[branch].from;
+        events.push(Event {
+            at: 0.0,
+            kind: EventKind::Trip,
+            element: case.branches[branch].id.clone(),
+            detail: "initiating outage".to_string(),
+            island: Some(opened.of_bus[from]),
+        });
+    }
+
+    (events, opened.count())
+}
+
+/// What one step of the cascade contributed to the log: `Trip` events for
+/// what fired, `Shed` events for what UFLS operated, and an `Island` event
+/// if this step split the network further than it already was.
+struct StepEffects {
+    events: Vec<Event>,
+    /// Per-unit load this step's UFLS shed, across every island — computed
+    /// against `served_before`, since `Response::shed_fraction` is a
+    /// fraction of a load `step` had already reduced by the time it comes
+    /// back out.
+    shed: f64,
+    /// The island count after this step's own fired trips.
+    island_count: usize,
+}
+
+/// Turns one step's [`Outcome`] into log entries, all stamped with the same
+/// coalesced `at` — see the module docs for why every event in one step
+/// shares a single instant rather than each candidate's own finer time.
+fn record_step(
+    case: &Case,
+    out: &Outcome,
+    at: f64,
+    served_before: &[f64],
+    island_count: usize,
+) -> StepEffects {
+    let mut events = Vec::new();
+    let mut shed = 0.0;
+
+    for candidate in &out.fired {
+        let branch = &case.branches[candidate.branch];
+        events.push(Event {
+            at,
+            kind: EventKind::Trip,
+            element: branch.id.clone(),
+            detail: trip_detail(candidate),
+            island: Some(out.islands.of_bus[branch.from]),
+        });
+    }
+
+    for (index, response) in out.responses.iter().enumerate() {
+        let Some(response) = response else { continue };
+
+        if response.shed_fraction > 0.0 {
+            shed += response.shed_fraction * served_before[index];
+        }
+
+        for stage in &response.sheds {
+            events.push(Event {
+                at,
+                kind: EventKind::Shed,
+                element: representative(&out.islands, index, case),
+                detail: format!("stage {} · {:.0}%", stage.stage, stage.fraction * 100.0),
+                island: Some(index),
+            });
+        }
+    }
+
+    // Recomputed on the case as this step actually left it — after its own
+    // fired trips — because that is the only partition that can show this
+    // step's own split. `out.islands` is the partition from before those
+    // trips, by contract; comparing against it here is exactly what would
+    // miss the split this step just caused.
+    let after = Islands::of(case).count();
+    if after > island_count {
+        // Naming which specific island is new would need a mapping from the
+        // pre-split partition to the post-split one, which `Islands::of`
+        // does not provide, and which a step that splits one island into
+        // three would leave ambiguous anyway. The trip that caused the
+        // split is unambiguous — it is the earliest fired candidate, in
+        // `collect`'s canonical branch-index order — and it is why this
+        // event exists at all.
+        let trigger = out
+            .fired
+            .first()
+            .map_or_else(|| case.name.clone(), |c| case.branches[c.branch].id.clone());
+        events.push(Event {
+            at,
+            kind: EventKind::Island,
+            element: trigger,
+            detail: format!("{island_count} islands \u{2192} {after}"),
+            island: None,
+        });
+    }
+
+    StepEffects {
+        events,
+        shed,
+        island_count: after,
+    }
+}
+
+/// Whether every island still carrying load has died.
+///
+/// An island with no load at all — a generator left standing alone after
+/// everything it served separated away from it — is excluded rather than
+/// counted as evidence of collapse: its own frequency is trivially stable
+/// with nothing to balance, and that stability says nothing about whether
+/// the network as a whole still serves anyone. `Collapsed` is a claim about
+/// service, not about every island's rotor being at rest.
+fn is_collapsed(islands: &Islands, buses: &[Bus], responses: &[Option<Response>]) -> bool {
+    let mut any_load = false;
+
+    for (members, response) in islands.members.iter().zip(responses) {
+        let load = Balance::of(buses, members).load;
+        if load <= 0.0 {
+            continue;
+        }
+        any_load = true;
+
+        let dead = match response {
+            None => true,
+            Some(r) => r.condition == IslandCondition::Collapsed,
+        };
+        if !dead {
+            return false;
+        }
+    }
+
+    any_load
+}
+
+/// What a trip candidate's cause was, in the operator's shorthand.
+fn trip_detail(candidate: &TripCandidate) -> String {
+    match candidate.cause {
+        TripCause::Overcurrent => format!("{:.0}% · oc", candidate.loading * 100.0),
+        TripCause::Distance { zone } => format!("dist zone {zone}"),
+    }
+}
+
+/// The bus that stands in for an island in an event that cannot point at one
+/// specific line — a shed applies pro-rata across every PQ bus in the
+/// island, so no single bus caused it. The lowest-index member is picked
+/// because `Islands::members` is already sorted that way, which makes the
+/// choice deterministic without a separate rule.
+fn representative(islands: &Islands, index: usize, case: &Case) -> String {
+    islands.members[index]
+        .first()
+        .map_or_else(|| case.name.clone(), |&bus| case.buses[bus].id.clone())
 }
 
 #[cfg(test)]
