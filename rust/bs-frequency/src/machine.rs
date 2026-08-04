@@ -34,8 +34,20 @@ impl Aggregate {
     /// no separate machine rating. Where `p_max` is infinite — meaning
     /// unlimited rather than large — present output stands in. Both are
     /// approximations, and the second is the weaker one.
+    ///
+    /// `default_droop_r` is [`Defaults::droop_r`] — a machine that states no
+    /// `droop_r` of its own gets this value, not zero governor response.
+    /// There is no way, on `Bus`, to say "this machine deliberately has no
+    /// governor" — `droop_r` is `Option<f64>` purely because the case format
+    /// may simply not have carried the figure, the same reason `inertia_h`
+    /// is optional — so treating an absent value as "no response" would
+    /// silently turn a data gap into a physical claim (the machine biases
+    /// every island it is in toward over-predicting collapse, since the
+    /// system's governors do less work than they really would). A droop that
+    /// IS present but non-positive is a different case — nonsensical input,
+    /// not a gap — and is still excluded below, unchanged.
     #[must_use]
-    pub fn of(buses: &[Bus], members: &[usize]) -> Option<Self> {
+    pub fn of(buses: &[Bus], members: &[usize], default_droop_r: f64) -> Option<Self> {
         let mut weighted_inertia = 0.0;
         let mut inverse_droop = 0.0;
         let mut generation_base = 0.0;
@@ -68,11 +80,14 @@ impl Aggregate {
             generation_base += rating;
             machines += 1;
 
-            // Missing droop means no governor, not no rotor: the machine still
-            // contributes mass above and simply does not respond here.
-            if let Some(droop) = bus.droop_r
-                && droop > 0.0
-            {
+            // A missing droop gets `default_droop_r` — see this function's
+            // own doc for why that default, rather than zero response, is
+            // the honest reading of "the case didn't say". A present but
+            // non-positive droop is left alone and excluded: that is a
+            // caller stating something nonsensical, not a gap this function
+            // has standing to fill in.
+            let droop = bus.droop_r.unwrap_or(default_droop_r);
+            if droop > 0.0 {
                 inverse_droop += rating / droop;
             }
         }

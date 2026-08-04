@@ -207,7 +207,7 @@ pub fn step(
     let mut responses = Vec::with_capacity(islands.count());
 
     for (index, members) in islands.members.iter().enumerate() {
-        let Some(aggregate) = Aggregate::of(&case.buses, members) else {
+        let Some(aggregate) = Aggregate::of(&case.buses, members, options.defaults.droop_r) else {
             responses.push(None);
             continue;
         };
