@@ -111,6 +111,54 @@ fn a_subcase_designates_exactly_one_slack() {
     );
 }
 
+/// A reclosure can merge two islands that each already had their own slack.
+///
+/// Each island, while separated, was itself a `Subcase` with exactly one
+/// slack bus. When the tie that separated them recloses, `Islands::of` finds
+/// them as one island again — and that island now contains two `Slack`
+/// buses, one from each side. `extract` must demote all but the lowest-index
+/// one to `Pv`, or the merged subcase carries two slack buses and
+/// `Case::validate` returns `MultipleSlack`. A test that only ever starts
+/// from a slack-less island (as `a_subcase_designates_exactly_one_slack`
+/// does) cannot see this: it only exercises promotion, never demotion.
+#[test]
+fn merging_two_already_slack_islands_demotes_the_higher_one() {
+    let base = Base::new(100e6, 345e3).expect("a valid base");
+    let case = Case::new(
+        "reclosed",
+        base,
+        vec![Bus::slack("g0", 1.0), Bus::slack("g1", 1.0)],
+        vec![Branch::new("tie", 0, 1, 0.01, 0.1)],
+    );
+
+    let sub = Subcase::extract(&case, &[0, 1]).expect("an island with machines");
+
+    assert_eq!(
+        sub.case.buses[0].kind,
+        BusKind::Slack,
+        "the lowest-index member keeps its slack designation"
+    );
+    assert_eq!(
+        sub.case.buses[1].kind,
+        BusKind::Pv,
+        "the other slack member must be demoted, not left as a second slack"
+    );
+
+    let slacks = sub
+        .case
+        .buses
+        .iter()
+        .filter(|b| b.kind == BusKind::Slack)
+        .count();
+    assert_eq!(slacks, 1);
+
+    assert!(
+        sub.case.validate().is_ok(),
+        "a merged island with two former slacks must still validate — this is \
+         the assertion that catches a missing demotion"
+    );
+}
+
 /// An island with no machine cannot be solved and says so.
 #[test]
 fn an_island_with_no_machine_cannot_be_extracted() {

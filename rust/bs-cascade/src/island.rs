@@ -139,6 +139,12 @@ impl Subcase {
     /// meaningful subcase and this returns `None`.
     #[must_use]
     pub fn extract(case: &Case, members: &[usize]) -> Option<Self> {
+        debug_assert!(
+            members.is_sorted(),
+            "members must be sorted ascending; Islands::of already guarantees this, and \
+             an unsorted slice would silently pick the wrong reference bus below"
+        );
+
         let bus_of = members.to_vec();
 
         let mut local_of_full = vec![usize::MAX; case.n_bus()];
