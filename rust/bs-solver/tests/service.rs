@@ -210,21 +210,13 @@ async fn cached_solver() -> (Solver, String) {
 }
 
 /// A solver with [`collapsing_model`] already cached, and that model's hash.
-async fn cached_solver_that_collapses() -> (Solver, String) {
-    let solver = Solver::new();
-    let hash = upload(&solver, &collapsing_model()).await;
-    (solver, hash)
-}
-
-/// A solver with [`collapsing_model`] already cached, and that model's hash.
 ///
-/// Same model as [`cached_solver_that_collapses`] — `collapsing_model`'s
-/// `{gen, mid}` island already IS a generator well short of its load (an
-/// 8 MW shortfall against 42 MW of capacity, per that fixture's own doc
-/// comment), which is exactly the shape the trace tests below need: a
-/// machine present, and a real deficit for it to respond to. A second,
-/// differently-shaped fixture would only duplicate that arithmetic.
-async fn cached_solver_that_sheds() -> (Solver, String) {
+/// Also the fixture the trace tests below build on: `collapsing_model`'s
+/// `{gen, mid}` island already IS a generator well short of its load, which
+/// is exactly the shape a trace test needs — a machine present, and a real
+/// deficit for it to respond to — so a second, differently-shaped fixture
+/// would only duplicate that arithmetic.
+async fn cached_solver_that_collapses() -> (Solver, String) {
     let solver = Solver::new();
     let hash = upload(&solver, &collapsing_model()).await;
     (solver, hash)
@@ -930,7 +922,7 @@ async fn a_machineless_islands_frequency_fields_are_absent_on_the_wire() {
 /// test's 50-70 Hz band, not merely off by a plausible-looking amount.
 #[tokio::test]
 async fn the_frequency_trace_crosses_in_hertz() {
-    let (solver, hash) = cached_solver_that_sheds().await;
+    let (solver, hash) = cached_solver_that_collapses().await;
 
     let response = solver
         .simulate_cascade(Request::new(proto::SimulateCascadeRequest {
@@ -967,7 +959,7 @@ async fn the_frequency_trace_crosses_in_hertz() {
 /// mapping them onto the wire type.
 #[tokio::test]
 async fn the_trace_is_on_the_same_clock_as_the_events() {
-    let (solver, hash) = cached_solver_that_sheds().await;
+    let (solver, hash) = cached_solver_that_collapses().await;
 
     let response = solver
         .simulate_cascade(Request::new(proto::SimulateCascadeRequest {
