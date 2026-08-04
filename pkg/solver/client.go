@@ -195,6 +195,52 @@ func (c *Client) Solve(
 	return response, nil
 }
 
+// Simulate runs one cascade simulation, uploading the model first if the
+// server does not have it.
+//
+// Mirrors Solve's upload-and-retry exactly, for the same reason: the solver
+// keeps models in memory only, so a restart between an earlier upload and
+// this call must not surface as a failure the caller has to handle specially.
+// The request's ContentHash is filled in from the model, so a caller cannot
+// pass a hash that names something other than what it supplied.
+func (c *Client) Simulate(
+	ctx context.Context,
+	model *solverv1.NetworkModel,
+	request *solverv1.SimulateCascadeRequest,
+) (*solverv1.SimulateCascadeResponse, error) {
+	hash, _, err := Hash(model)
+	if err != nil {
+		return nil, err
+	}
+
+	attempt := proto.CloneOf(request)
+	attempt.ContentHash = hash
+
+	response, err := c.rpc.SimulateCascade(ctx, attempt)
+	if err == nil {
+		return response, nil
+	}
+
+	if !isModelMissing(err) {
+		return nil, fmt.Errorf("solver: simulating: %w", err)
+	}
+
+	// Exactly one retry, for the same reason Solve allows exactly one: a
+	// second FAILED_PRECONDITION after a successful upload means something
+	// other than a cold cache is wrong, and retrying again would turn a bug
+	// into a loop.
+	if _, err := c.Upload(ctx, model); err != nil {
+		return nil, err
+	}
+
+	response, err = c.rpc.SimulateCascade(ctx, attempt)
+	if err != nil {
+		return nil, fmt.Errorf("solver: simulating after upload: %w", err)
+	}
+
+	return response, nil
+}
+
 // Screen runs a contingency sweep, uploading the model first if needed, and
 // calls visit for each result as it arrives.
 //
