@@ -75,6 +75,9 @@ func (f *fakeFetcher) Index(context.Context, string) (fetch.Records, error) {
 			"3:200:d=2026080312:DPT:2 m above ground:1 hour fcst:\n"))
 }
 
+// RangeCalls is how many byte-range fetches were issued.
+func (f *fakeFetcher) RangeCalls() int { return f.rangeCalls }
+
 func (f *fakeFetcher) Range(
 	_ context.Context, _ string, offset, _ int64,
 ) ([]byte, error) {
