@@ -42,6 +42,10 @@ type Engine struct {
 	fetcher  Fetcher
 	recorder provenance.Recorder
 
+	// The sampling half, equally optional.
+	geometry Geometry
+	grids    Grids
+
 	// now is injectable so a test can pin the retrieval times a provenance
 	// record carries rather than comparing against a moving target.
 	now func() time.Time
@@ -63,6 +67,16 @@ func WithIngest(feeds Feeds, fetcher Fetcher, recorder provenance.Recorder) Engi
 	return func(e *Engine) {
 		e.feeds, e.fetcher, e.recorder = feeds, fetcher, recorder
 	}
+}
+
+// WithSampling supplies what turning grids into per-span samples needs.
+//
+// Separate from WithIngest because the two halves fail and recover
+// differently: a deployment can retrieve without a grid service running and
+// sample later from the stored bytes, which is the whole reason retrieval and
+// sampling are distinct operations.
+func WithSampling(geometry Geometry, grids Grids) EngineOption {
+	return func(e *Engine) { e.geometry, e.grids = geometry, grids }
 }
 
 // WithClock replaces the time source. Tests use it; production does not.
