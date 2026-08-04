@@ -20,6 +20,7 @@ vi.mock("@blackstart/globe", async () => {
   return { ...actual, Scene: () => <div data-testid="scene" /> };
 });
 
+import { ApiProvider } from "../api/provider";
 import { routeTree } from "../router";
 import { LINE_TULIA_LEVELLAND } from "../fixtures/derecho";
 
@@ -56,7 +57,14 @@ async function renderAt(url: string): Promise<void> {
     routeTree,
     history: createMemoryHistory({ initialEntries: [url] }),
   });
-  render(<RouterProvider router={router} />);
+  // The console fetches route geometry, so it needs the provider the app
+  // supplies in main.tsx. The stubbed fetch below fails those requests, which
+  // is the honest default for a test with no platform behind it.
+  render(
+    <ApiProvider baseUrl="http://localhost:8080">
+      <RouterProvider router={router} />
+    </ApiProvider>,
+  );
   await screen.findByTestId("scene");
 }
 

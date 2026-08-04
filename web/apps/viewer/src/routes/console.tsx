@@ -34,6 +34,7 @@ import {
 import { consoleRoute } from "../router";
 import { temporalOf } from "../search/params";
 import { useViewerModel } from "../model/use-viewer-model";
+import { useRouteGeometry } from "../api/use-route-geometry";
 import {
   CONTINGENCIES,
   HORIZON,
@@ -46,6 +47,7 @@ export function ConsoleScreen(): React.JSX.Element {
   const search = consoleRoute.useSearch();
   const navigate = useNavigate({ from: consoleRoute.fullPath });
   const { model, problem } = useViewerModel();
+  const geometry = useRouteGeometry();
   const [, setPicked] = useState<Selection | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -95,7 +97,7 @@ export function ConsoleScreen(): React.JSX.Element {
     >
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1 overflow-hidden bg-stage">
-          <Scene model={model} onSelect={pick} />
+          <Scene model={model} routes={geometry.routes} onSelect={pick} />
 
           <GlassPanel
             title="Layers"
@@ -115,6 +117,17 @@ export function ConsoleScreen(): React.JSX.Element {
                 <span className="text-fg-2">width</span> voltage class 115 / 230 / 345 kV
                 <br />
                 <span className="text-fg-2">model</span> haz-gbst v0.4.2 · calib 0.031 ECE
+                <br />
+                <span className="text-fg-2">routes</span>{" "}
+                {geometry.isPending
+                  ? "loading…"
+                  : geometry.error !== null
+                    ? "unavailable"
+                    : `${geometry.fetched} drawn${
+                        geometry.fetched < geometry.available
+                          ? ` of ${geometry.available}`
+                          : ""
+                      }`}
               </div>
             </div>
           </GlassPanel>
