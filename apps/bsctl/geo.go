@@ -27,6 +27,7 @@ func geoCommand() cli.Command {
 			return nil
 		},
 		cli.WithSubcommand(geoTraceCommand()),
+		cli.WithSubcommand(geoImportCommand()),
 		cli.WithSubcommand(geoShowCommand()),
 	)
 }

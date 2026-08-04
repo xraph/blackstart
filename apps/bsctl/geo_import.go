@@ -13,15 +13,18 @@ import (
 
 // Sources by name, so the command line names a source rather than a URL.
 //
-// The default ArcGIS layer is EIA's republication of the HIFLD transmission
-// data. HIFLD Open itself was discontinued in August 2025 — see the phase-3
-// data survey, §1.4 — and this layer is the mirror that stayed up.
+// HIFLD Open was discontinued in August 2025 and EIA's own republication sits
+// behind a portal whose feature service will not resolve without a browser
+// session — see the phase-3 data survey, §1.4. The default here is the public
+// ArcGIS mirror the survey measured against: identical HIFLD schema, 66,617
+// features nationally. Overridable with --url precisely because it is a mirror
+// somebody else maintains and not a federal endpoint.
 const (
 	sourceOSM    = "osm"
 	sourceArcGIS = "arcgis"
 
-	defaultArcGIS = "https://services7.arcgis.com/FGr1D95XCGALKXqM/arcgis/rest/" +
-		"services/Transmission_Lines/FeatureServer/0"
+	defaultArcGIS = "https://services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/" +
+		"services/Electric_Power_Transmission_Lines/FeatureServer/0"
 )
 
 // geoImportCommand imports real geometry from a public source.
