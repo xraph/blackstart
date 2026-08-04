@@ -2,6 +2,7 @@ package fabriq
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/xraph/blackstart/extensions/provenance/record"
@@ -35,6 +36,18 @@ func (r *records) CreateDataset(
 	}
 
 	if err := r.base.Create(ctx, DatasetEntity, in.ID, model); err != nil {
+		// Fabriq reports a unique-index violation as a conflict, which is what
+		// the index on (tenant_id, content_hash) produces when these bytes
+		// have already been retrieved. The index is the authority rather than
+		// a read-then-write check, which two concurrent ingests would both
+		// pass — so the collision is absorbed here and the record that is
+		// already stored is returned.
+		if errors.Is(err, bserr.ErrConflict) {
+			if existing, findErr := r.FindDatasetByHash(ctx, in.ContentHash); findErr == nil {
+				return existing, nil
+			}
+		}
+
 		return record.DatasetVersion{}, err
 	}
 
@@ -123,6 +136,19 @@ func (r *records) CreateRun(ctx context.Context, in record.Run) (record.Run, err
 	}
 
 	if err := r.base.Create(ctx, RunEntity, in.ID, runToModel(in)); err != nil {
+		// A foreign key violation and a duplicate identifier arrive with the
+		// same Fabriq code, so the two are told apart by asking which is true.
+		// The distinction matters: a missing producer is the caller's error
+		// and a duplicate identifier is a collision, and the in-memory store
+		// already reports them as ErrInvalid and ErrConflict respectively.
+		if errors.Is(err, bserr.ErrConflict) {
+			if _, missing := r.GetModel(ctx, in.ModelVersionID); missing != nil {
+				return record.Run{}, fmt.Errorf(
+					"%w: run %s names model version %s, which was never recorded",
+					bserr.ErrInvalid, in.ID, in.ModelVersionID)
+			}
+		}
+
 		return record.Run{}, err
 	}
 
@@ -149,6 +175,23 @@ func (r *records) CreateLineage(
 	}
 
 	if err := r.base.Create(ctx, LineageEntity, in.ID, lineageToModel(in)); err != nil {
+		// Both ends have to exist. An edge to a record that was never written
+		// is a dangling reference in the one structure whose whole value is
+		// that it can be followed.
+		if errors.Is(err, bserr.ErrConflict) {
+			if _, missing := r.GetRun(ctx, in.RunID); missing != nil {
+				return record.Lineage{}, fmt.Errorf(
+					"%w: lineage names run %s, which was never recorded",
+					bserr.ErrInvalid, in.RunID)
+			}
+
+			if _, missing := r.GetDataset(ctx, in.DatasetVersionID); missing != nil {
+				return record.Lineage{}, fmt.Errorf(
+					"%w: lineage names dataset version %s, which was never recorded",
+					bserr.ErrInvalid, in.DatasetVersionID)
+			}
+		}
+
 		return record.Lineage{}, err
 	}
 

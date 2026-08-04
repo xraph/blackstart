@@ -4,6 +4,8 @@ package fabriq_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	pvfabriq "github.com/xraph/blackstart/extensions/provenance/store/fabriq"
 	"github.com/xraph/blackstart/internal/entities"
 	"github.com/xraph/blackstart/internal/testsupport"
+	"github.com/xraph/blackstart/pkg/bserr"
 )
 
 // harness brings up Postgres, runs both migration groups through one
@@ -310,5 +313,101 @@ func TestPing(t *testing.T) {
 
 	if s.StoreName() != "provenance/fabriq" {
 		t.Errorf("StoreName is %q", s.StoreName())
+	}
+}
+
+// Recording the same bytes twice yields one version, not two. The unique index
+// is the authority — two concurrent ingests would both pass a read-then-write
+// check in the engine — so the store absorbs the collision and returns what is
+// already there, which is what Engine.RecordDataset already promises.
+func TestRecordingTheSameBytesTwiceYieldsOneVersion(t *testing.T) {
+	s := harness(t)
+	ctx := t.Context()
+
+	first := aDataset(hash)
+
+	if _, err := s.Records().CreateDataset(ctx, first); err != nil {
+		t.Fatalf("CreateDataset: %v", err)
+	}
+
+	// A different identifier and a different URL, the same bytes. A mirror
+	// serving an identical file is exactly this case.
+	second := aDataset(hash)
+	second.URL = "https://mirror.example/hrrr.grib2"
+
+	got, err := s.Records().CreateDataset(ctx, second)
+	if err != nil {
+		t.Fatalf("the second retrieval of identical bytes failed: %v", err)
+	}
+
+	if got.ID != first.ID {
+		t.Errorf("the second retrieval created version %s; the first was %s", got.ID, first.ID)
+	}
+
+	if got.URL != first.URL {
+		t.Errorf("the returned record is the second one, not the stored first: %+v", got)
+	}
+}
+
+// A run naming a producer that was never recorded would be a broken chain, and
+// a broken chain is worse than a missing one: it looks traceable. The database
+// refuses it; the store must report it the way the in-memory store does, or
+// the engine's tests describe behaviour the deployment does not have.
+func TestARunCannotNameAnUnrecordedModelVersion(t *testing.T) {
+	s := harness(t)
+	ctx := t.Context()
+
+	orphan := record.Run{
+		ID:             pvid.NewRun(),
+		ModelVersionID: pvid.NewModel(),
+		Kind:           "powerflow",
+		StartedAt:      time.Now().UTC(),
+	}
+
+	_, err := s.Records().CreateRun(ctx, orphan)
+	if err == nil {
+		t.Fatal("a run naming an unrecorded model version was accepted")
+	}
+
+	if !errors.Is(err, bserr.ErrInvalid) {
+		t.Errorf("want ErrInvalid, matching the in-memory store, got %v", err)
+	}
+
+	if !strings.Contains(err.Error(), "never recorded") {
+		t.Errorf("the message should say what is missing, got %v", err)
+	}
+}
+
+func TestALineageEdgeCannotNameAnUnrecordedEnd(t *testing.T) {
+	s := harness(t)
+	ctx := t.Context()
+
+	producer := aModel()
+	if _, err := s.Records().CreateModel(ctx, producer); err != nil {
+		t.Fatalf("CreateModel: %v", err)
+	}
+
+	run := record.Run{
+		ID: pvid.NewRun(), ModelVersionID: producer.ID, Kind: "import",
+		StartedAt: time.Now().UTC(),
+	}
+	if _, err := s.Records().CreateRun(ctx, run); err != nil {
+		t.Fatalf("CreateRun: %v", err)
+	}
+
+	// The run exists; the dataset does not.
+	_, err := s.Records().CreateLineage(ctx, record.Lineage{
+		ID:               pvid.NewLineage(),
+		RunID:            run.ID,
+		DatasetVersionID: pvid.NewDataset(),
+		Role:             record.RoleInput,
+		RecordedAt:       time.Now().UTC(),
+	})
+	if err == nil {
+		t.Fatal("a lineage edge naming an unrecorded dataset version was accepted")
+	}
+
+	if !errors.Is(err, bserr.ErrInvalid) {
+		t.Errorf("want ErrInvalid, matching the in-memory store, got %v", err)
 	}
 }
