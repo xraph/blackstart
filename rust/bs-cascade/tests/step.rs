@@ -319,3 +319,132 @@ fn a_shed_reduces_load_before_the_power_flow_solves() {
     // with no protection candidate in the timeline at all.
     assert!(got.fired.is_empty(), "fired {:?}", got.fired);
 }
+
+/// Per-island real-power conservation, checked at every `step` call, driven
+/// directly rather than through `simulate`.
+///
+/// Dispatch never sheds load — it only ever moves GENERATION within a unit's
+/// own headroom (see `bs-cascade/src/dispatch.rs`'s own module doc) — so the
+/// only thing on this whole path that is allowed to change an island's LOAD
+/// at all is UFLS. The invariant this test pins down: for every single
+/// `step` call, `load_before - load_after` must equal exactly what that
+/// call's own responses report having shed — computed here independently,
+/// via `response.shed_fraction * load_before`, the same formula
+/// `bs-cascade/src/simulate.rs` uses internally, but written a second time
+/// rather than trusting that module's own bookkeeping. Load must never
+/// simply vanish, or appear, between one step and the next.
+///
+/// This is the invariant `Cascade::load_lost` is built on, and it had no
+/// direct test anywhere before this one — `ufls_shedding_is_counted_in_load_lost`
+/// and its siblings in `simulate.rs` only ever check the SUM at the end of a
+/// whole run, which is exactly the kind of check a bug like "an island that
+/// collapses while keeping its generator quietly drops its remaining load
+/// from the total" can pass while still being wrong: the final sum can come
+/// out looking plausible even when a specific step's own bookkeeping,
+/// checked in isolation, would not. Checking every step directly, against
+/// an independently written formula, is what closes that gap.
+///
+/// The scheme's single stage has no built-in "already fired" memory — see
+/// `bs_frequency::ufls::respond`'s own module doc — so as long as a residual
+/// imbalance remains, the SAME stage can and does keep firing on later
+/// `step` calls too, each time against whatever load remains. That is
+/// exactly why this loops several calls rather than checking only the
+/// first: the invariant has to hold on every one of them, not just the step
+/// that happens to be easiest to hand-derive.
+///
+/// What would make this fail: any change to `step`/`respond` that scales an
+/// island's PQ injections by something other than exactly
+/// `response.shed_fraction`, or that applies a shed more than once, or not
+/// at all, for a stage `step` itself reports as having fired.
+#[test]
+fn real_power_is_conserved_at_every_step() {
+    let base = Base::new(100e6, 345e3).expect("a valid base");
+    let buses = vec![
+        Bus::slack("g0", 1.0)
+            .with_real_limits(0.0, 3.0)
+            .with_machine(4.0, 0.05),
+        Bus::load("l0", -10.0, 0.0),
+    ];
+    let branches = vec![Branch::new("a", 0, 1, 0.01, 0.1).with_rating(20.0)];
+    let mut case = Case::new("heavy", base, buses, branches);
+
+    let scheme = Scheme {
+        stages: vec![bs_frequency::Stage {
+            at_hz: 59.99,
+            shed_fraction: 0.3,
+            delay: 0.0,
+        }],
+        floor_hz: 57.0,
+        ceiling_hz: 61.8,
+    };
+
+    // No protection at all: an overload or distance trip splitting the
+    // island partway through is a real and separately tested scenario (see
+    // `a_separated_network_steps_every_island`), but it is not what this
+    // test is about, and letting one happen here would make a would-be
+    // failure ambiguous between "the shed arithmetic is wrong" and "the
+    // island split when this test didn't expect it to".
+    let disabled = Settings {
+        overcurrent: bs_protection::Overcurrent {
+            pickup: f64::INFINITY,
+            instantaneous: None,
+            ..bs_protection::Overcurrent::default()
+        },
+        distance: bs_protection::Distance {
+            zones: Vec::new(),
+            breaker_time: 0.05,
+        },
+    };
+    let protection = Protection::new(disabled, Vec::new());
+
+    for call in 0..3 {
+        use bs_cascade::{Balance, Islands};
+
+        let before = Islands::of(&case);
+        let load_before: Vec<f64> = before
+            .members
+            .iter()
+            .map(|members| Balance::of(&case.buses, members).load)
+            .collect();
+
+        let got = step(&mut case, &protection, &scheme, &Options::default()).expect("solvable");
+
+        assert_eq!(
+            got.islands.count(),
+            1,
+            "call {call}: this fixture must never split — see the comment above"
+        );
+
+        let shed_this_call: f64 = got
+            .responses
+            .iter()
+            .enumerate()
+            .map(|(index, response)| {
+                response.as_ref().map_or(0.0, |r| {
+                    if r.shed_fraction > 0.0 {
+                        r.shed_fraction * load_before[index]
+                    } else {
+                        0.0
+                    }
+                })
+            })
+            .sum();
+
+        let after = Islands::of(&case);
+        let load_after: Vec<f64> = after
+            .members
+            .iter()
+            .map(|members| Balance::of(&case.buses, members).load)
+            .collect();
+
+        assert!(
+            (load_before[0] - load_after[0] - shed_this_call).abs() < 1e-9,
+            "call {call}: load_before {} - load_after {} != shed {} \
+             (difference {})",
+            load_before[0],
+            load_after[0],
+            shed_this_call,
+            load_before[0] - load_after[0] - shed_this_call
+        );
+    }
+}
