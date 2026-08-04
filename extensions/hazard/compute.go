@@ -12,8 +12,10 @@ import (
 	"github.com/xraph/blackstart/extensions/hazard/store"
 	"github.com/xraph/blackstart/extensions/weather/field"
 	"github.com/xraph/blackstart/extensions/weather/forecast"
+	wxstore "github.com/xraph/blackstart/extensions/weather/store"
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
+	pkgstore "github.com/xraph/blackstart/pkg/store"
 )
 
 // Weather is the part of the weather extension a computation needs.
@@ -25,6 +27,13 @@ import (
 // Satisfied by *weather.Engine.
 type Weather interface {
 	Cycle(ctx context.Context, want id.ID) (forecast.Cycle, error)
+
+	// Cycles is what the recompute worker sweeps: sampled cycles, newest
+	// first, so it can find the ones no computation has covered yet.
+	Cycles(
+		ctx context.Context, f wxstore.CycleFilter, p pkgstore.Page,
+	) ([]forecast.Cycle, error)
+
 	Grids(ctx context.Context, cycle id.ID) ([]forecast.Grid, error)
 	SpanForecast(
 		ctx context.Context,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/xraph/fabriq"
 
@@ -26,6 +27,16 @@ type Extension struct {
 
 	store  store.Store
 	engine *Engine
+
+	// compute configures the recompute loop. Disabled by default: the server
+	// runs it and bsctl does not, which is a property of which binary is
+	// running rather than of this extension.
+	compute ComputeConfig
+
+	// Worker lifecycle, guarded by the same mutex.
+	mu     sync.Mutex
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 // Option configures the extension.
@@ -34,6 +45,11 @@ type Option func(*Extension)
 // WithStore supplies a store, overriding the Fabriq-backed default.
 func WithStore(s store.Store) Option {
 	return func(e *Extension) { e.store = s }
+}
+
+// WithComputeSchedule configures the recompute loop.
+func WithComputeSchedule(config ComputeConfig) Option {
+	return func(e *Extension) { e.compute = config }
 }
 
 // New builds the extension.
