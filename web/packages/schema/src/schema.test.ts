@@ -15,7 +15,7 @@ import {
   probability,
   RISK_BREAKS,
 } from "./risk";
-import { CascadeRun } from "./cascade";
+import { CascadeRun, provenanceOf } from "./cascade";
 import { ScenarioRun, formatWall, compareRuns } from "./run";
 import { chainCompleteness, ProvenanceChain } from "./provenance";
 import { ValidTime, KnowledgeTime, temporalMode, leaksFuture, formatInstant } from "./temporal";
@@ -24,6 +24,8 @@ import { formatQuantity, mw, hz, pu, mps, toSi, sameDimension, km, metres } from
 
 const LN_RAW = "ln_01k3qf8m2xw7rb4n09ytvdhjkm";
 const RUN = "run_01k3qf8m2xw7rb4n09ytvdhjkm";
+/** Same suffix as `RUN`, under the prefix the engine actually mints. */
+const CASC = "casc_01k3qf8m2xw7rb4n09ytvdhjkm";
 
 /**
  * Parsed rather than asserted. A raw string does not satisfy `TypeId<"ln">`,
@@ -145,7 +147,7 @@ describe("cascade runs", () => {
   });
   const base = {
     provenance: chain,
-    run: RUN,
+    run: CASC,
     initiating: "ln TULIA–LEVELLAND 345",
     islands: [island(1, "stable"), island(2, "collapsed")],
     customersInterrupted: { value: 1284610, unit: "customers" as const },
@@ -185,6 +187,93 @@ describe("cascade runs", () => {
     });
     expect(bad.success).toBe(false);
     expect(bad.error?.issues[0]?.message).toContain("never formed");
+  });
+});
+
+describe("CascadeRun against engine output", () => {
+  /** What the engine actually produces: no customers, no geography. */
+  const fromEngine = {
+    provenance: [
+      { kind: "network", label: "ACTIVSg2000", ref: "sha256:abc" },
+      { kind: "commit", label: "solver", ref: "0.1.0" },
+    ],
+    run: "casc_01j9xyz0000000000000000000",
+    initiating: "ln TULIA–PLAINVIEW 345",
+    events: [{ t: 0, kind: "trip", element: "ln A", detail: "initiating" }],
+    islands: [{ id: 1, balance: { value: -20, unit: "MW" }, state: "shedding", busCount: 4 }],
+    loadLost: { value: 2.5, unit: "MW" },
+  };
+
+  it("accepts a run with no customer or geographic figures", () => {
+    expect(() => CascadeRun.parse(fromEngine)).not.toThrow();
+  });
+
+  it("leaves the absent figures absent rather than defaulting them to zero", () => {
+    const parsed = CascadeRun.parse(fromEngine);
+
+    expect(parsed.customersInterrupted).toBeUndefined();
+    expect(parsed.blastRadius).toBeUndefined();
+    expect(parsed.expectedUnservedEnergy).toBeUndefined();
+    expect(parsed.countiesAffected).toBeUndefined();
+  });
+
+  it("accepts an island with no frequency, because one with no machine has none", () => {
+    const parsed = CascadeRun.parse(fromEngine);
+
+    expect(parsed.islands[0]?.frequency).toBeUndefined();
+    expect(parsed.islands[0]?.nadir).toBeUndefined();
+  });
+
+  it("takes a casc_ identifier and rejects the old run_ prefix", () => {
+    expect(() =>
+      CascadeRun.parse({ ...fromEngine, run: "run_01j9xyz0000000000000000000" }),
+    ).toThrow();
+  });
+
+  it("carries a frequency trace when the engine sends one", () => {
+    const withTrace = {
+      ...fromEngine,
+      islands: [
+        {
+          ...fromEngine.islands[0],
+          trace: [
+            { at: 0, hz: 60 },
+            { at: 1, hz: 59.4 },
+          ],
+        },
+      ],
+    };
+
+    expect(CascadeRun.parse(withTrace).islands[0]?.trace).toHaveLength(2);
+  });
+
+  it("still rejects events that move backwards in simulated time", () => {
+    const backwards = {
+      ...fromEngine,
+      events: [
+        { t: 5, kind: "trip", element: "ln A", detail: "later" },
+        { t: 1, kind: "trip", element: "ln B", detail: "earlier" },
+      ],
+    };
+
+    expect(() => CascadeRun.parse(backwards)).toThrow();
+  });
+
+  it("builds provenance the schema accepts, incomplete rather than invalid", () => {
+    const provenance = provenanceOf({
+      modelHash: "sha256:abc",
+      solverVersion: "0.1.0",
+      run: "casc_01j9xyz0000000000000000000",
+    });
+
+    expect(() => ProvenanceChain.parse(provenance)).not.toThrow();
+
+    // No dataset link exists to cite — the solver never saw the dataset, only
+    // a content hash of the model built from it — so completeness must report
+    // the gap rather than the chain failing to parse at all.
+    const completeness = chainCompleteness(provenance);
+    expect(completeness.complete).toBe(false);
+    expect(completeness.missing).toContain("dataset");
   });
 });
 
