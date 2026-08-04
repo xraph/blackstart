@@ -460,7 +460,11 @@ pub fn simulate(
             report.nadir_hz = history.nadir_hz;
             report.rocof_hz_s = history.rocof_hz_s;
             report.settling_hz = history.settling_hz;
-            report.trace.clone_from(&history.trace);
+            // Decimated once, here, at the point the report is built — not per
+            // step. Reducing each step's segment separately would decimate a
+            // partial curve against the wrong time span and lose the run-level
+            // extremum.
+            report.trace = crate::decimate(&history.trace, crate::TRACE_BUCKETS);
             report.shed = history.shed;
         }
     }

@@ -14,12 +14,14 @@
 
 #![forbid(unsafe_code)]
 
+pub mod decimate;
 pub mod dispatch;
 pub mod island;
 pub mod simulate;
 pub mod step;
 pub mod verify;
 
+pub use decimate::{TRACE_BUCKETS, decimate};
 pub use dispatch::{Balance, Dispatchable, Plan, apply, rebalance};
 pub use island::{Islands, Subcase};
 pub use simulate::{Cascade, CascadeOutcome, Event, EventKind, Limits, Verification, simulate};
