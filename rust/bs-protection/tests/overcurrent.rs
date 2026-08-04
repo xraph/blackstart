@@ -58,9 +58,35 @@ fn an_unrated_branch_has_no_pickup() {
 }
 
 /// Direction does not matter to an overcurrent element.
+///
+/// 1.5 pu on a 1.0 rating is chosen deliberately: it sits above pickup
+/// (1.0×) but below the default instantaneous multiple (2.5×), so both
+/// signs land on the inverse-time CURVE rather than the flat instantaneous
+/// element. At 3.0 pu — this test's previous value — both signs hit the
+/// instantaneous element instead and return the same flat `breaker_time`
+/// constant, which a missing `.abs()` would also happen to pass on the
+/// positive side and fail only by returning `None` on the negative side; it
+/// never exercised the curve's own arithmetic on a negative input.
 #[test]
 fn pickup_is_on_magnitude() {
     let relay = Overcurrent::default();
 
-    assert_eq!(relay.time_to_trip(-3.0, 1.0), relay.time_to_trip(3.0, 1.0));
+    let positive = relay
+        .time_to_trip(1.5, 1.0)
+        .expect("above pickup, below instantaneous, trips");
+    let negative = relay
+        .time_to_trip(-1.5, 1.0)
+        .expect("above pickup, below instantaneous, trips");
+
+    assert!(
+        (positive - negative).abs() < 1e-12,
+        "got {positive} vs {negative}"
+    );
+
+    // Off the flat breaker floor, so this is actually the curve's own
+    // number, not a coincidental match with the instantaneous path.
+    assert!(
+        positive > relay.breaker_time,
+        "got {positive}, which looks like the flat floor, not a curve value"
+    );
 }
