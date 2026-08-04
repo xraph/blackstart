@@ -1,0 +1,173 @@
+syntax = "proto3";
+
+package blackstart.weather.v1;
+
+// The weather grid service.
+//
+// Decoding GRIB2 and sampling it at points. The platform is written in Go and
+// this is written in Rust, and a process boundary is a cleaner seam between
+// them than a foreign-function interface — the same reasoning the solver
+// service states, and the same binary serves both.
+//
+// Its own package rather than an addition to blackstart.solver.v1. That
+// contract opens by declaring every wire value SI and every method free of
+// anything a device could act on, because it is a power-flow service; this one
+// decodes a file format. Folding them together would make both descriptions
+// wrong.
+//
+// Two rules govern this contract.
+//
+// First: A GRID IS UPLOADED ONCE AND REFERENCED BY CONTENT HASH. One HRRR
+// field-hour is sampled at every span of every route — thousands of points —
+// and a decode costs far more than a sample. The hash is the one the ingest
+// pipeline already computed to record the retrieval's provenance, so no new
+// identity is invented here.
+//
+// Second: ABSENCE IS ABSENCE. A point outside the grid returns no value, not a
+// zero and not a sentinel. HRRR covers CONUS and nothing else, and a
+// fabricated calm entering a hazard calculation is the failure this contract
+// exists to make impossible to express.
+
+service WeatherGridService {
+  // Uploads one GRIB2 message, in chunks, and returns its content hash.
+  //
+  // Client-streaming for the reason a network model is: a decoded field is
+  // millions of points and the message that produced it is megabytes, neither
+  // of which belongs in one buffer. The server verifies the hash as it
+  // receives rather than discovering a mismatch at the end.
+  rpc PutGrid(stream PutGridRequest) returns (PutGridResponse);
+
+  // Reports whether a grid is already decoded and cached, so a client can skip
+  // an upload it does not need.
+  rpc HasGrid(HasGridRequest) returns (HasGridResponse);
+
+  // Samples a cached grid at a set of points.
+  //
+  // Unary rather than streaming, and batched rather than per point. A route's
+  // spans are sampled together — that is the unit the caller works in — and
+  // one round trip for a few hundred points beats a few hundred round trips.
+  rpc SampleGrid(SampleGridRequest) returns (SampleGridResponse);
+}
+
+message PutGridRequest {
+  oneof payload {
+    // Sent once, before any chunk.
+    PutGridHeader header = 1;
+    // A slice of the GRIB2 message.
+    bytes chunk = 2;
+  }
+}
+
+message PutGridHeader {
+  // The sha256 the client expects, hex-encoded lowercase.
+  //
+  // The same hash the retrieval's DatasetVersion records. Sending it up front
+  // lets the server verify as it receives, and lets a server that already has
+  // this grid say so before the bytes arrive.
+  string content_hash = 1;
+
+  // Total size in bytes, for preallocation and for rejecting a stream that
+  // does not deliver what it promised.
+  uint64 size_bytes = 2;
+}
+
+message PutGridResponse {
+  // The hash the server computed. It equals the header's hash, or the call
+  // failed — returned rather than assumed so a client can log what was stored.
+  string content_hash = 1;
+
+  // Whether the server already had this grid, so the upload was redundant.
+  // Reported rather than hidden because a client uploading the same field-hour
+  // repeatedly has a caching bug worth surfacing.
+  bool already_present = 2;
+
+  // What the decoded message turned out to be.
+  //
+  // Returned on upload because it is the check that the bytes fetched are the
+  // field that was asked for. A fetcher locates a message by the abbreviation
+  // and level text in an index sidecar, which is a different vocabulary from
+  // these coordinates — matching only the index would fetch the right bytes
+  // and decode them as the wrong field.
+  GridDescription description = 3;
+}
+
+message HasGridRequest {
+  string content_hash = 1;
+}
+
+message HasGridResponse {
+  bool present = 1;
+
+  // Populated when present, so a caller confirming a cached grid does not have
+  // to upload it again to find out what it holds.
+  GridDescription description = 2;
+}
+
+// What a decoded message is, without its values.
+message GridDescription {
+  // WMO code table 4.1 parameter category, within discipline 0.
+  uint32 category = 1;
+
+  // WMO code table 4.2 parameter number, within the category.
+  uint32 number = 2;
+
+  // WMO code table 4.5 fixed surface type. 1 is the ground, 10 is the entire
+  // atmosphere, 103 is a specified height above ground.
+  uint32 level_type = 3;
+
+  // The level's value in the unit its type implies — metres for type 103.
+  // Already descaled, so a caller compares against 10 rather than against a
+  // value and a separate exponent.
+  double level_value = 4;
+
+  // Grid dimensions.
+  uint32 nx = 5;
+  uint32 ny = 6;
+
+  // The projection: "lambert" or "latlon". Named rather than numbered so an
+  // operator reading a catalogue row can tell a CONUS grid from a global one.
+  string projection = 7;
+}
+
+message SampleGridRequest {
+  // The grid to sample, by hash. Never the grid itself: a client that has not
+  // uploaded it should get an error rather than a silent re-decode.
+  //
+  // An unknown hash returns FAILED_PRECONDITION, so a caller can distinguish
+  // "upload it first" from an argument it got wrong.
+  string content_hash = 1;
+
+  // Where to sample. Order is preserved in the response, which is what lets a
+  // caller pair results with its own spans without echoing an identifier back.
+  repeated Point points = 2;
+}
+
+message Point {
+  // Degrees east, in ±180. Not 0..360: everything else in this platform works
+  // in ±180, and a contract carrying both conventions would eventually mix
+  // them.
+  double lon = 1;
+
+  // Degrees north.
+  double lat = 2;
+}
+
+message SampleGridResponse {
+  // One result per requested point, in the order they were requested.
+  repeated Sample samples = 1;
+}
+
+message Sample {
+  // Whether the point fell inside the grid's domain.
+  //
+  // A separate field rather than a sentinel value, because there is no number
+  // that could mean "absent" here. Zero is a real gust, a real temperature in
+  // Kelvin is never zero but a real precipitation rate is, and NaN on the wire
+  // is a thing clients handle inconsistently. HRRR covers CONUS only, so this
+  // is the ordinary case for any span outside it — not an error.
+  bool present = 1;
+
+  // The sampled value, in the unit the source reported. Meaningless unless
+  // present is true.
+  double value = 2;
+}
