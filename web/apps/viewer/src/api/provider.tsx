@@ -24,13 +24,27 @@ const ApiContext = createContext<ApiClient | null>(null);
 export interface ApiProviderProps {
   /** Absolute only for development against a host elsewhere; same-origin otherwise. */
   readonly baseUrl?: string;
+
+  /**
+   * The session token, sent as a bearer credential on every platform call.
+   *
+   * Authsome issues a token rather than setting a cookie, so it has to be
+   * attached here. The client is rebuilt when it changes, because the
+   * generated client stamps the header once at construction.
+   */
+  readonly token?: string | undefined;
+
   readonly children: ReactNode;
 }
 
-export function ApiProvider({ baseUrl, children }: ApiProviderProps): React.JSX.Element {
+export function ApiProvider({ baseUrl, token, children }: ApiProviderProps): React.JSX.Element {
   const client = useMemo(
-    () => (baseUrl === undefined ? createApiClient() : createApiClient({ baseUrl })),
-    [baseUrl],
+    () =>
+      createApiClient({
+        ...(baseUrl === undefined ? {} : { baseUrl }),
+        ...(token === undefined || token === "" ? {} : { bearerToken: token }),
+      }),
+    [baseUrl, token],
   );
 
   const queryClient = useMemo(
