@@ -16,8 +16,13 @@ export interface RoutePolyline {
   /** The route identifier, reported on selection. */
   id: string;
 
-  /** The branch this route belongs to, for cross-referencing the network. */
-  branchId: string;
+  /**
+   * What this route carries, for cross-referencing the network: a branch in a
+   * network model, or a circuit somebody actually built. The identifier's own
+   * prefix says which — nmdl_ or circ_ — so there is no second field here to
+   * disagree with it.
+   */
+  carrierId: string;
 
   /**
    * The path, in order. Longitude, latitude and elevation per point, matching

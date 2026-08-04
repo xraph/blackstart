@@ -62,13 +62,13 @@ describe.runIf(BASE !== "" && PK !== "")("live platform", () => {
     }
 
     const route = routes.routes[0];
-    expect(route?.branchId, "codec did not rename branch_id -> branchId").toBeDefined();
+    expect(route?.carrierId, "codec did not rename carrier_id -> carrierId").toBeDefined();
     expect(route?.lengthM, "codec did not rename length_m -> lengthM").toBeGreaterThan(0);
 
     const spans = await client.geo.routes.spans(route?.id ?? "");
     expect(spans.spans.length).toBeGreaterThan(0);
 
-    const line = polylineOfSpans(route?.id ?? "", route?.branchId ?? "", spans.spans);
+    const line = polylineOfSpans(route?.id ?? "", route?.carrierId ?? "", spans.spans);
     expect(line, "spans did not assemble into a drawable path").not.toBeNull();
     expect(line?.points.length).toBeGreaterThan(1);
 

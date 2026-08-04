@@ -51,7 +51,7 @@ export interface RouteGeometry {
  */
 export function polylineOfSpans(
   id: string,
-  branchId: string,
+  carrierId: string,
   spans: readonly Span[],
 ): RoutePolyline | null {
   const ordered = [...spans].sort((a, b) => a.sequence - b.sequence);
@@ -62,7 +62,7 @@ export function polylineOfSpans(
 
   if (points.length < 2) return null;
 
-  return { id, branchId, points };
+  return { id, carrierId, points };
 }
 
 export function useRouteGeometry(limit: number = DEFAULT_ROUTE_LIMIT): RouteGeometry {
@@ -95,7 +95,7 @@ export function useRouteGeometry(limit: number = DEFAULT_ROUTE_LIMIT): RouteGeom
 
       if (data === undefined) continue;
 
-      const polyline = polylineOfSpans(route.id, route.branchId, data.spans);
+      const polyline = polylineOfSpans(route.id, route.carrierId, data.spans);
       if (polyline !== null) polylines.push(polyline);
     }
 

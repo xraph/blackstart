@@ -14,7 +14,7 @@ import type { RoutePolyline } from "./Routes";
 
 const line = (id: string, coords: readonly (readonly [number, number])[]): RoutePolyline => ({
   id,
-  branchId: `br_${id}`,
+  carrierId: `nmdl_${id}`,
   points: coords.map(([lon, lat]) => ({ lon, lat, elevation: 0 })),
 });
 
