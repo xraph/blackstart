@@ -15,6 +15,7 @@ import (
 	dsfabriq "github.com/xraph/blackstart/extensions/datasource/store/fabriq"
 	"github.com/xraph/blackstart/extensions/fabric"
 	geofabriq "github.com/xraph/blackstart/extensions/geo/store/fabriq"
+	hzfabriq "github.com/xraph/blackstart/extensions/hazard/store/fabriq"
 	nmfabriq "github.com/xraph/blackstart/extensions/networkmodel/store/fabriq"
 	pffabriq "github.com/xraph/blackstart/extensions/powerflow/store/fabriq"
 	pvfabriq "github.com/xraph/blackstart/extensions/provenance/store/fabriq"
@@ -44,6 +45,7 @@ var Contributors = []entities.Contributor{
 	pffabriq.Contributor{},
 	ctgfabriq.Contributor{},
 	wxfabriq.Contributor{},
+	hzfabriq.Contributor{},
 }
 
 // New builds the server application.

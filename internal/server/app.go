@@ -45,6 +45,8 @@ import (
 	"github.com/xraph/blackstart/extensions/fabric"
 	"github.com/xraph/blackstart/extensions/geo"
 	geomigrations "github.com/xraph/blackstart/extensions/geo/store/fabriq"
+	"github.com/xraph/blackstart/extensions/hazard"
+	hzmigrations "github.com/xraph/blackstart/extensions/hazard/store/fabriq"
 	"github.com/xraph/blackstart/extensions/networkmodel"
 	nmmigrations "github.com/xraph/blackstart/extensions/networkmodel/store/fabriq"
 	"github.com/xraph/blackstart/extensions/powerflow"
@@ -198,6 +200,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 			pfmigrations.Group(),
 			ctgmigrations.Group(),
 			wxmigrations.Group(),
+			hzmigrations.Group(),
 		),
 	)
 
@@ -219,7 +222,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 	extensions := []forge.Extension{
 		groveExt, fabricExt, auditExt,
 		provenance.New(), networkmodel.New(), datasource.New(),
-		topology.New(), geo.New(), scl.New(), weather.New(),
+		topology.New(), geo.New(), scl.New(), weather.New(), hazard.New(),
 	}
 
 	// Authsome, this application's own authentication authority.
