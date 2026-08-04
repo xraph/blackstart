@@ -14,6 +14,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod dispatch;
 pub mod island;
 
+pub use dispatch::{Balance, Dispatchable, Plan, apply, rebalance};
 pub use island::{Islands, Subcase};
