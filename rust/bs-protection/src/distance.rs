@@ -13,6 +13,22 @@
 //! so zone 3 here is more willing to trip than a well-set relay, and the bias
 //! is toward over-predicting cascades. Documented rather than tuned away,
 //! because correcting it needs relay settings nobody has for a synthetic grid.
+//!
+//! One more deliberate asymmetry, raised more than once in review as a
+//! possible oversight: [`Distance::time_to_trip`] does not gate on the
+//! protected branch's rating, so a zero-rating (unrated) branch can still
+//! produce a trip candidate — where [`crate::Overcurrent::time_to_trip`]
+//! skips it via its own `rating <= 0.0` guard. This is correct, not
+//! forgotten. Overcurrent's trip decision is a multiple of the rating
+//! (`flow / rating`), so an unknown rating really does make its decision
+//! undefined and the guard is the only honest answer. Distance's trip
+//! decision is a multiple of `reactance` (`1/flow` against `zone.reach *
+//! reactance`), a quantity every in-service branch has independent of
+//! anything a case's rating field may or may not carry — a distance relay's
+//! reach is impedance-based, not rating-based, and an unrated branch is
+//! still fully protected by whichever zone its impedance falls inside.
+//! There is no parallel guard to add here; adding one would make an unrated
+//! branch invisible to the one element that can actually see it.
 
 /// One distance zone.
 #[derive(Debug, Clone, Copy, PartialEq)]
