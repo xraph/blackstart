@@ -10,6 +10,10 @@ import (
 	"github.com/xraph/forge"
 	"github.com/xraph/forge/cli"
 
+	"github.com/xraph/blackstart/extensions/datasource"
+	dsfeed "github.com/xraph/blackstart/extensions/datasource/feed"
+	dsid "github.com/xraph/blackstart/extensions/datasource/id"
+	"github.com/xraph/blackstart/extensions/datasource/source"
 	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/weather"
 	"github.com/xraph/blackstart/extensions/weather/field"
@@ -25,10 +29,11 @@ func weatherCommand() cli.Command {
 		"weather",
 		"Retrieve, sample and inspect numerical weather prediction",
 		func(ctx cli.CommandContext) error {
-			ctx.Println("usage: bsctl weather <ingest|sample|cycles|show>")
+			ctx.Println("usage: bsctl weather <seed|ingest|sample|cycles|show>")
 
 			return nil
 		},
+		cli.WithSubcommand(weatherSeedCommand()),
 		cli.WithSubcommand(weatherIngestCommand()),
 		cli.WithSubcommand(weatherSampleCommand()),
 		cli.WithSubcommand(weatherCyclesCommand()),
@@ -318,4 +323,106 @@ func parseHourRange(raw string) ([]int, error) {
 	}
 
 	return out, nil
+}
+
+// weatherSeedCommand registers the §8 weather sources.
+//
+// The registry is the gate every retrieval passes through, so a deployment
+// with an empty one cannot ingest anything — which is the intended behavior
+// and also an awkward first five minutes. This writes the two NOAA entries the
+// project spec §8 already names, through the datasource engine rather than by
+// hand, so their licenses and homepages are recorded the same way any other
+// source's would be.
+func weatherSeedCommand() cli.Command {
+	return cli.NewCommand(
+		"seed",
+		"Register the NOAA weather sources named in the project spec §8",
+		func(ctx cli.CommandContext) error {
+			app, err := App()
+			if err != nil {
+				return err
+			}
+
+			if err := app.Start(ctx.Context()); err != nil {
+				return fmt.Errorf("starting the application: %w", err)
+			}
+
+			defer func() { _ = app.Stop(context.WithoutCancel(ctx.Context())) }()
+
+			engine, err := forge.Inject[*datasource.Engine](app.Container())
+			if err != nil {
+				return fmt.Errorf("resolving the datasource engine: %w", err)
+			}
+
+			inner := ctx.Context()
+
+			noaa, err := engine.GetSourceBySlug(inner, "noaa")
+			if err != nil {
+				noaa, err = engine.CreateSource(inner, source.Source{
+					ID:       dsid.NewSource(),
+					Slug:     "noaa",
+					Name:     "NOAA National Centers for Environmental Prediction",
+					Kind:     source.KindWeather,
+					Provides: "Numerical weather prediction, GRIB2",
+					Homepage: "https://www.noaa.gov",
+					License:  "U.S. Government Work, public domain",
+				})
+				if err != nil {
+					return fmt.Errorf("registering the NOAA source: %w", err)
+				}
+
+				ctx.Printf("registered source %s (%s)\n", noaa.Slug, noaa.ID)
+			} else {
+				ctx.Printf("source %s already registered (%s)\n", noaa.Slug, noaa.ID)
+			}
+
+			for _, want := range []dsfeed.Feed{
+				{
+					Slug:    "hrrr",
+					Name:    "High-Resolution Rapid Refresh, CONUS surface",
+					URL:     "https://noaa-hrrr-bdp-pds.s3.amazonaws.com",
+					Format:  dsfeed.FormatGRIB2,
+					Cadence: "hourly",
+				},
+				{
+					Slug:    "gfs",
+					Name:    "Global Forecast System, 0.25 degree",
+					URL:     "https://noaa-gfs-bdp-pds.s3.amazonaws.com",
+					Format:  dsfeed.FormatGRIB2,
+					Cadence: "four times daily",
+				},
+			} {
+				existing, listErr := engine.ListFeeds(inner,
+					dsfeed.Filter{SourceID: noaa.ID}, pkgstore.Page{Limit: 100})
+				if listErr != nil {
+					return listErr
+				}
+
+				var found bool
+
+				for _, feed := range existing {
+					if feed.Slug == want.Slug {
+						found = true
+					}
+				}
+
+				if found {
+					ctx.Printf("feed %s already registered\n", want.Slug)
+
+					continue
+				}
+
+				want.ID = dsid.NewFeed()
+				want.SourceID = noaa.ID
+
+				if _, err := engine.CreateFeed(inner, want); err != nil {
+					return fmt.Errorf("registering feed %s: %w", want.Slug, err)
+				}
+
+				ctx.Printf("registered feed %s\n", want.Slug)
+			}
+
+			return nil
+		},
+	)
 }
