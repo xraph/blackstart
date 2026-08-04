@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/xraph/fabriq"
+
 	"github.com/xraph/forge"
 	"github.com/xraph/vessel"
 
 	"github.com/xraph/blackstart/extensions/cascade/store"
-	"github.com/xraph/blackstart/extensions/cascade/store/memory"
+	fabriqstore "github.com/xraph/blackstart/extensions/cascade/store/fabriq"
 	"github.com/xraph/blackstart/extensions/fabric"
 	"github.com/xraph/blackstart/pkg/apiauth"
 	"github.com/xraph/blackstart/pkg/hooks"
@@ -31,13 +33,14 @@ type Extension struct {
 // Option configures the extension.
 type Option func(*Extension)
 
-// WithStore supplies a store, overriding the in-memory default.
+// WithStore supplies a store, overriding the Fabriq-backed default.
 //
-// The default is in-memory for the same reason contingency's is: a run is
-// derived data and can be recomputed from the model that produced it, so
-// losing it on restart costs a re-simulation rather than a fact. Unlike
-// contingency, there is currently no Fabriq-backed implementation to fall
-// back to — a caller wanting durability supplies its own store.Store.
+// The default was in-memory while no Fabriq implementation existed, on the
+// argument that a run is derived data and can be re-simulated. That argument
+// does not survive contact with what a cascade actually produces: the figure
+// is expected load lost, which is a number an operator would act on and a
+// reviewer would later ask to see. A result nobody can cite after a restart is
+// not a result. Tests and `bsctl` against no database pass memory.New().
 func WithStore(s store.Store) Option {
 	return func(e *Extension) { e.store = s }
 }
@@ -103,11 +106,25 @@ func (e *Extension) Start(ctx context.Context) error {
 		return errors.New("cascade: started without an application")
 	}
 
-	// No Fabriq-backed store exists for this extension yet, so the default
-	// stays in-memory rather than resolving the fabric the way contingency's
-	// Start does — there is nothing there for it to build against.
 	if e.store == nil {
-		e.store = memory.New()
+		fab, err := forge.Inject[*fabriq.Fabriq](app.Container())
+		if err != nil {
+			return fmt.Errorf(
+				"cascade: resolving the data fabric: %w; the fabric extension must "+
+					"start first, which its Dependencies() declares", err)
+		}
+
+		fabricExt, err := forge.Inject[*fabric.Extension](app.Container())
+		if err != nil {
+			return fmt.Errorf("cascade: resolving the fabric extension: %w", err)
+		}
+
+		built, err := fabriqstore.New(fab, fabricExt.Tenant())
+		if err != nil {
+			return err
+		}
+
+		e.store = built
 	}
 
 	client, err := forge.Inject[*solver.Client](app.Container())

@@ -39,6 +39,7 @@ import (
 	groveext "github.com/xraph/grove/extension"
 
 	"github.com/xraph/blackstart/extensions/cascade"
+	cscmigrations "github.com/xraph/blackstart/extensions/cascade/store/fabriq"
 	"github.com/xraph/blackstart/extensions/contingency"
 	ctgmigrations "github.com/xraph/blackstart/extensions/contingency/store/fabriq"
 	"github.com/xraph/blackstart/extensions/datasource"
@@ -226,6 +227,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 			ctgmigrations.Group(),
 			wxmigrations.Group(),
 			hzmigrations.Group(),
+			cscmigrations.Group(),
 		),
 	)
 

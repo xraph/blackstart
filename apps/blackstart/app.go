@@ -11,6 +11,7 @@ import (
 
 	"github.com/xraph/forge"
 
+	cscfabriq "github.com/xraph/blackstart/extensions/cascade/store/fabriq"
 	ctgfabriq "github.com/xraph/blackstart/extensions/contingency/store/fabriq"
 	dsfabriq "github.com/xraph/blackstart/extensions/datasource/store/fabriq"
 	"github.com/xraph/blackstart/extensions/fabric"
@@ -46,6 +47,7 @@ var Contributors = []entities.Contributor{
 	ctgfabriq.Contributor{},
 	wxfabriq.Contributor{},
 	hzfabriq.Contributor{},
+	cscfabriq.Contributor{},
 }
 
 // New builds the server application.
