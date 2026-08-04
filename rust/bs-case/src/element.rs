@@ -56,6 +56,12 @@ pub struct Bus {
     /// import must make neither.
     pub inertia_h: Option<f64>,
     /// Governor droop, per unit, dimensionless. Typically 0.05.
+    ///
+    /// `Option` for a reason distinct from `inertia_h`'s: a machine that
+    /// states no droop has no governor response recorded, which is not the
+    /// same claim as a governor with zero droop — zero droop is an
+    /// infinitely stiff response, and manufacturing that from silence would
+    /// be as dishonest as manufacturing zero inertia from it.
     pub droop_r: Option<f64>,
     /// Shunt conductance to ground at this bus, per unit.
     pub g_shunt: f64,
