@@ -110,11 +110,25 @@ a forecast against what actually happened.
 
 ## The worker
 
-Disabled by default; the server runs it and `bsctl` does not. Each tick
-ingests the newest cycle, then walks back to a configured horizon (24 hours by
-default), skipping cycles already recorded. Leader-elected on PostgreSQL
-advisory lock **20002**, so N replicas cooperate rather than each polling NOAA
-for the same cycle.
+The server runs it and `bsctl` does not. There is no enabled flag: the loop
+runs when `extensions.weather.poll` names a registry source and at least one
+feed *and* the process drains workers, because a feed configured in a process
+with no worker is inert and a flag claiming otherwise could only lie.
+
+Each tick **samples first, then retrieves**. Sampling is bounded, local, and
+works on bytes already paid for; retrieval is unbounded network work that can
+run for many minutes against a full backfill horizon. With the order reversed a
+cold start took eleven minutes to produce its first rating. Retrieval then takes
+the newest cycle and walks back to the horizon (24 hours by default), skipping
+cycles already recorded.
+
+The two halves are separate sweeps rather than a chain, which is what makes a
+grid-service outage survivable: retrieval still succeeds, the bytes are safe,
+and the next tick samples them once the solver is back. It also means a cycle
+ingested by hand gets sampled by the worker without anyone asking.
+
+Leader-elected on PostgreSQL advisory lock **20002**, so N replicas cooperate
+rather than each polling NOAA for the same cycle.
 
 ## Decoding
 

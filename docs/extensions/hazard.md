@@ -163,6 +163,28 @@ bsctl hazard loading --span span_… --issued 2026-08-04T01:00:00Z
 conductor *and* stamps the basis as assumed, so the two cannot drift apart.
 Giving neither is refused rather than defaulted.
 
+## The worker
+
+The server runs it and `bsctl` does not. It needs no registry slugs — it reads
+what `weather` already stored — so draining workers is the whole condition.
+
+Every two minutes it looks for cycles that have been sampled and have no
+computation, inside a twelve-hour lookback, and rates up to four of them. The
+queue is durable state rather than an event: a cycle is pending exactly when it
+is sampled and unrated. That survives a restart, works across replicas, and
+cannot drop work the way an in-process notification can — which matters here,
+because `*hooks.Bus` is never provided into the container, so an event-driven
+trigger would have been dead on arrival.
+
+A cycle that already has a computation is skipped. Recomputing after a conductor
+assignment changes is a deliberate act through `bsctl hazard compute`: ratings
+already consumed downstream should not move because a worker decided to try
+again.
+
+Leader-elected on PostgreSQL advisory lock **20003**. Two replicas rating one
+cycle would each write a computation and a provenance run, leaving two answers
+for one forecast with nothing to say which to believe.
+
 ## Live behavior
 
 Against the dev stack, one traced route (21 spans) assigned Drake and an HRRR
