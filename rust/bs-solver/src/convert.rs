@@ -8,6 +8,8 @@
 //! on the wrong scale.
 
 use bs_case::{Branch, Bus, BusKind, Case};
+use bs_frequency::{Scheme, Stage};
+use bs_protection::{Curve, Distance, Overcurrent, Protection, Settings, Zone};
 use bs_quantity::Base;
 
 use crate::proto;
@@ -80,10 +82,15 @@ pub fn to_case(model: &proto::NetworkModel) -> Result<Case, ConvertError> {
             // with no stated limits has unknown limits.
             q_min: wire.q_min_var.map_or(f64::NEG_INFINITY, |q| q / s_base),
             q_max: wire.q_max_var.map_or(f64::INFINITY, |q| q / s_base),
-            p_min: f64::NEG_INFINITY,
-            p_max: f64::INFINITY,
-            inertia_h: None,
-            droop_r: None,
+            // Absent means unlimited, exactly like the reactive limits above.
+            p_min: wire.p_min_w.map_or(f64::NEG_INFINITY, |p| p / s_base),
+            p_max: wire.p_max_w.map_or(f64::INFINITY, |p| p / s_base),
+            // SECONDS and DIMENSIONLESS respectively, never divided by a
+            // base. Dividing a dimensionless quantity by `s_base` would be
+            // the same class of error, in the opposite direction, as
+            // forgetting to divide a power — see the module docs.
+            inertia_h: wire.inertia_h_s,
+            droop_r: wire.droop_r,
             // Admittance base is the reciprocal of the impedance base.
             g_shunt: wire.g_shunt_s * z_base,
             b_shunt: wire.b_shunt_s * z_base,
@@ -146,5 +153,341 @@ pub fn apply_overrides(case: &mut Case, overrides: &[proto::Override]) {
             }
             None => {}
         }
+    }
+}
+
+/// Converts one branch's overcurrent element.
+///
+/// Absent means no overcurrent element at all — a branch protected by
+/// distance only must not gain a phantom one merely because the message has
+/// a field for it. A pickup of zero can never trip (`Overcurrent::time_to_trip`
+/// treats it as unrated), which is what "absent" is built out of here.
+///
+/// A *present* message's own zero-valued fields default to the physical
+/// convention documented on the wire: a relay set at its own branch's
+/// rating.
+fn to_overcurrent(wire: Option<&proto::OvercurrentSettings>) -> Overcurrent {
+    let Some(wire) = wire else {
+        return Overcurrent {
+            pickup: 0.0,
+            ..Overcurrent::default()
+        };
+    };
+
+    let default = Overcurrent::default();
+
+    Overcurrent {
+        pickup: if wire.pickup > 0.0 {
+            wire.pickup
+        } else {
+            default.pickup
+        },
+        time_multiplier: if wire.time_multiplier > 0.0 {
+            wire.time_multiplier
+        } else {
+            default.time_multiplier
+        },
+        // Absent disables the instantaneous element outright — a multiple of
+        // zero would trip on any flow, which the wire message's own comment
+        // says is a different and much more aggressive setting.
+        instantaneous: wire.instantaneous,
+        curve: to_curve(wire.curve),
+        breaker_time: if wire.breaker_time_s > 0.0 {
+            wire.breaker_time_s
+        } else {
+            default.breaker_time
+        },
+    }
+}
+
+/// Maps the wire curve, treating `CURVE_UNSPECIFIED` the same as every other
+/// zero-valued field on `OvercurrentSettings`: the server's default, which is
+/// `StandardInverse` — "the usual transmission choice", per the curve's own
+/// doc on both sides of the wire.
+fn to_curve(wire: i32) -> Curve {
+    match proto::Curve::try_from(wire) {
+        Ok(proto::Curve::VeryInverse) => Curve::VeryInverse,
+        Ok(proto::Curve::ExtremelyInverse) => Curve::ExtremelyInverse,
+        Ok(proto::Curve::StandardInverse | proto::Curve::Unspecified) | Err(_) => {
+            Curve::StandardInverse
+        }
+    }
+}
+
+/// Converts one branch's distance element. Absent means no distance zones at
+/// all — see [`to_overcurrent`] for the same reasoning applied to the other
+/// element.
+fn to_distance(wire: Option<&proto::DistanceSettings>) -> Distance {
+    let Some(wire) = wire else {
+        return Distance {
+            zones: Vec::new(),
+            breaker_time: 0.0,
+        };
+    };
+
+    let default = Distance::default();
+
+    Distance {
+        zones: wire
+            .zones
+            .iter()
+            .map(|zone| Zone {
+                reach: zone.reach,
+                delay: zone.delay_s,
+            })
+            .collect(),
+        breaker_time: if wire.breaker_time_s > 0.0 {
+            wire.breaker_time_s
+        } else {
+            default.breaker_time
+        },
+    }
+}
+
+/// Converts one branch's (or the network default's) protection settings.
+fn to_settings(wire: &proto::ProtectionSettings) -> Settings {
+    Settings {
+        overcurrent: to_overcurrent(wire.overcurrent.as_ref()),
+        distance: to_distance(wire.distance.as_ref()),
+    }
+}
+
+/// Builds the branch protection resolver from the request's network-wide
+/// default and per-branch overrides.
+///
+/// A wholly absent `protection` message — the caller supplied nothing at all
+/// — reads as the physical-convention default for BOTH elements, matching
+/// the wire comment on `SimulateCascadeRequest.protection`: "zero-valued
+/// fields default server-side to a relay set at its own branch's rating."
+/// That is a different question from a *present* message whose `overcurrent`
+/// or `distance` is itself absent, which is the caller deliberately
+/// disabling one element — see [`to_overcurrent`]/[`to_distance`]. Collapsing
+/// the two would either silently disable protection nobody asked to turn
+/// off, or silently defeat a caller's explicit "distance only".
+#[must_use]
+pub fn to_protection(
+    defaults: Option<&proto::ProtectionSettings>,
+    branch_protection: &[proto::BranchProtection],
+) -> Protection {
+    let defaults = defaults.map_or_else(
+        || Settings {
+            overcurrent: Overcurrent::default(),
+            distance: Distance::default(),
+        },
+        to_settings,
+    );
+
+    let overrides = branch_protection
+        .iter()
+        .filter_map(|wire| {
+            wire.settings
+                .as_ref()
+                .map(|settings| (wire.branch as usize, to_settings(settings)))
+        })
+        .collect();
+
+    Protection::new(defaults, overrides)
+}
+
+/// Converts the wire UFLS scheme.
+///
+/// Absent means no shedding scheme at all — deliberately with NO server-side
+/// default, unlike [`to_protection`] above: a shedding schedule is a
+/// utility's policy choice, not a physical convention this server has
+/// standing to assert on a caller's behalf. See the wire message's own
+/// comment on `SimulateCascadeRequest.ufls`.
+#[must_use]
+pub fn to_scheme(wire: Option<&proto::UflsScheme>) -> Scheme {
+    let Some(wire) = wire else {
+        return Scheme::none();
+    };
+
+    Scheme {
+        stages: wire
+            .stages
+            .iter()
+            .map(|stage| Stage {
+                at_hz: stage.at_hz,
+                shed_fraction: stage.shed_fraction,
+                delay: stage.delay_s,
+            })
+            .collect(),
+        floor_hz: wire.floor_hz,
+        ceiling_hz: wire.ceiling_hz,
+    }
+}
+
+#[cfg(test)]
+// These assertions compare a field this module passed through verbatim
+// against the literal it was given — no arithmetic happens in between, so
+// exact equality is the correct assertion and an epsilon would only hide a
+// conversion that silently rewrote its input. Matches the same reasoning
+// `bs-case`'s own constructor tests document.
+#[allow(clippy::float_cmp)]
+mod tests {
+    use super::{to_case, to_curve, to_distance, to_overcurrent, to_protection, to_scheme};
+    use crate::proto;
+
+    /// A minimal one-bus, zero-branch model, so `to_case` has something to
+    /// convert without every test needing to restate a whole network.
+    fn minimal_model(bus: proto::Bus) -> proto::NetworkModel {
+        proto::NetworkModel {
+            name: "t".to_owned(),
+            s_base_va: 100e6,
+            v_base_v: 138_000.0,
+            buses: vec![bus],
+            branches: vec![],
+        }
+    }
+
+    fn slack_bus() -> proto::Bus {
+        proto::Bus {
+            id: "s".to_owned(),
+            kind: proto::BusKind::Slack as i32,
+            p_injection_w: 0.0,
+            q_injection_var: 0.0,
+            v_magnitude_v: 138_000.0,
+            v_angle_rad: 0.0,
+            q_min_var: None,
+            q_max_var: None,
+            g_shunt_s: 0.0,
+            b_shunt_s: 0.0,
+            p_min_w: None,
+            p_max_w: None,
+            inertia_h_s: None,
+            droop_r: None,
+        }
+    }
+
+    /// Absent `p_min_w`/`p_max_w` means unbounded, matching the reactive
+    /// limits' existing convention — not zero, which would make every
+    /// generator with no stated limit unable to produce anything.
+    #[test]
+    fn absent_real_limits_are_unbounded() {
+        let case = to_case(&minimal_model(slack_bus())).expect("a minimal model converts");
+
+        assert_eq!(case.buses[0].p_min, f64::NEG_INFINITY);
+        assert_eq!(case.buses[0].p_max, f64::INFINITY);
+    }
+
+    /// Inertia (seconds) and droop (dimensionless) pass through unconverted —
+    /// dividing either by `s_base_va` would be the mirror image of forgetting
+    /// to divide a power.
+    #[test]
+    fn inertia_and_droop_are_not_divided_by_the_base() {
+        let bus = proto::Bus {
+            inertia_h_s: Some(5.0),
+            droop_r: Some(0.05),
+            ..slack_bus()
+        };
+        let case = to_case(&minimal_model(bus)).expect("a minimal model converts");
+
+        assert_eq!(case.buses[0].inertia_h, Some(5.0));
+        assert_eq!(case.buses[0].droop_r, Some(0.05));
+    }
+
+    /// An absent `OvercurrentSettings` disables the element outright: a
+    /// pickup of zero, which never trips, rather than the rating-based
+    /// default a present-but-zero-valued message would get.
+    #[test]
+    fn absent_overcurrent_is_disabled_not_defaulted() {
+        let overcurrent = to_overcurrent(None);
+        assert_eq!(overcurrent.pickup, 0.0);
+    }
+
+    /// A present `OvercurrentSettings` with every scalar field zero-valued
+    /// reads as the physical convention: pickup at rating.
+    #[test]
+    fn zero_valued_overcurrent_fields_use_the_physical_default() {
+        let wire = proto::OvercurrentSettings {
+            pickup: 0.0,
+            time_multiplier: 0.0,
+            instantaneous: Some(2.5),
+            curve: proto::Curve::Unspecified as i32,
+            breaker_time_s: 0.0,
+        };
+        let overcurrent = to_overcurrent(Some(&wire));
+
+        assert_eq!(overcurrent, bs_protection::Overcurrent::default());
+    }
+
+    /// `CURVE_UNSPECIFIED` reads as the same default the rest of the message
+    /// already applies to its zero-valued fields — `StandardInverse`.
+    #[test]
+    fn unspecified_curve_defaults_to_standard_inverse() {
+        assert_eq!(
+            to_curve(proto::Curve::Unspecified as i32),
+            bs_protection::Curve::StandardInverse
+        );
+    }
+
+    /// An absent `DistanceSettings` disables the element: no zones, so
+    /// nothing can ever see a fault through it.
+    #[test]
+    fn absent_distance_has_no_zones() {
+        let distance = to_distance(None);
+        assert!(distance.zones.is_empty());
+    }
+
+    /// A wholly absent `protection` message — the caller sent nothing —
+    /// reads as the physical-convention default for both elements, matching
+    /// the wire's own comment on `SimulateCascadeRequest.protection`.
+    #[test]
+    fn absent_protection_defaults_to_the_physical_convention() {
+        let protection = to_protection(None, &[]);
+        let settings = protection.for_branch(0);
+
+        assert_eq!(settings.overcurrent, bs_protection::Overcurrent::default());
+        assert_eq!(settings.distance, bs_protection::Distance::default());
+    }
+
+    /// A per-branch override wins over the network default for its own
+    /// branch, and leaves every other branch on the default.
+    #[test]
+    fn a_branch_override_applies_only_to_its_own_branch() {
+        let protection = to_protection(
+            None,
+            &[proto::BranchProtection {
+                branch: 2,
+                settings: Some(proto::ProtectionSettings {
+                    overcurrent: None,
+                    distance: None,
+                }),
+            }],
+        );
+
+        assert_eq!(protection.for_branch(2).overcurrent.pickup, 0.0);
+        assert_eq!(protection.for_branch(0).overcurrent.pickup, 1.0);
+    }
+
+    /// Absent means no shedding scheme at all — no server-side substitute.
+    #[test]
+    fn absent_ufls_scheme_is_none() {
+        assert_eq!(to_scheme(None), bs_frequency::Scheme::none());
+    }
+
+    /// A present scheme's frequencies, fractions and delays pass through
+    /// unconverted: hertz stays hertz, a fraction stays a fraction, seconds
+    /// stay seconds.
+    #[test]
+    fn a_present_scheme_carries_its_values_through_unconverted() {
+        let wire = proto::UflsScheme {
+            stages: vec![proto::UflsStage {
+                at_hz: 59.3,
+                shed_fraction: 0.1,
+                delay_s: 0.3,
+            }],
+            floor_hz: 57.0,
+            ceiling_hz: 61.8,
+        };
+
+        let scheme = to_scheme(Some(&wire));
+
+        assert_eq!(scheme.floor_hz, 57.0);
+        assert_eq!(scheme.ceiling_hz, 61.8);
+        assert_eq!(scheme.stages.len(), 1);
+        assert_eq!(scheme.stages[0].at_hz, 59.3);
+        assert_eq!(scheme.stages[0].shed_fraction, 0.1);
+        assert_eq!(scheme.stages[0].delay, 0.3);
     }
 }

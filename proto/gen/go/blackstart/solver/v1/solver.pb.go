@@ -245,56 +245,6 @@ func (Curve) EnumDescriptor() ([]byte, []int) {
 	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{3}
 }
 
-// Why a protective element operated.
-type TripCause int32
-
-const (
-	TripCause_TRIP_CAUSE_UNSPECIFIED TripCause = 0
-	TripCause_TRIP_CAUSE_OVERCURRENT TripCause = 1
-	TripCause_TRIP_CAUSE_DISTANCE    TripCause = 2
-)
-
-// Enum value maps for TripCause.
-var (
-	TripCause_name = map[int32]string{
-		0: "TRIP_CAUSE_UNSPECIFIED",
-		1: "TRIP_CAUSE_OVERCURRENT",
-		2: "TRIP_CAUSE_DISTANCE",
-	}
-	TripCause_value = map[string]int32{
-		"TRIP_CAUSE_UNSPECIFIED": 0,
-		"TRIP_CAUSE_OVERCURRENT": 1,
-		"TRIP_CAUSE_DISTANCE":    2,
-	}
-)
-
-func (x TripCause) Enum() *TripCause {
-	p := new(TripCause)
-	*p = x
-	return p
-}
-
-func (x TripCause) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (TripCause) Descriptor() protoreflect.EnumDescriptor {
-	return file_blackstart_solver_v1_solver_proto_enumTypes[4].Descriptor()
-}
-
-func (TripCause) Type() protoreflect.EnumType {
-	return &file_blackstart_solver_v1_solver_proto_enumTypes[4]
-}
-
-func (x TripCause) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use TripCause.Descriptor instead.
-func (TripCause) EnumDescriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{4}
-}
-
 // What kind of thing happened at one point in the cascade.
 //
 // Must match the operator console's schema exactly — see
@@ -351,11 +301,11 @@ func (x CascadeEventKind) String() string {
 }
 
 func (CascadeEventKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_blackstart_solver_v1_solver_proto_enumTypes[5].Descriptor()
+	return file_blackstart_solver_v1_solver_proto_enumTypes[4].Descriptor()
 }
 
 func (CascadeEventKind) Type() protoreflect.EnumType {
-	return &file_blackstart_solver_v1_solver_proto_enumTypes[5]
+	return &file_blackstart_solver_v1_solver_proto_enumTypes[4]
 }
 
 func (x CascadeEventKind) Number() protoreflect.EnumNumber {
@@ -364,7 +314,7 @@ func (x CascadeEventKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CascadeEventKind.Descriptor instead.
 func (CascadeEventKind) EnumDescriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{5}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{4}
 }
 
 // The worst thing that happened to an island over the whole run, on the
@@ -412,11 +362,11 @@ func (x IslandCondition) String() string {
 }
 
 func (IslandCondition) Descriptor() protoreflect.EnumDescriptor {
-	return file_blackstart_solver_v1_solver_proto_enumTypes[6].Descriptor()
+	return file_blackstart_solver_v1_solver_proto_enumTypes[5].Descriptor()
 }
 
 func (IslandCondition) Type() protoreflect.EnumType {
-	return &file_blackstart_solver_v1_solver_proto_enumTypes[6]
+	return &file_blackstart_solver_v1_solver_proto_enumTypes[5]
 }
 
 func (x IslandCondition) Number() protoreflect.EnumNumber {
@@ -425,7 +375,7 @@ func (x IslandCondition) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use IslandCondition.Descriptor instead.
 func (IslandCondition) EnumDescriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{6}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{5}
 }
 
 // What the AC solve on an island's final state found. Separate from
@@ -468,11 +418,11 @@ func (x AcVerdict) String() string {
 }
 
 func (AcVerdict) Descriptor() protoreflect.EnumDescriptor {
-	return file_blackstart_solver_v1_solver_proto_enumTypes[7].Descriptor()
+	return file_blackstart_solver_v1_solver_proto_enumTypes[6].Descriptor()
 }
 
 func (AcVerdict) Type() protoreflect.EnumType {
-	return &file_blackstart_solver_v1_solver_proto_enumTypes[7]
+	return &file_blackstart_solver_v1_solver_proto_enumTypes[6]
 }
 
 func (x AcVerdict) Number() protoreflect.EnumNumber {
@@ -481,7 +431,7 @@ func (x AcVerdict) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AcVerdict.Descriptor instead.
 func (AcVerdict) EnumDescriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{7}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{6}
 }
 
 // How the cascade ended.
@@ -527,11 +477,11 @@ func (x CascadeOutcome) String() string {
 }
 
 func (CascadeOutcome) Descriptor() protoreflect.EnumDescriptor {
-	return file_blackstart_solver_v1_solver_proto_enumTypes[8].Descriptor()
+	return file_blackstart_solver_v1_solver_proto_enumTypes[7].Descriptor()
 }
 
 func (CascadeOutcome) Type() protoreflect.EnumType {
-	return &file_blackstart_solver_v1_solver_proto_enumTypes[8]
+	return &file_blackstart_solver_v1_solver_proto_enumTypes[7]
 }
 
 func (x CascadeOutcome) Number() protoreflect.EnumNumber {
@@ -540,7 +490,7 @@ func (x CascadeOutcome) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CascadeOutcome.Descriptor instead.
 func (CascadeOutcome) EnumDescriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{8}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{7}
 }
 
 // A bus in the network.
@@ -2184,7 +2134,9 @@ type OvercurrentSettings struct {
 	// absence disables it outright — a multiple of zero would trip on any flow
 	// at all, which is a different and much more aggressive setting.
 	Instantaneous *float64 `protobuf:"fixed64,3,opt,name=instantaneous,proto3,oneof" json:"instantaneous,omitempty"`
-	Curve         Curve    `protobuf:"varint,4,opt,name=curve,proto3,enum=blackstart.solver.v1.Curve" json:"curve,omitempty"`
+	// Zero (CURVE_UNSPECIFIED) means the server's default, StandardInverse —
+	// consistent with the other zero-valued fields on this message.
+	Curve Curve `protobuf:"varint,4,opt,name=curve,proto3,enum=blackstart.solver.v1.Curve" json:"curve,omitempty"`
 	// Breaker operating time, SECONDS. The floor on any trip: the curve can ask
 	// for less than the breaker can physically deliver. Zero means the
 	// server's default.
@@ -2627,6 +2579,14 @@ type CascadeEvent struct {
 	// The element as an operator names it, e.g. "ln TULIA-PLAINVIEW 345".
 	Element string `protobuf:"bytes,3,opt,name=element,proto3" json:"element,omitempty"`
 	// Why, in the operator's terms, e.g. "dist zone 1", "163% - 2s", "underfreq".
+	//
+	// No separate typed cause field: the simulator's own event log
+	// (`bs_cascade::Event`) keeps only this formatted string, not the
+	// structured `bs_protection::TripCause` it was built from, so a typed wire
+	// field could only be populated by parsing this text back apart — exactly
+	// the fragile, plausible-looking reconstruction this contract exists to
+	// avoid elsewhere. Threading the structured cause through would mean
+	// extending `bs-cascade`'s own event type, out of this contract's scope.
 	Detail string `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
 	// Which island this event belongs to.
 	//
@@ -3145,11 +3105,7 @@ const file_blackstart_solver_v1_solver_proto_rawDesc = "" +
 	"\x11CURVE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CURVE_STANDARD_INVERSE\x10\x01\x12\x16\n" +
 	"\x12CURVE_VERY_INVERSE\x10\x02\x12\x1b\n" +
-	"\x17CURVE_EXTREMELY_INVERSE\x10\x03*\\\n" +
-	"\tTripCause\x12\x1a\n" +
-	"\x16TRIP_CAUSE_UNSPECIFIED\x10\x00\x12\x1a\n" +
-	"\x16TRIP_CAUSE_OVERCURRENT\x10\x01\x12\x17\n" +
-	"\x13TRIP_CAUSE_DISTANCE\x10\x02*\xd2\x01\n" +
+	"\x17CURVE_EXTREMELY_INVERSE\x10\x03*\xd2\x01\n" +
 	"\x10CascadeEventKind\x12\"\n" +
 	"\x1eCASCADE_EVENT_KIND_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bCASCADE_EVENT_KIND_OVERLOAD\x10\x01\x12\x1b\n" +
@@ -3193,91 +3149,90 @@ func file_blackstart_solver_v1_solver_proto_rawDescGZIP() []byte {
 	return file_blackstart_solver_v1_solver_proto_rawDescData
 }
 
-var file_blackstart_solver_v1_solver_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
+var file_blackstart_solver_v1_solver_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
 var file_blackstart_solver_v1_solver_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_blackstart_solver_v1_solver_proto_goTypes = []any{
 	(BusKind)(0),                        // 0: blackstart.solver.v1.BusKind
 	(Method)(0),                         // 1: blackstart.solver.v1.Method
 	(Screenability)(0),                  // 2: blackstart.solver.v1.Screenability
 	(Curve)(0),                          // 3: blackstart.solver.v1.Curve
-	(TripCause)(0),                      // 4: blackstart.solver.v1.TripCause
-	(CascadeEventKind)(0),               // 5: blackstart.solver.v1.CascadeEventKind
-	(IslandCondition)(0),                // 6: blackstart.solver.v1.IslandCondition
-	(AcVerdict)(0),                      // 7: blackstart.solver.v1.AcVerdict
-	(CascadeOutcome)(0),                 // 8: blackstart.solver.v1.CascadeOutcome
-	(*Bus)(nil),                         // 9: blackstart.solver.v1.Bus
-	(*Branch)(nil),                      // 10: blackstart.solver.v1.Branch
-	(*NetworkModel)(nil),                // 11: blackstart.solver.v1.NetworkModel
-	(*PutNetworkModelRequest)(nil),      // 12: blackstart.solver.v1.PutNetworkModelRequest
-	(*PutNetworkModelHeader)(nil),       // 13: blackstart.solver.v1.PutNetworkModelHeader
-	(*PutNetworkModelResponse)(nil),     // 14: blackstart.solver.v1.PutNetworkModelResponse
-	(*HasNetworkModelRequest)(nil),      // 15: blackstart.solver.v1.HasNetworkModelRequest
-	(*HasNetworkModelResponse)(nil),     // 16: blackstart.solver.v1.HasNetworkModelResponse
-	(*Override)(nil),                    // 17: blackstart.solver.v1.Override
-	(*BranchStatus)(nil),                // 18: blackstart.solver.v1.BranchStatus
-	(*BusInjection)(nil),                // 19: blackstart.solver.v1.BusInjection
-	(*SolvePowerFlowRequest)(nil),       // 20: blackstart.solver.v1.SolvePowerFlowRequest
-	(*BusResult)(nil),                   // 21: blackstart.solver.v1.BusResult
-	(*BranchResult)(nil),                // 22: blackstart.solver.v1.BranchResult
-	(*SolvePowerFlowResponse)(nil),      // 23: blackstart.solver.v1.SolvePowerFlowResponse
-	(*Contingency)(nil),                 // 24: blackstart.solver.v1.Contingency
-	(*ScreenContingenciesRequest)(nil),  // 25: blackstart.solver.v1.ScreenContingenciesRequest
-	(*Violation)(nil),                   // 26: blackstart.solver.v1.Violation
-	(*ScreenContingenciesResponse)(nil), // 27: blackstart.solver.v1.ScreenContingenciesResponse
-	(*UflsStage)(nil),                   // 28: blackstart.solver.v1.UflsStage
-	(*UflsScheme)(nil),                  // 29: blackstart.solver.v1.UflsScheme
-	(*OvercurrentSettings)(nil),         // 30: blackstart.solver.v1.OvercurrentSettings
-	(*DistanceZone)(nil),                // 31: blackstart.solver.v1.DistanceZone
-	(*DistanceSettings)(nil),            // 32: blackstart.solver.v1.DistanceSettings
-	(*ProtectionSettings)(nil),          // 33: blackstart.solver.v1.ProtectionSettings
-	(*BranchProtection)(nil),            // 34: blackstart.solver.v1.BranchProtection
-	(*SimulateCascadeRequest)(nil),      // 35: blackstart.solver.v1.SimulateCascadeRequest
-	(*CascadeEvent)(nil),                // 36: blackstart.solver.v1.CascadeEvent
-	(*IslandState)(nil),                 // 37: blackstart.solver.v1.IslandState
-	(*SimulateCascadeResponse)(nil),     // 38: blackstart.solver.v1.SimulateCascadeResponse
+	(CascadeEventKind)(0),               // 4: blackstart.solver.v1.CascadeEventKind
+	(IslandCondition)(0),                // 5: blackstart.solver.v1.IslandCondition
+	(AcVerdict)(0),                      // 6: blackstart.solver.v1.AcVerdict
+	(CascadeOutcome)(0),                 // 7: blackstart.solver.v1.CascadeOutcome
+	(*Bus)(nil),                         // 8: blackstart.solver.v1.Bus
+	(*Branch)(nil),                      // 9: blackstart.solver.v1.Branch
+	(*NetworkModel)(nil),                // 10: blackstart.solver.v1.NetworkModel
+	(*PutNetworkModelRequest)(nil),      // 11: blackstart.solver.v1.PutNetworkModelRequest
+	(*PutNetworkModelHeader)(nil),       // 12: blackstart.solver.v1.PutNetworkModelHeader
+	(*PutNetworkModelResponse)(nil),     // 13: blackstart.solver.v1.PutNetworkModelResponse
+	(*HasNetworkModelRequest)(nil),      // 14: blackstart.solver.v1.HasNetworkModelRequest
+	(*HasNetworkModelResponse)(nil),     // 15: blackstart.solver.v1.HasNetworkModelResponse
+	(*Override)(nil),                    // 16: blackstart.solver.v1.Override
+	(*BranchStatus)(nil),                // 17: blackstart.solver.v1.BranchStatus
+	(*BusInjection)(nil),                // 18: blackstart.solver.v1.BusInjection
+	(*SolvePowerFlowRequest)(nil),       // 19: blackstart.solver.v1.SolvePowerFlowRequest
+	(*BusResult)(nil),                   // 20: blackstart.solver.v1.BusResult
+	(*BranchResult)(nil),                // 21: blackstart.solver.v1.BranchResult
+	(*SolvePowerFlowResponse)(nil),      // 22: blackstart.solver.v1.SolvePowerFlowResponse
+	(*Contingency)(nil),                 // 23: blackstart.solver.v1.Contingency
+	(*ScreenContingenciesRequest)(nil),  // 24: blackstart.solver.v1.ScreenContingenciesRequest
+	(*Violation)(nil),                   // 25: blackstart.solver.v1.Violation
+	(*ScreenContingenciesResponse)(nil), // 26: blackstart.solver.v1.ScreenContingenciesResponse
+	(*UflsStage)(nil),                   // 27: blackstart.solver.v1.UflsStage
+	(*UflsScheme)(nil),                  // 28: blackstart.solver.v1.UflsScheme
+	(*OvercurrentSettings)(nil),         // 29: blackstart.solver.v1.OvercurrentSettings
+	(*DistanceZone)(nil),                // 30: blackstart.solver.v1.DistanceZone
+	(*DistanceSettings)(nil),            // 31: blackstart.solver.v1.DistanceSettings
+	(*ProtectionSettings)(nil),          // 32: blackstart.solver.v1.ProtectionSettings
+	(*BranchProtection)(nil),            // 33: blackstart.solver.v1.BranchProtection
+	(*SimulateCascadeRequest)(nil),      // 34: blackstart.solver.v1.SimulateCascadeRequest
+	(*CascadeEvent)(nil),                // 35: blackstart.solver.v1.CascadeEvent
+	(*IslandState)(nil),                 // 36: blackstart.solver.v1.IslandState
+	(*SimulateCascadeResponse)(nil),     // 37: blackstart.solver.v1.SimulateCascadeResponse
 }
 var file_blackstart_solver_v1_solver_proto_depIdxs = []int32{
 	0,  // 0: blackstart.solver.v1.Bus.kind:type_name -> blackstart.solver.v1.BusKind
-	9,  // 1: blackstart.solver.v1.NetworkModel.buses:type_name -> blackstart.solver.v1.Bus
-	10, // 2: blackstart.solver.v1.NetworkModel.branches:type_name -> blackstart.solver.v1.Branch
-	13, // 3: blackstart.solver.v1.PutNetworkModelRequest.header:type_name -> blackstart.solver.v1.PutNetworkModelHeader
-	18, // 4: blackstart.solver.v1.Override.branch_status:type_name -> blackstart.solver.v1.BranchStatus
-	19, // 5: blackstart.solver.v1.Override.bus_injection:type_name -> blackstart.solver.v1.BusInjection
+	8,  // 1: blackstart.solver.v1.NetworkModel.buses:type_name -> blackstart.solver.v1.Bus
+	9,  // 2: blackstart.solver.v1.NetworkModel.branches:type_name -> blackstart.solver.v1.Branch
+	12, // 3: blackstart.solver.v1.PutNetworkModelRequest.header:type_name -> blackstart.solver.v1.PutNetworkModelHeader
+	17, // 4: blackstart.solver.v1.Override.branch_status:type_name -> blackstart.solver.v1.BranchStatus
+	18, // 5: blackstart.solver.v1.Override.bus_injection:type_name -> blackstart.solver.v1.BusInjection
 	1,  // 6: blackstart.solver.v1.SolvePowerFlowRequest.method:type_name -> blackstart.solver.v1.Method
-	17, // 7: blackstart.solver.v1.SolvePowerFlowRequest.overrides:type_name -> blackstart.solver.v1.Override
-	21, // 8: blackstart.solver.v1.SolvePowerFlowResponse.buses:type_name -> blackstart.solver.v1.BusResult
-	22, // 9: blackstart.solver.v1.SolvePowerFlowResponse.branches:type_name -> blackstart.solver.v1.BranchResult
-	17, // 10: blackstart.solver.v1.ScreenContingenciesRequest.overrides:type_name -> blackstart.solver.v1.Override
-	24, // 11: blackstart.solver.v1.ScreenContingenciesRequest.contingencies:type_name -> blackstart.solver.v1.Contingency
-	24, // 12: blackstart.solver.v1.ScreenContingenciesResponse.contingency:type_name -> blackstart.solver.v1.Contingency
+	16, // 7: blackstart.solver.v1.SolvePowerFlowRequest.overrides:type_name -> blackstart.solver.v1.Override
+	20, // 8: blackstart.solver.v1.SolvePowerFlowResponse.buses:type_name -> blackstart.solver.v1.BusResult
+	21, // 9: blackstart.solver.v1.SolvePowerFlowResponse.branches:type_name -> blackstart.solver.v1.BranchResult
+	16, // 10: blackstart.solver.v1.ScreenContingenciesRequest.overrides:type_name -> blackstart.solver.v1.Override
+	23, // 11: blackstart.solver.v1.ScreenContingenciesRequest.contingencies:type_name -> blackstart.solver.v1.Contingency
+	23, // 12: blackstart.solver.v1.ScreenContingenciesResponse.contingency:type_name -> blackstart.solver.v1.Contingency
 	2,  // 13: blackstart.solver.v1.ScreenContingenciesResponse.screenability:type_name -> blackstart.solver.v1.Screenability
-	26, // 14: blackstart.solver.v1.ScreenContingenciesResponse.violations:type_name -> blackstart.solver.v1.Violation
-	28, // 15: blackstart.solver.v1.UflsScheme.stages:type_name -> blackstart.solver.v1.UflsStage
+	25, // 14: blackstart.solver.v1.ScreenContingenciesResponse.violations:type_name -> blackstart.solver.v1.Violation
+	27, // 15: blackstart.solver.v1.UflsScheme.stages:type_name -> blackstart.solver.v1.UflsStage
 	3,  // 16: blackstart.solver.v1.OvercurrentSettings.curve:type_name -> blackstart.solver.v1.Curve
-	31, // 17: blackstart.solver.v1.DistanceSettings.zones:type_name -> blackstart.solver.v1.DistanceZone
-	30, // 18: blackstart.solver.v1.ProtectionSettings.overcurrent:type_name -> blackstart.solver.v1.OvercurrentSettings
-	32, // 19: blackstart.solver.v1.ProtectionSettings.distance:type_name -> blackstart.solver.v1.DistanceSettings
-	33, // 20: blackstart.solver.v1.BranchProtection.settings:type_name -> blackstart.solver.v1.ProtectionSettings
-	17, // 21: blackstart.solver.v1.SimulateCascadeRequest.overrides:type_name -> blackstart.solver.v1.Override
-	33, // 22: blackstart.solver.v1.SimulateCascadeRequest.protection:type_name -> blackstart.solver.v1.ProtectionSettings
-	34, // 23: blackstart.solver.v1.SimulateCascadeRequest.branch_protection:type_name -> blackstart.solver.v1.BranchProtection
-	29, // 24: blackstart.solver.v1.SimulateCascadeRequest.ufls:type_name -> blackstart.solver.v1.UflsScheme
-	5,  // 25: blackstart.solver.v1.CascadeEvent.kind:type_name -> blackstart.solver.v1.CascadeEventKind
-	6,  // 26: blackstart.solver.v1.IslandState.condition:type_name -> blackstart.solver.v1.IslandCondition
-	7,  // 27: blackstart.solver.v1.IslandState.verdict:type_name -> blackstart.solver.v1.AcVerdict
-	8,  // 28: blackstart.solver.v1.SimulateCascadeResponse.outcome:type_name -> blackstart.solver.v1.CascadeOutcome
-	36, // 29: blackstart.solver.v1.SimulateCascadeResponse.events:type_name -> blackstart.solver.v1.CascadeEvent
-	37, // 30: blackstart.solver.v1.SimulateCascadeResponse.islands:type_name -> blackstart.solver.v1.IslandState
-	12, // 31: blackstart.solver.v1.SolverService.PutNetworkModel:input_type -> blackstart.solver.v1.PutNetworkModelRequest
-	15, // 32: blackstart.solver.v1.SolverService.HasNetworkModel:input_type -> blackstart.solver.v1.HasNetworkModelRequest
-	20, // 33: blackstart.solver.v1.SolverService.SolvePowerFlow:input_type -> blackstart.solver.v1.SolvePowerFlowRequest
-	25, // 34: blackstart.solver.v1.SolverService.ScreenContingencies:input_type -> blackstart.solver.v1.ScreenContingenciesRequest
-	35, // 35: blackstart.solver.v1.SolverService.SimulateCascade:input_type -> blackstart.solver.v1.SimulateCascadeRequest
-	14, // 36: blackstart.solver.v1.SolverService.PutNetworkModel:output_type -> blackstart.solver.v1.PutNetworkModelResponse
-	16, // 37: blackstart.solver.v1.SolverService.HasNetworkModel:output_type -> blackstart.solver.v1.HasNetworkModelResponse
-	23, // 38: blackstart.solver.v1.SolverService.SolvePowerFlow:output_type -> blackstart.solver.v1.SolvePowerFlowResponse
-	27, // 39: blackstart.solver.v1.SolverService.ScreenContingencies:output_type -> blackstart.solver.v1.ScreenContingenciesResponse
-	38, // 40: blackstart.solver.v1.SolverService.SimulateCascade:output_type -> blackstart.solver.v1.SimulateCascadeResponse
+	30, // 17: blackstart.solver.v1.DistanceSettings.zones:type_name -> blackstart.solver.v1.DistanceZone
+	29, // 18: blackstart.solver.v1.ProtectionSettings.overcurrent:type_name -> blackstart.solver.v1.OvercurrentSettings
+	31, // 19: blackstart.solver.v1.ProtectionSettings.distance:type_name -> blackstart.solver.v1.DistanceSettings
+	32, // 20: blackstart.solver.v1.BranchProtection.settings:type_name -> blackstart.solver.v1.ProtectionSettings
+	16, // 21: blackstart.solver.v1.SimulateCascadeRequest.overrides:type_name -> blackstart.solver.v1.Override
+	32, // 22: blackstart.solver.v1.SimulateCascadeRequest.protection:type_name -> blackstart.solver.v1.ProtectionSettings
+	33, // 23: blackstart.solver.v1.SimulateCascadeRequest.branch_protection:type_name -> blackstart.solver.v1.BranchProtection
+	28, // 24: blackstart.solver.v1.SimulateCascadeRequest.ufls:type_name -> blackstart.solver.v1.UflsScheme
+	4,  // 25: blackstart.solver.v1.CascadeEvent.kind:type_name -> blackstart.solver.v1.CascadeEventKind
+	5,  // 26: blackstart.solver.v1.IslandState.condition:type_name -> blackstart.solver.v1.IslandCondition
+	6,  // 27: blackstart.solver.v1.IslandState.verdict:type_name -> blackstart.solver.v1.AcVerdict
+	7,  // 28: blackstart.solver.v1.SimulateCascadeResponse.outcome:type_name -> blackstart.solver.v1.CascadeOutcome
+	35, // 29: blackstart.solver.v1.SimulateCascadeResponse.events:type_name -> blackstart.solver.v1.CascadeEvent
+	36, // 30: blackstart.solver.v1.SimulateCascadeResponse.islands:type_name -> blackstart.solver.v1.IslandState
+	11, // 31: blackstart.solver.v1.SolverService.PutNetworkModel:input_type -> blackstart.solver.v1.PutNetworkModelRequest
+	14, // 32: blackstart.solver.v1.SolverService.HasNetworkModel:input_type -> blackstart.solver.v1.HasNetworkModelRequest
+	19, // 33: blackstart.solver.v1.SolverService.SolvePowerFlow:input_type -> blackstart.solver.v1.SolvePowerFlowRequest
+	24, // 34: blackstart.solver.v1.SolverService.ScreenContingencies:input_type -> blackstart.solver.v1.ScreenContingenciesRequest
+	34, // 35: blackstart.solver.v1.SolverService.SimulateCascade:input_type -> blackstart.solver.v1.SimulateCascadeRequest
+	13, // 36: blackstart.solver.v1.SolverService.PutNetworkModel:output_type -> blackstart.solver.v1.PutNetworkModelResponse
+	15, // 37: blackstart.solver.v1.SolverService.HasNetworkModel:output_type -> blackstart.solver.v1.HasNetworkModelResponse
+	22, // 38: blackstart.solver.v1.SolverService.SolvePowerFlow:output_type -> blackstart.solver.v1.SolvePowerFlowResponse
+	26, // 39: blackstart.solver.v1.SolverService.ScreenContingencies:output_type -> blackstart.solver.v1.ScreenContingenciesResponse
+	37, // 40: blackstart.solver.v1.SolverService.SimulateCascade:output_type -> blackstart.solver.v1.SimulateCascadeResponse
 	36, // [36:41] is the sub-list for method output_type
 	31, // [31:36] is the sub-list for method input_type
 	31, // [31:31] is the sub-list for extension type_name
@@ -3308,7 +3263,7 @@ func file_blackstart_solver_v1_solver_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_blackstart_solver_v1_solver_proto_rawDesc), len(file_blackstart_solver_v1_solver_proto_rawDesc)),
-			NumEnums:      9,
+			NumEnums:      8,
 			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,

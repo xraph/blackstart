@@ -450,6 +450,8 @@ message OvercurrentSettings {
   // absence disables it outright — a multiple of zero would trip on any flow
   // at all, which is a different and much more aggressive setting.
   optional double instantaneous = 3;
+  // Zero (CURVE_UNSPECIFIED) means the server's default, StandardInverse —
+  // consistent with the other zero-valued fields on this message.
   Curve curve = 4;
   // Breaker operating time, SECONDS. The floor on any trip: the curve can ask
   // for less than the breaker can physically deliver. Zero means the
@@ -542,13 +544,6 @@ message SimulateCascadeRequest {
   double horizon_s = 9;
 }
 
-// Why a protective element operated.
-enum TripCause {
-  TRIP_CAUSE_UNSPECIFIED = 0;
-  TRIP_CAUSE_OVERCURRENT = 1;
-  TRIP_CAUSE_DISTANCE = 2;
-}
-
 // What kind of thing happened at one point in the cascade.
 //
 // Must match the operator console's schema exactly — see
@@ -582,6 +577,14 @@ message CascadeEvent {
   string element = 3;
 
   // Why, in the operator's terms, e.g. "dist zone 1", "163% - 2s", "underfreq".
+  //
+  // No separate typed cause field: the simulator's own event log
+  // (`bs_cascade::Event`) keeps only this formatted string, not the
+  // structured `bs_protection::TripCause` it was built from, so a typed wire
+  // field could only be populated by parsing this text back apart — exactly
+  // the fragile, plausible-looking reconstruction this contract exists to
+  // avoid elsewhere. Threading the structured cause through would mean
+  // extending `bs-cascade`'s own event type, out of this contract's scope.
   string detail = 4;
 
   // Which island this event belongs to.

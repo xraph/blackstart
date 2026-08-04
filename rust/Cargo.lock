@@ -216,11 +216,14 @@ version = "0.0.0"
 name = "bs-solver"
 version = "0.0.0"
 dependencies = [
+ "bs-cascade",
  "bs-case",
  "bs-contingency",
  "bs-factors",
+ "bs-frequency",
  "bs-grib",
  "bs-powerflow",
+ "bs-protection",
  "bs-quantity",
  "bytes",
  "http-body-util",
