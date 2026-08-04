@@ -14,11 +14,11 @@ import (
 
 // --- Request DTOs ---
 
-type getRunRequest struct {
+type getSweepRunRequest struct {
 	ID string `path:"id" description:"Run identifier (crun_…)"`
 }
 
-type listRunsRequest struct {
+type listSweepRunsRequest struct {
 	Hash  string `query:"modelHash" description:"Content hash of the network model"`
 	Limit int    `query:"limit"     description:"Maximum results, most recent first" optional:"true"`
 }
@@ -32,7 +32,7 @@ type rankedRequest struct {
 
 // --- Response DTOs ---
 
-type runsResponse struct {
+type sweepRunsResponse struct {
 	Runs []sweep.Run `json:"runs"`
 }
 
@@ -104,8 +104,8 @@ func (c *Controller) Routes(router forge.Router) error {
 		forge.WithDescription(
 			"Every recorded N-1 analysis of one network model, most recent first."),
 		forge.WithTags("Contingency"),
-		forge.WithRequestSchema(listRunsRequest{}),
-		forge.WithResponseSchema(http.StatusOK, "Runs", runsResponse{}),
+		forge.WithRequestSchema(listSweepRunsRequest{}),
+		forge.WithResponseSchema(http.StatusOK, "Runs", sweepRunsResponse{}),
 		forge.WithResponseSchema(http.StatusBadRequest, "No model hash given", nil),
 	))
 
@@ -117,7 +117,7 @@ func (c *Controller) Routes(router forge.Router) error {
 				"evaluated. That order is preserved because it is what was asked "+
 				"for; ranking is a separate view."),
 		forge.WithTags("Contingency"),
-		forge.WithRequestSchema(getRunRequest{}),
+		forge.WithRequestSchema(getSweepRunRequest{}),
 		forge.WithResponseSchema(http.StatusOK, "Run", sweep.Run{}),
 		forge.WithResponseSchema(http.StatusNotFound, "No such run", nil),
 	))
@@ -142,7 +142,7 @@ func (c *Controller) Routes(router forge.Router) error {
 
 // ListRuns returns every recorded sweep of one network.
 func (c *Controller) ListRuns(ctx forge.Context) error {
-	var req listRunsRequest
+	var req listSweepRunsRequest
 	if err := ctx.BindRequest(&req); err != nil {
 		return forge.BadRequest(err.Error())
 	}
@@ -158,12 +158,12 @@ func (c *Controller) ListRuns(ctx forge.Context) error {
 		return httperr.From(err)
 	}
 
-	return ctx.JSON(http.StatusOK, runsResponse{Runs: found})
+	return ctx.JSON(http.StatusOK, sweepRunsResponse{Runs: found})
 }
 
 // GetRun returns one recorded sweep.
 func (c *Controller) GetRun(ctx forge.Context) error {
-	var req getRunRequest
+	var req getSweepRunRequest
 	if err := ctx.BindRequest(&req); err != nil {
 		return forge.BadRequest(err.Error())
 	}

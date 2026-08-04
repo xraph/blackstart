@@ -14,7 +14,7 @@ import (
 
 // --- Request DTOs ---
 
-type getRunRequest struct {
+type getTracedRunRequest struct {
 	ID string `path:"id" description:"Run identifier (run_…)"`
 }
 
@@ -101,7 +101,7 @@ func (c *Controller) Routes(router forge.Router) error {
 				"commit it was built from, and every dataset version it read "+
 				"with the role each played. One call rather than a graph walk."),
 		forge.WithTags("Provenance"),
-		forge.WithRequestSchema(getRunRequest{}),
+		forge.WithRequestSchema(getTracedRunRequest{}),
 		forge.WithResponseSchema(http.StatusOK, "The full chain", traceResponse{}),
 		forge.WithResponseSchema(http.StatusNotFound, "No such run", nil),
 	))
@@ -135,7 +135,7 @@ func (c *Controller) Routes(router forge.Router) error {
 
 // GetRun returns the full chain behind one run.
 func (c *Controller) GetRun(ctx forge.Context) error {
-	var req getRunRequest
+	var req getTracedRunRequest
 	if err := ctx.BindRequest(&req); err != nil {
 		return forge.BadRequest(err.Error())
 	}
