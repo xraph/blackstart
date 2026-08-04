@@ -12,10 +12,23 @@
 package source
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/xraph/blackstart/extensions/geo/shape"
 )
+
+// Fetcher reads lines covering an area.
+//
+// Two implementations and the difference between them is not an interface
+// detail: Overpass publishes structures and a line layer does not, so the same
+// call against the two produces geometry that supports different claims. The
+// interface exists so a caller can be given one of them, not so the two can be
+// treated as equivalent.
+type Fetcher interface {
+	// Fetch reads every line intersecting the box, at most limit of them.
+	Fetch(ctx context.Context, box BoundingBox, limit int) ([]Line, error)
+}
 
 // Line is one circuit as a source published it.
 type Line struct {

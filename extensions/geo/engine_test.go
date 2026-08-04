@@ -8,6 +8,7 @@ import (
 	"github.com/xraph/blackstart/extensions/geo"
 	"github.com/xraph/blackstart/extensions/geo/asset"
 	"github.com/xraph/blackstart/extensions/geo/shape"
+	"github.com/xraph/blackstart/extensions/geo/source"
 	"github.com/xraph/blackstart/extensions/geo/store/memory"
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
@@ -194,5 +195,48 @@ func TestEndpointsOffTheEarthAreRefused(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("a transposed coordinate was accepted")
+	}
+}
+
+// The two lookups are not interchangeable, and the difference has to surface
+// where it is asked rather than inside a solver. A circuit's route is real
+// geometry, often better than any branch has — and still useless to a
+// contingency, because a circuit carries no impedance to remove.
+func TestTheTwoLookupsRefuseEachOthersCarrier(t *testing.T) {
+	e := engine(t)
+
+	circuit, _, err := e.ImportLine(t.Context(), source.Line{
+		ExternalID: "way/168061174",
+		Source:     "openstreetmap",
+		Path:       rightOfWay(),
+	})
+	if err != nil {
+		t.Fatalf("ImportLine: %v", err)
+	}
+
+	// A route for this identifier genuinely exists, so a not-found would be
+	// the wrong refusal: it would read as missing geometry rather than as
+	// geometry that cannot answer the question asked of it.
+	_, err = e.RouteForBranch(t.Context(), circuit.ID)
+	if !errors.Is(err, bserr.ErrInvalid) {
+		t.Errorf("RouteForBranch for a circuit = %v, want ErrInvalid; a contingency "+
+			"would get a path it cannot solve", err)
+	}
+
+	branch := id.MustNew("nmdl")
+
+	if _, err := e.Trace(t.Context(), geo.TraceRequest{
+		BranchID: branch, From: comanche, To: dallas,
+	}); err != nil {
+		t.Fatalf("Trace: %v", err)
+	}
+
+	if _, err := e.RouteForCircuit(t.Context(), branch); !errors.Is(err, bserr.ErrInvalid) {
+		t.Errorf("RouteForCircuit for a branch = %v, want ErrInvalid", err)
+	}
+
+	// And each still answers for its own.
+	if _, err := e.RouteForBranch(t.Context(), branch); err != nil {
+		t.Errorf("RouteForBranch for a branch: %v", err)
 	}
 }

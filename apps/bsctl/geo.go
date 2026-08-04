@@ -22,7 +22,7 @@ func geoCommand() cli.Command {
 		"geo",
 		"Trace and inspect where the network physically is",
 		func(ctx cli.CommandContext) error {
-			ctx.Println("usage: bsctl geo <trace|show>")
+			ctx.Println("usage: bsctl geo <trace|import|show>")
 
 			return nil
 		},

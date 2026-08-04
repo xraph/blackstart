@@ -128,7 +128,20 @@ func (e *Engine) Route(ctx context.Context, want id.ID) (asset.Route, error) {
 }
 
 // RouteForBranch finds the route carrying an electrical branch.
+//
+// A circuit is refused here rather than answered. Its route exists and is
+// often better geometry than any branch has — but a circuit has no impedance,
+// so anything that asked this question in order to solve something would get a
+// path it cannot use and find out somewhere deeper. The message says why, and
+// RouteForCircuit is what a caller that only wants the geometry should ask.
 func (e *Engine) RouteForBranch(ctx context.Context, branch id.ID) (asset.Route, error) {
+	if !asset.CarriesElectrically(branch) {
+		return asset.Route{}, fmt.Errorf(
+			"%w: %s has no electrical parameters; a contingency needs a branch "+
+				"in a network model, and RouteForCircuit reads its geometry",
+			bserr.ErrInvalid, branch)
+	}
+
 	return e.store.Routes().ForCarrier(ctx, branch)
 }
 
