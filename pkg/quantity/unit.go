@@ -169,6 +169,19 @@ var (
 	JoulePerKilogram = Unit{Symbol: "J/kg", Dim: SpecificEnergy, ToSI: 1}
 )
 
+// Mechanical and radiative units, for the hazard models.
+//
+//nolint:gochecknoglobals // a fixed physical vocabulary, not mutable state
+var (
+	Newton = Unit{Symbol: "N", Dim: Force, ToSI: 1}
+
+	NewtonPerMeter = Unit{Symbol: "N/m", Dim: LinearForceDensity, ToSI: 1}
+
+	KilogramPerMeter = Unit{Symbol: "kg/m", Dim: LinearDensity, ToSI: 1}
+
+	WattPerSquareMeter = Unit{Symbol: "W/m2", Dim: Irradiance, ToSI: 1}
+)
+
 // Per-unit units. Each carries the dimension of the quantity it normalizes, so
 // dimensional checking still works on per-unit arithmetic, but none can be
 // converted to SI without a Base.
@@ -221,6 +234,7 @@ func SIUnitFor(dim Dimension, kind Kind) (Unit, error) {
 		Hertz, Meter, Second, Kelvin, Ratio,
 		MeterPerSecond, KilogramPerSquareMeter,
 		KilogramPerSquareMeterSecond, JoulePerKilogram,
+		Newton, NewtonPerMeter, KilogramPerMeter, WattPerSquareMeter,
 	} {
 		if u.Dim == dim && u.Kind == kind && u.ToSI == 1 {
 			return u, nil

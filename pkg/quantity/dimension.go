@@ -92,6 +92,25 @@ var (
 
 	// SpecificEnergy: m^2 s^-2. Energy per unit mass, which is what CAPE is.
 	SpecificEnergy = Dimension{L: 2, T: -2}
+
+	// Force: kg m s^-2. Wind drag on a conductor.
+	Force = Dimension{L: 1, M: 1, T: -2}
+
+	// LinearForceDensity: kg s^-2. Drag per unit length, which is how a
+	// conductor load is expressed — a span's total drag depends on its length
+	// and the per-length figure does not.
+	LinearForceDensity = Dimension{M: 1, T: -2}
+
+	// LinearDensity: kg m^-1. Ice mass per unit length, the same way.
+	//
+	// Dimensionally distinct from LinearForceDensity, which matters: combined
+	// loading takes both, and adding them is precisely the mistake this
+	// package exists to make impossible.
+	LinearDensity = Dimension{M: 1, L: -1}
+
+	// Irradiance: kg s^-3. Power per unit area, for the solar term in the
+	// IEEE 738 heat balance.
+	Irradiance = Dimension{M: 1, T: -3}
 )
 
 // Mul returns the dimension of a product: exponents add.

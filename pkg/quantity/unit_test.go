@@ -311,3 +311,82 @@ func TestSIUnitForResolvesMeteorologicalDimensions(t *testing.T) {
 		}
 	}
 }
+
+// The mechanical units exist so a drag force cannot be added to an ice mass.
+// Combined loading takes both, which makes it exactly the place the mistake
+// would otherwise be made.
+func TestMechanicalUnitDimensions(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		unit Unit
+		want Dimension
+	}{
+		{"drag", Newton, Force},
+		{"drag per length", NewtonPerMeter, LinearForceDensity},
+		{"ice mass per length", KilogramPerMeter, LinearDensity},
+		{"solar", WattPerSquareMeter, Irradiance},
+	} {
+		if tt.unit.Dim != tt.want {
+			t.Errorf("%s: dimension = %v, want %v", tt.name, tt.unit.Dim, tt.want)
+		}
+	}
+}
+
+// The derived dimensions are checkable from the base ones, which is asserted
+// rather than trusted — a transposed exponent in the literals would otherwise
+// be invisible.
+func TestMechanicalDimensionsDeriveFromBases(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		got  Dimension
+		want Dimension
+	}{
+		{"force is mass times acceleration", Mass.Mul(Length).Div(Time).Div(Time), Force},
+		{"force per length", Force.Div(Length), LinearForceDensity},
+		{"mass per length", Mass.Div(Length), LinearDensity},
+		{"power per area", Power.Div(Length).Div(Length), Irradiance},
+	} {
+		if tt.got != tt.want {
+			t.Errorf("%s: got %v, want %v", tt.name, tt.got, tt.want)
+		}
+	}
+}
+
+// A drag force and an ice load per length are both "per meter" quantities and
+// are not the same thing. This is the confusion combined loading invites.
+func TestDragIsNotCompatibleWithIceMass(t *testing.T) {
+	t.Parallel()
+
+	if NewtonPerMeter.Compatible(KilogramPerMeter) {
+		t.Fatal("N/m reports compatible with kg/m; combined loading could add them")
+	}
+}
+
+func TestSIUnitForResolvesMechanicalDimensions(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		dim  Dimension
+		want string
+	}{
+		{Force, "N"},
+		{LinearForceDensity, "N/m"},
+		{LinearDensity, "kg/m"},
+		{Irradiance, "W/m2"},
+	} {
+		got, err := SIUnitFor(tt.dim, KindGeneric)
+		if err != nil {
+			t.Errorf("SIUnitFor(%v): %v", tt.dim, err)
+
+			continue
+		}
+
+		if got.Symbol != tt.want {
+			t.Errorf("SIUnitFor(%v) = %q, want %q", tt.dim, got.Symbol, tt.want)
+		}
+	}
+}
