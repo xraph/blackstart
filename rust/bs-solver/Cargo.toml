@@ -15,6 +15,7 @@ workspace = true
 bs-case = { path = "../bs-case" }
 bs-contingency = { path = "../bs-contingency" }
 bs-factors = { path = "../bs-factors" }
+bs-grib = { path = "../bs-grib" }
 bs-powerflow = { path = "../bs-powerflow" }
 bs-quantity = { path = "../bs-quantity" }
 prost = "0.13"

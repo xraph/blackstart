@@ -40,9 +40,21 @@ pub mod proto {
     tonic::include_proto!("blackstart.solver.v1");
 }
 
+/// The generated bindings for the weather grid contract.
+///
+/// A second module because it is a second protobuf package. The two contracts
+/// share this binary and nothing else: one is a power-flow service whose every
+/// wire value is SI, the other decodes a file format.
+#[allow(clippy::all, clippy::pedantic, clippy::nursery, missing_docs)]
+pub mod weather_proto {
+    tonic::include_proto!("blackstart.weather.v1");
+}
+
 pub mod cache;
 pub mod convert;
 pub mod service;
+pub mod weather;
 
 pub use cache::{ModelCache, content_hash};
 pub use service::{SOLVER_VERSION, Solver};
+pub use weather::{GridCache, WeatherGrid};

@@ -2,8 +2,9 @@
 
 use std::net::SocketAddr;
 
-use bs_solver::Solver;
 use bs_solver::proto::solver_service_server::SolverServiceServer;
+use bs_solver::weather_proto::weather_grid_service_server::WeatherGridServiceServer;
+use bs_solver::{Solver, WeatherGrid};
 use tonic::transport::Server;
 
 #[tokio::main]
@@ -18,13 +19,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let solver = Solver::new();
 
+    // Two services, one process. gRPC multiplexes them by path, so a client
+    // reaches either over the same connection — which is the whole reason the
+    // weather decoder does not need a deployment of its own.
+    let weather = WeatherGrid::new();
+
     eprintln!(
-        "bs-solver {} listening on {address}",
+        "bs-solver {} listening on {address} (solver, weather-grid)",
         bs_solver::SOLVER_VERSION
     );
 
     Server::builder()
         .add_service(SolverServiceServer::new(solver))
+        .add_service(WeatherGridServiceServer::new(weather))
         .serve_with_shutdown(address, shutdown())
         .await?;
 
