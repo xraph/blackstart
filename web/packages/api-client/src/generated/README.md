@@ -52,8 +52,8 @@ This API supports the following authentication methods:
 
 ## API Overview
 
-- **Total Endpoints**: 25
-- **REST Endpoints**: 25
+- **Total Endpoints**: 38
+- **REST Endpoints**: 38
 
 ### Servers
 

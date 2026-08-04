@@ -9,6 +9,29 @@ export enum ConnectionState {
   ERROR = 'error',
 }
 
+export interface Assignment {
+  basis: string;
+  branchId: string;
+  conductorCode: string;
+  id: string;
+  note?: string;
+}
+
+export interface BlackstartRun {
+  elapsedS: number;
+  events: Event[];
+  finishedAt: string;
+  id: string;
+  initiating: string[];
+  islands: Island[];
+  loadLost: number;
+  modelHash: string;
+  outcome: string;
+  solverVersion: string;
+  startedAt: string;
+  steps: number;
+}
+
 export interface Branch {
   equipmentId: string;
   from: number;
@@ -30,6 +53,38 @@ export interface Candidate {
   worstLoading?: number;
 }
 
+export interface Computation {
+  computedAt: string;
+  cycleId: string;
+  id: string;
+  runId: string;
+  spans: number;
+  unrated: number;
+  values: number;
+}
+
+export interface Conductor {
+  absorptivity: number;
+  areaMm2: number;
+  code: string;
+  diameterM: number;
+  emissivity: number;
+  highTempC: number;
+  lowTempC: number;
+  maxTempC: number;
+  name: string;
+  resistanceHighOhmPerM: number;
+  resistanceLowOhmPerM: number;
+}
+
+export interface Cycle {
+  feedId: string;
+  id: string;
+  issuedAt: string;
+  model: string;
+  status: string;
+}
+
 export interface DatasetVersion {
   contentHash: string;
   id: string;
@@ -40,6 +95,14 @@ export interface DatasetVersion {
   url: string;
 }
 
+export interface Event {
+  at: number;
+  detail: string;
+  element: string;
+  island?: number;
+  kind: string;
+}
+
 export interface Feed {
   cadence: string;
   format: string;
@@ -48,6 +111,21 @@ export interface Feed {
   slug: string;
   sourceId: string;
   url: string;
+}
+
+export interface Grid {
+  blobRef: string;
+  covered: number;
+  cycleId: string;
+  datasetVersionId: string;
+  field: string;
+  forecastHour: number;
+  id: string;
+  nx: number;
+  ny: number;
+  projection: string;
+  sampledAt: string;
+  total: number;
 }
 
 export interface IED {
@@ -63,6 +141,19 @@ export interface Injection {
   bus: number;
   equipmentId: string;
   kind: string;
+}
+
+export interface Island {
+  balance: number;
+  busCount: number;
+  buses: number[];
+  condition: string;
+  frequency?: number;
+  nadir?: number;
+  rocof?: number;
+  shed: number;
+  trace?: RunSample[];
+  verdict: string;
 }
 
 export interface ModelVersion {
@@ -85,6 +176,13 @@ export interface NetworkModel {
   id: string;
   name: string;
   sourceKind: string;
+}
+
+export interface Observation {
+  field: string;
+  observedAt: string;
+  stationId: string;
+  value: number;
 }
 
 export interface Point {
@@ -122,12 +220,31 @@ export interface Route {
 }
 
 export interface Run {
-  candidates: Candidate[];
+  elapsedS: number;
+  events: Event[];
   finishedAt: string;
   id: string;
+  initiating: string[];
+  islands: Island[];
+  loadLost: number;
   modelHash: string;
+  outcome: string;
   solverVersion: string;
   startedAt: string;
+  steps: number;
+}
+
+export interface RunSample {
+  at: number;
+  hz: number;
+}
+
+export interface Sample {
+  field: string;
+  issuedAt: string;
+  spanId: string;
+  validAt: string;
+  value: number;
 }
 
 export interface Solution {
@@ -176,6 +293,14 @@ export interface Span {
   sequence: number;
 }
 
+export interface SpanValue {
+  issuedAt: string;
+  quantity: string;
+  spanId: string;
+  validAt: string;
+  value: number;
+}
+
 export interface Subscription {
   data: string;
   id: string;
@@ -193,15 +318,6 @@ export interface Substation {
   name: string;
 }
 
-export interface SweepRun {
-  candidates: Candidate[];
-  finishedAt: string;
-  id: string;
-  modelHash: string;
-  solverVersion: string;
-  startedAt: string;
-}
-
 export interface TracedInput {
   dataset: DatasetVersion;
   role: string;
@@ -212,6 +328,22 @@ export interface Violation {
   loading: number;
   pFlow: number;
   rating: number;
+}
+
+export interface assignmentsResponse {
+  assignments: Assignment[];
+}
+
+export interface computationsResponse {
+  computations: Computation[];
+}
+
+export interface conductorsResponse {
+  conductors: Conductor[];
+}
+
+export interface cyclesResponse {
+  cycles: Cycle[];
 }
 
 export interface devicesResponse {
@@ -229,6 +361,17 @@ export interface feedsResponse {
   feeds: Feed[];
 }
 
+export interface forecastResponse {
+  issuedAt: string;
+  samples: Sample[];
+  spanId: string;
+}
+
+export interface gridsResponse {
+  cycleId: string;
+  grids: Grid[];
+}
+
 export interface impactResponse {
   device: IED;
   listeners: Subscription[];
@@ -237,8 +380,18 @@ export interface impactResponse {
   unaddressed: number;
 }
 
+export interface islandsResponse {
+  islands: Island[];
+  runId: string;
+}
+
 export interface modelsResponse {
   models: NetworkModel[];
+}
+
+export interface observationsResponse {
+  readings: Observation[];
+  stationId: string;
 }
 
 export interface rankedResponse {
@@ -258,7 +411,7 @@ export interface routesResponse {
 }
 
 export interface runsResponse {
-  runs: SweepRun[];
+  runs: BlackstartRun[];
 }
 
 export interface solutionsResponse {
@@ -284,6 +437,12 @@ export interface traceResponse {
   producer: ModelVersion;
   reproducible: boolean;
   run: Run;
+}
+
+export interface valuesResponse {
+  issuedAt: string;
+  spanId: string;
+  values: SpanValue[];
 }
 
 export interface violationsResponse {
