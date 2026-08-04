@@ -131,6 +131,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bs-cascade"
+version = "0.0.0"
+dependencies = [
+ "bs-case",
+ "bs-frequency",
+ "bs-powerflow",
+ "bs-protection",
+ "bs-quantity",
+]
+
+[[package]]
 name = "bs-case"
 version = "0.0.0"
 dependencies = [
@@ -208,6 +219,7 @@ dependencies = [
  "bs-case",
  "bs-contingency",
  "bs-factors",
+ "bs-grib",
  "bs-powerflow",
  "bs-quantity",
  "bytes",
