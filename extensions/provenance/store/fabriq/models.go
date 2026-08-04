@@ -63,11 +63,16 @@ type datasetModel struct {
 	Version  int64  `grove:"version,notnull"`
 
 	// SourceID is the column the graph projection follows, tying a retrieval
-	// back to a licence and a publisher rather than to a bare URL. It is
-	// optional — DatasetVersion.Validate does not require one — and an empty
-	// value tells Fabriq's projector to write no edge rather than a dangling
+	// back to a licence and a publisher rather than to a bare URL.
+	//
+	// Untagged rather than notnull, and the distinction is not cosmetic:
+	// Fabriq reads that tag as "required, and an empty value is a validation
+	// failure", not as the column constraint of the same name. The column is
+	// NOT NULL DEFAULT '' all the same. It has to be optional because
+	// DatasetVersion.Validate does not require a source, and an empty value is
+	// what tells Fabriq's projector to write no edge rather than a dangling
 	// one.
-	SourceID string `grove:"source_id,notnull"`
+	SourceID string `grove:"source_id"`
 
 	URL           string    `grove:"url,notnull"`
 	ContentHash   string    `grove:"content_hash,notnull"`
@@ -115,9 +120,15 @@ type runModel struct {
 	// follows.
 	ModelVersionID string `grove:"model_version_id,notnull"`
 
-	Kind       string `grove:"kind,notnull"`
-	ResultHash string `grove:"result_hash,notnull"`
-	Seed       string `grove:"seed,notnull"`
+	Kind string `grove:"kind,notnull"`
+
+	// Both untagged, for the same reason SourceID is: Fabriq reads notnull as
+	// "an empty value is a validation failure". Run.Validate accepts a run
+	// with neither — a result hash is optional, and an empty seed is how a
+	// deterministic computation records that it had none, since a zero seed is
+	// a real seed.
+	ResultHash string `grove:"result_hash"`
+	Seed       string `grove:"seed"`
 
 	StartedAt time.Time `grove:"started_at,notnull"`
 
