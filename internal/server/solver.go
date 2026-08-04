@@ -26,7 +26,7 @@ func provideSolver(app forge.App, address string) error {
 		return nil
 	}
 
-	return vessel.Provide(app.Container(), func() (*solver.Client, error) {
+	if err := vessel.Provide(app.Container(), func() (*solver.Client, error) {
 		conn, err := grpc.NewClient(address, dialOptions()...)
 		if err != nil {
 			return nil, fmt.Errorf(
@@ -34,6 +34,21 @@ func provideSolver(app forge.App, address string) error {
 		}
 
 		return solver.New(conn), nil
+	}); err != nil {
+		return err
+	}
+
+	// The weather grid service shares the binary, so it shares the connection.
+	// gRPC multiplexes by path, and a second dial to the same process would
+	// double the reconnection state to reason about for nothing.
+	return vessel.Provide(app.Container(), func() (*solver.GridClient, error) {
+		conn, err := grpc.NewClient(address, dialOptions()...)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"app: connecting to the weather grid service at %s: %w", address, err)
+		}
+
+		return solver.NewGrid(conn), nil
 	})
 }
 

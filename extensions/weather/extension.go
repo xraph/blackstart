@@ -11,11 +11,20 @@ import (
 	"github.com/xraph/forge"
 	"github.com/xraph/vessel"
 
+	"github.com/xraph/blackstart/extensions/datasource"
+	dsfeed "github.com/xraph/blackstart/extensions/datasource/feed"
 	"github.com/xraph/blackstart/extensions/fabric"
+	"github.com/xraph/blackstart/extensions/geo"
+	"github.com/xraph/blackstart/extensions/provenance"
+	"github.com/xraph/blackstart/extensions/weather/fetch"
 	"github.com/xraph/blackstart/extensions/weather/store"
 	fabriqstore "github.com/xraph/blackstart/extensions/weather/store/fabriq"
 	"github.com/xraph/blackstart/pkg/apiauth"
+	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/hooks"
+	"github.com/xraph/blackstart/pkg/id"
+	"github.com/xraph/blackstart/pkg/solver"
+	pkgstore "github.com/xraph/blackstart/pkg/store"
 )
 
 // ExtensionName is how this extension is identified to Forge.
@@ -124,7 +133,7 @@ func (e *Extension) Start(context.Context) error {
 
 	bus, _ := forge.Inject[*hooks.Bus](app.Container())
 
-	engine, err := NewEngine(e.store, bus)
+	engine, err := NewEngine(e.store, bus, e.halves(app)...)
 	if err != nil {
 		return err
 	}
@@ -144,6 +153,80 @@ func (e *Extension) Start(context.Context) error {
 	}
 
 	return nil
+}
+
+// halves assembles whichever of the ingest and sampling halves this
+// deployment can support.
+//
+// All of it optional, and separately so. A deployment with no datasource
+// registry can still serve reads; one with no grid service can still retrieve
+// and sample later from the stored bytes. Demanding everything up front would
+// make the read API depend on the solver being up, which it does not.
+func (e *Extension) halves(app forge.App) []EngineOption {
+	var opts []EngineOption
+
+	datasourceExt, dsErr := forge.Inject[*datasource.Engine](app.Container())
+	recorder, recErr := forge.Inject[provenance.Recorder](app.Container())
+
+	if dsErr == nil && recErr == nil {
+		opts = append(opts, WithIngest(
+			&registryFeeds{engine: datasourceExt},
+			fetch.New(nil),
+			recorder))
+	}
+
+	geoEngine, geoErr := forge.Inject[*geo.Engine](app.Container())
+	grids, gridErr := forge.Inject[*solver.GridClient](app.Container())
+
+	if geoErr == nil && gridErr == nil {
+		opts = append(opts, WithSampling(geoEngine, grids))
+	}
+
+	return opts
+}
+
+// registryFeeds adapts the datasource engine to what ingest asks of it.
+//
+// The engine has no "feed by slug within a source", because a feed slug is
+// unique within its source rather than globally — so the lookup is a filtered
+// list and a match, which belongs here rather than in the ingest path.
+type registryFeeds struct {
+	engine *datasource.Engine
+}
+
+func (r *registryFeeds) GetSourceBySlug(
+	ctx context.Context, slug string,
+) (id.ID, error) {
+	found, err := r.engine.GetSourceBySlug(ctx, slug)
+	if err != nil {
+		return id.Nil, err
+	}
+
+	return found.ID, nil
+}
+
+func (r *registryFeeds) FeedBySlug(
+	ctx context.Context, sourceSlug, feedSlug string,
+) (dsfeed.Feed, error) {
+	source, err := r.engine.GetSourceBySlug(ctx, sourceSlug)
+	if err != nil {
+		return dsfeed.Feed{}, err
+	}
+
+	feeds, err := r.engine.ListFeeds(ctx,
+		dsfeed.Filter{SourceID: source.ID}, pkgstore.Page{Limit: pkgstore.MaxPageLimit})
+	if err != nil {
+		return dsfeed.Feed{}, err
+	}
+
+	for _, found := range feeds {
+		if found.Slug == feedSlug {
+			return found, nil
+		}
+	}
+
+	return dsfeed.Feed{}, fmt.Errorf(
+		"%w: source %q has no feed %q", bserr.ErrNotFound, sourceSlug, feedSlug)
 }
 
 // Stop releases the store.
