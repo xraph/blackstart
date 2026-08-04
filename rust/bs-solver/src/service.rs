@@ -18,7 +18,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 
 use crate::cache::{Entry, ModelCache, content_hash};
-use crate::convert::{apply_overrides, to_case, to_volts, to_watts};
+use crate::convert::{apply_overrides, to_case, to_protection, to_scheme, to_volts, to_watts};
 use crate::proto;
 
 /// The solver's own version, reported with every result so a number can be
@@ -347,17 +347,181 @@ impl proto::solver_service_server::SolverService for Solver {
         Ok(Response::new(ReceiverStream::new(rx)))
     }
 
-    // Temporary stub. SimulateCascade is new on the wire; wiring it to
-    // bs_cascade is the next task's work, not this one's. This exists only so
-    // the trait is fully implemented and the workspace builds — unimplemented
-    // is not an acceptable end state, and the next task replaces this body.
     async fn simulate_cascade(
         &self,
-        _request: Request<proto::SimulateCascadeRequest>,
+        request: Request<proto::SimulateCascadeRequest>,
     ) -> Result<Response<proto::SimulateCascadeResponse>, Status> {
-        Err(Status::unimplemented(
-            "SimulateCascade is not wired up yet; the handler lands in the next task",
-        ))
+        let request = request.into_inner();
+        let entry = self.lookup(&request.content_hash)?;
+
+        let mut case = entry.case.clone();
+        apply_overrides(&mut case, &request.overrides);
+
+        let initiating: Vec<usize> = request.initiating.iter().map(|&b| b as usize).collect();
+
+        // Validated here rather than left to `bs_cascade::simulate`'s own
+        // bounds check, which panics: that panic is the right contract for a
+        // programmer mistake inside this codebase, but `initiating` on this
+        // path is untrusted client input, and a client naming a branch that
+        // does not exist must get an error back, not take the process down
+        // for every other request in flight.
+        for &branch in &initiating {
+            if branch >= case.n_branch() {
+                return Err(Status::invalid_argument(format!(
+                    "initiating outage names branch {branch}, which does not exist in a \
+                     case with {} branches",
+                    case.n_branch()
+                )));
+            }
+        }
+
+        let protection = to_protection(request.protection.as_ref(), &request.branch_protection);
+        let scheme = to_scheme(request.ufls.as_ref());
+
+        // max_steps and horizon_s both mean "the server's default" at zero,
+        // resolved exactly once, here, before the call — the same discipline
+        // `screen_contingencies` documents for its own threshold, and for the
+        // same reason: resolving a default a second time downstream, against
+        // an already-defaulted value, is how a caller's own zero silently
+        // stops meaning what the caller asked for.
+        //
+        // coalesce_window_s is deliberately NOT resolved the same way. Its
+        // own wire comment states zero means no coalescing — a real,
+        // literal setting, not a sentinel for "unset" — so it is passed
+        // through unchanged.
+        let cascade_defaults = bs_cascade::Limits::default();
+        let limits = bs_cascade::Limits {
+            max_steps: if request.max_steps > 0 {
+                request.max_steps as usize
+            } else {
+                cascade_defaults.max_steps
+            },
+            horizon: if request.horizon_s > 0.0 {
+                request.horizon_s
+            } else {
+                cascade_defaults.horizon
+            },
+        };
+
+        let options = bs_cascade::Options {
+            coalesce: request.coalesce_window_s,
+            ..bs_cascade::Options::default()
+        };
+
+        // A cascade that cannot solve an island is not an error: it comes
+        // back as `AcVerdict::Insolvable` on that island's report, the same
+        // way a non-converging contingency is a `Verdict`, not an `Err`. What
+        // `simulate` returns `Err` for is a `StepError` — an island's DC
+        // solve failing outright, which after `Case::validate` has already
+        // passed almost always means malformed overrides handed it a
+        // singular reduced system.
+        let cascade = bs_cascade::simulate(
+            &case,
+            &initiating,
+            &protection,
+            &scheme,
+            &options,
+            &limits,
+            &bs_cascade::Verification::default(),
+        )
+        .map_err(|e| Status::invalid_argument(format!("cascade: {e}")))?;
+
+        Ok(Response::new(to_cascade_response(
+            &cascade,
+            &entry.model,
+            request.content_hash,
+        )))
+    }
+}
+
+fn to_cascade_response(
+    cascade: &bs_cascade::Cascade,
+    model: &proto::NetworkModel,
+    model_hash: String,
+) -> proto::SimulateCascadeResponse {
+    let outcome = match cascade.outcome {
+        bs_cascade::CascadeOutcome::Settled => proto::CascadeOutcome::Settled,
+        bs_cascade::CascadeOutcome::Truncated { .. } => proto::CascadeOutcome::Truncated,
+        bs_cascade::CascadeOutcome::Collapsed => proto::CascadeOutcome::Collapsed,
+    };
+
+    proto::SimulateCascadeResponse {
+        outcome: outcome as i32,
+        events: cascade.events.iter().map(to_cascade_event).collect(),
+        islands: cascade
+            .reports
+            .iter()
+            .map(|report| to_island_state(report, model))
+            .collect(),
+        load_lost_w: to_watts(cascade.load_lost, model),
+        steps: index(cascade.steps),
+        elapsed_s: cascade.elapsed,
+        solver_version: SOLVER_VERSION.to_owned(),
+        model_hash,
+    }
+}
+
+fn to_cascade_event(event: &bs_cascade::Event) -> proto::CascadeEvent {
+    proto::CascadeEvent {
+        at_s: event.at,
+        kind: to_event_kind(event.kind) as i32,
+        element: event.element.clone(),
+        detail: event.detail.clone(),
+        island: event.island.map(index),
+    }
+}
+
+fn to_event_kind(kind: bs_cascade::EventKind) -> proto::CascadeEventKind {
+    match kind {
+        bs_cascade::EventKind::Overload => proto::CascadeEventKind::Overload,
+        bs_cascade::EventKind::Trip => proto::CascadeEventKind::Trip,
+        bs_cascade::EventKind::Island => proto::CascadeEventKind::Island,
+        bs_cascade::EventKind::Shed => proto::CascadeEventKind::Shed,
+        bs_cascade::EventKind::Stabilise => proto::CascadeEventKind::Stabilise,
+    }
+}
+
+fn to_island_state(
+    report: &bs_cascade::IslandReport,
+    model: &proto::NetworkModel,
+) -> proto::IslandState {
+    proto::IslandState {
+        buses: report.members.iter().copied().map(index).collect(),
+        condition: to_condition(report.condition) as i32,
+        verdict: to_verdict(&report.verdict) as i32,
+        balance_w: to_watts(report.balance, model),
+        // `IslandReport` carries only the peak frequency CONDITION a run
+        // observed, not the numeric trajectory — nadir, rate of change, final
+        // deviation — that produced it. There is no source for these three
+        // without extending `bs-cascade` itself, out of this contract's
+        // scope, so they are reported absent rather than a number invented
+        // to fill the field.
+        frequency_hz: None,
+        nadir_hz: None,
+        rocof_hz_s: None,
+        // Likewise, `Cascade::load_lost` is one running total across the
+        // whole cascade, not broken out per island. Honestly zero here
+        // rather than a guess; `load_lost_w` on the response is the number
+        // that is actually accurate.
+        shed_w: 0.0,
+    }
+}
+
+fn to_condition(condition: Option<bs_frequency::IslandCondition>) -> proto::IslandCondition {
+    match condition {
+        None => proto::IslandCondition::Unspecified,
+        Some(bs_frequency::IslandCondition::Stable) => proto::IslandCondition::Stable,
+        Some(bs_frequency::IslandCondition::Recovering) => proto::IslandCondition::Recovering,
+        Some(bs_frequency::IslandCondition::Shedding) => proto::IslandCondition::Shedding,
+        Some(bs_frequency::IslandCondition::Collapsed) => proto::IslandCondition::Collapsed,
+    }
+}
+
+fn to_verdict(verdict: &bs_cascade::AcVerdict) -> proto::AcVerdict {
+    match verdict {
+        bs_cascade::AcVerdict::Secure => proto::AcVerdict::Secure,
+        bs_cascade::AcVerdict::Violated { .. } => proto::AcVerdict::Violated,
+        bs_cascade::AcVerdict::Insolvable => proto::AcVerdict::Insolvable,
     }
 }
 
