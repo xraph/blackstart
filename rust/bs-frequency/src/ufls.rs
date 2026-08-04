@@ -76,6 +76,19 @@ pub struct Shed {
     pub stage: usize,
 }
 
+/// One point on an island's frequency curve.
+///
+/// Absolute hertz, not a deviation. A deviation is what the integrator works
+/// in, but it is the wrong thing to hand a display: a curve near zero renders
+/// as a collapsed island on an axis calibrated 57 to 61.8.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Sample {
+    /// Seconds from the start of this response's disturbance.
+    pub at: f64,
+    /// Absolute frequency, hertz.
+    pub hz: f64,
+}
+
 /// The island's whole frequency response.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Response {
@@ -91,6 +104,14 @@ pub struct Response {
     pub settling_hz: f64,
     /// Total fraction of the island's load shed.
     pub shed_fraction: f64,
+    /// The frequency curve, absolute hertz, strictly non-decreasing in time.
+    ///
+    /// Assembled rather than simply concatenated. Every shedding stage
+    /// restarts integration from rest and each segment runs to the full
+    /// horizon, so the segments overlap in local time — appending them raw
+    /// would produce a curve that jumps backwards. Each is truncated where
+    /// the next begins. See `push_segment`.
+    pub trace: Vec<Sample>,
 }
 
 /// The island's whole frequency response, shedding included.
@@ -113,6 +134,7 @@ pub fn respond(
     let mut remaining = imbalance;
     let mut load = served_load;
     let mut sheds = Vec::new();
+    let mut trace: Vec<Sample> = Vec::new();
     let mut elapsed = 0.0;
     let mut next_stage = 0;
 
@@ -139,6 +161,11 @@ pub fn respond(
             stage: next_stage + 1,
         });
 
+        // Emitted before `elapsed` advances: this segment occupies the
+        // response clock from the CURRENT elapsed up to the crossing, and the
+        // next integration takes over from there.
+        push_segment(&mut trace, &trajectory, nominal, elapsed, Some(at));
+
         elapsed += at;
         load -= shed;
         remaining -= shed;
@@ -147,6 +174,8 @@ pub fn respond(
         trajectory = integrate(model, remaining, horizon, step);
         nadir_hz = nadir_hz.min(trajectory.nadir_hz);
     }
+
+    push_segment(&mut trace, &trajectory, nominal, elapsed, None);
 
     let settling_hz = trajectory.settling_hz;
     let shed_fraction = if served_load > 0.0 {
@@ -162,6 +191,37 @@ pub fn respond(
         nadir_hz,
         settling_hz,
         shed_fraction,
+        trace,
+    }
+}
+
+/// Appends one integration segment to the assembled trace.
+///
+/// `offset` is where this segment begins on the response's own clock, and
+/// `until` bounds it: `Some(t)` when a later segment takes over at local time
+/// `t`, `None` for the final segment, which runs to the horizon.
+///
+/// The bound is what makes the assembled trace monotonic. Without it every
+/// segment contributes its whole horizon and the curve doubles back on itself
+/// at each shed.
+fn push_segment(
+    into: &mut Vec<Sample>,
+    trajectory: &Trajectory,
+    nominal: f64,
+    offset: f64,
+    until: Option<f64>,
+) {
+    for &(at, deviation) in &trajectory.samples {
+        if let Some(limit) = until
+            && at >= limit
+        {
+            break;
+        }
+
+        into.push(Sample {
+            at: offset + at,
+            hz: nominal + deviation,
+        });
     }
 }
 
