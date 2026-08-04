@@ -2,11 +2,14 @@ package weather_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	geoasset "github.com/xraph/blackstart/extensions/geo/asset"
 	"github.com/xraph/blackstart/extensions/weather"
 	"github.com/xraph/blackstart/extensions/weather/field"
+	"github.com/xraph/blackstart/extensions/weather/forecast"
 	"github.com/xraph/blackstart/extensions/weather/model"
 	"github.com/xraph/blackstart/extensions/weather/store"
 	pkgstore "github.com/xraph/blackstart/pkg/store"
@@ -269,4 +272,107 @@ func TestThePollerFetchesEveryField(t *testing.T) {
 	}
 
 	_ = field.Fields()
+}
+
+// A tick samples what retrieval left in the fetched state.
+//
+// The two halves are separate sweeps rather than a chain, so this is what
+// proves the second one runs at all: without it a poller would ingest forever
+// and never produce a single per-span sample, which is exactly the state the
+// server shipped in.
+func TestATickSamplesFetchedCycles(t *testing.T) {
+	t.Parallel()
+
+	grids := &fakeGrids{value: 14.2}
+	engine, s, cycleID := sampleHarness(t, grids, []geoasset.Span{aSpan(-97.67, 30.19)})
+
+	// No feeds, so the retrieval half does nothing and the sample sweep is the
+	// only thing under test.
+	poller, err := weather.NewPoller(engine, weather.PollConfig{Interval: time.Minute}, nil)
+	if err != nil {
+		t.Fatalf("NewPoller: %v", err)
+	}
+
+	poller.SetClock(func() time.Time { return issuance })
+
+	if err := poller.Tick(t.Context()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	cycle, err := s.Cycles().Get(t.Context(), cycleID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if cycle.Status != forecast.StatusSampled {
+		t.Errorf("cycle is %s after a tick, want %s",
+			cycle.Status, forecast.StatusSampled)
+	}
+
+	if grids.uploads == 0 {
+		t.Error("the tick never reached the grid service")
+	}
+}
+
+// A cycle already sampled is not sampled again. The sweep is over the fetched
+// state, so a second tick has nothing to do — which is what keeps a ten-minute
+// loop from re-uploading every grid it has ever seen.
+func TestASecondTickSamplesNothingNew(t *testing.T) {
+	t.Parallel()
+
+	grids := &fakeGrids{value: 14.2}
+	engine, _, _ := sampleHarness(t, grids, []geoasset.Span{aSpan(-97.67, 30.19)})
+
+	poller, err := weather.NewPoller(engine, weather.PollConfig{Interval: time.Minute}, nil)
+	if err != nil {
+		t.Fatalf("NewPoller: %v", err)
+	}
+
+	poller.SetClock(func() time.Time { return issuance })
+
+	if err := poller.Tick(t.Context()); err != nil {
+		t.Fatalf("first Tick: %v", err)
+	}
+
+	after := grids.uploads
+
+	if err := poller.Tick(t.Context()); err != nil {
+		t.Fatalf("second Tick: %v", err)
+	}
+
+	if grids.uploads != after {
+		t.Errorf("the second tick uploaded %d more grids, want none",
+			grids.uploads-after)
+	}
+}
+
+// A grid service that is down does not fail the tick, and leaves the cycle
+// fetched so the next tick tries again. Retrieval is the half that cannot be
+// recovered later, so it must not be held hostage to the solver being up.
+func TestSamplingFailureLeavesTheCycleForTheNextTick(t *testing.T) {
+	t.Parallel()
+
+	grids := &fakeGrids{value: 14.2, uploadErr: errors.New("solver is down")}
+	engine, s, cycleID := sampleHarness(t, grids, []geoasset.Span{aSpan(-97.67, 30.19)})
+
+	poller, err := weather.NewPoller(engine, weather.PollConfig{Interval: time.Minute}, nil)
+	if err != nil {
+		t.Fatalf("NewPoller: %v", err)
+	}
+
+	poller.SetClock(func() time.Time { return issuance })
+
+	if err := poller.Tick(t.Context()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	cycle, err := s.Cycles().Get(t.Context(), cycleID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if cycle.Status != forecast.StatusFetched {
+		t.Errorf("cycle is %s after a failed sampling pass, want it left at %s",
+			cycle.Status, forecast.StatusFetched)
+	}
 }

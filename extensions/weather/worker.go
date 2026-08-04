@@ -13,7 +13,10 @@ import (
 
 	"github.com/xraph/blackstart/extensions/fabric"
 	"github.com/xraph/blackstart/extensions/weather/fetch"
+	"github.com/xraph/blackstart/extensions/weather/forecast"
 	"github.com/xraph/blackstart/extensions/weather/model"
+	"github.com/xraph/blackstart/extensions/weather/store"
+	pkgstore "github.com/xraph/blackstart/pkg/store"
 )
 
 // The polling worker.
@@ -104,16 +107,32 @@ func (p *Poller) SetClock(now func() time.Time) {
 	}
 }
 
-// Tick runs one pass: the newest cycle first, then backwards to the horizon.
+// Tick runs one pass: retrieve, then sample what has been retrieved.
 //
+// Retrieval takes the newest cycle first, then walks backwards to the horizon.
 // Newest first because operational correctness is the more urgent of the two
 // goals — a current forecast matters now, and a six-hour-old one does not.
 // Backwards afterwards because a missed cycle is unrecoverable once the
 // archive rolls past it.
 //
-// Idempotent ingest is what makes this safe to run on every restart: a cycle
-// already recorded costs one lookup and reports as skipped.
+// Sampling is a separate sweep over whatever is in the fetched state rather
+// than something chained onto each retrieval, and the difference matters when
+// the grid service is down: retrieval still succeeds, the bytes are safe, and
+// the next tick samples them once the solver is back. Chaining would lose the
+// cycle to a transient outage in a component retrieval does not need.
+//
+// Idempotent throughout, which is what makes this safe on every restart: a
+// cycle already recorded costs one lookup and reports as skipped.
 func (p *Poller) Tick(ctx context.Context) error {
+	if err := p.retrieve(ctx); err != nil {
+		return err
+	}
+
+	return p.sample(ctx)
+}
+
+// retrieve is the ingest half of a tick.
+func (p *Poller) retrieve(ctx context.Context) error {
 	if len(p.config.Feeds) == 0 {
 		return nil
 	}
@@ -145,6 +164,66 @@ func (p *Poller) Tick(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// maxSampleSweep bounds how many fetched cycles one tick will sample.
+//
+// A bound rather than everything, because the first tick after a long outage
+// could otherwise hold the leader lock for as long as the backlog takes and
+// starve retrieval — which is the half that cannot be recovered later. The
+// remainder is picked up next tick.
+const maxSampleSweep = 8
+
+// sample turns retrieved grids into per-span samples.
+//
+// It sweeps the fetched state rather than sampling what this tick just
+// retrieved, so a cycle that arrived while the grid service was down is picked
+// up as soon as it comes back, and a cycle ingested by `bsctl` is sampled by
+// the worker without anyone asking.
+func (p *Poller) sample(ctx context.Context) error {
+	pending, err := p.engine.Cycles(ctx,
+		store.CycleFilter{Status: forecast.StatusFetched},
+		pkgstore.Page{Limit: maxSampleSweep})
+	if err != nil {
+		return fmt.Errorf("weather: listing cycles awaiting sampling: %w", err)
+	}
+
+	for _, cycle := range pending {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		p.sampleOne(ctx, cycle)
+	}
+
+	return nil
+}
+
+// sampleOne samples a single cycle, logging rather than failing the tick.
+//
+// The same reasoning as ingestOne: one cycle the grid service will not decode
+// should not stop the sweep, and the cycle stays in the fetched state so the
+// next tick tries again.
+func (p *Poller) sampleOne(ctx context.Context, cycle forecast.Cycle) {
+	result, err := p.engine.SampleCycle(ctx, cycle.ID, nil)
+	if err != nil {
+		p.log("weather: sampling failed",
+			forge.F("cycle", cycle.ID.String()),
+			forge.F("model", string(cycle.Model)),
+			forge.F("issued_at", cycle.IssuedAt.Format(time.RFC3339)),
+			forge.F("error", err.Error()))
+
+		return
+	}
+
+	p.log("weather: sampled",
+		forge.F("cycle", cycle.ID.String()),
+		forge.F("model", string(cycle.Model)),
+		forge.F("issued_at", cycle.IssuedAt.Format(time.RFC3339)),
+		forge.F("grids", result.Grids),
+		forge.F("samples", result.Samples),
+		forge.F("covered", result.Covered),
+		forge.F("total", result.Total))
 }
 
 // ingestOne retrieves a single cycle, logging rather than failing the tick.
