@@ -367,33 +367,36 @@ fn ufls_shedding_is_counted_in_load_lost() {
     );
 }
 
-/// The island's UFLS outcome reaches `Cascade::reports` — not merely
-/// `is_some()`, which would pass even if the wrong variant leaked through.
+/// The island's UFLS outcome reaches `Cascade::reports` as its PEAK
+/// severity, not merely its condition at the final instant — and not
+/// merely `is_some()`, which would pass even if the wrong variant leaked
+/// through.
 ///
 /// Reuses `heavy_deficit_case` and the exact two-stage scheme already hand-
 /// derived in `ufls_shedding_is_counted_in_load_lost` above, so no new
-/// arithmetic is needed here: that test already establishes both stages fire
-/// within the cascade's first step. `heavy_deficit_case` never splits (one
-/// branch, rated far above anything that reaches it), so there is exactly
-/// one island throughout and no cross-island attribution to reason about —
-/// the single report's `condition` has to be this island's own.
+/// arithmetic is needed here: that test already establishes both stages
+/// fire within the cascade's first step, and that dispatch self-corrects
+/// on the very next (uncounted) step — the second stage oversheds past the
+/// deficit into a surplus, dispatch backs the generator down to match, and
+/// the residual imbalance the frequency model sees goes to zero. Left
+/// completely alone (`Limits::default()`), this cascade therefore reaches
+/// `Settled`, and its terminal response has empty `sheds` and condition
+/// `Stable` — a naive "condition = the last instant" implementation would
+/// report `Stable` here, discarding the one fact about this island an
+/// operator most needs: that it shed 75% of its load along the way.
+/// Sticky severity tracking is what keeps that fact in the report even
+/// though the island's own last moment was calm.
 ///
-/// The cascade is truncated at `max_steps: 1`, deliberately — left to run to
-/// completion, this scheme's dispatch eventually self-corrects (the second
-/// stage oversheds past the deficit into a surplus, and a later, uncounted
-/// step brings the island fully back to `Stable` before `simulate` returns
-/// `Settled`; a `Settled` outcome's last-observed response always has empty
-/// `sheds` by construction, since that emptiness is what stops the loop, so
-/// its condition can never be `Shedding` — only `Stable` or `Recovering`).
-/// Truncating right after the shedding step is what makes `Shedding` the
-/// TRUE final answer here, and it is why this test could not be written
-/// against a `Settled` cascade at all.
+/// `heavy_deficit_case` never splits (one branch, rated far above anything
+/// that reaches it), so there is exactly one island throughout and no
+/// cross-island attribution to reason about here — see
+/// `the_five_bus_golden_reports_each_islands_peak_severity` in
+/// `golden_five_bus.rs` for that.
 ///
-/// Fails if `condition` stays `None` — the gap this fix closes, where
-/// `verify_islands` has no frequency `Response` to draw from and `simulate`
-/// previously never backfilled one — or comes back `Stable`, which is what a
-/// backfill reading the wrong (e.g. first-ever, or a hypothetical later)
-/// step's response instead of the actually-last-observed one would produce.
+/// Fails if `condition` stays `None` (the original gap this fix closed), or
+/// comes back `Stable` — which is exactly what reading only the terminal
+/// step's response, rather than the peak across the whole run, would
+/// produce for this specific cascade.
 #[test]
 fn a_surviving_islands_condition_reaches_the_report() {
     let scheme = Scheme {
@@ -419,15 +422,143 @@ fn a_surviving_islands_condition_reaches_the_report() {
         &Protection::new(Settings::default(), Vec::new()),
         &scheme,
         &Options::default(),
-        &Limits {
-            max_steps: 1,
-            horizon: 3600.0,
-        },
+        &Limits::default(),
         &Verification::default(),
     )
     .expect("solvable");
 
-    assert_eq!(got.outcome, CascadeOutcome::Truncated { steps: 1 });
+    assert_eq!(got.outcome, CascadeOutcome::Settled);
     assert_eq!(got.reports.len(), 1);
     assert_eq!(got.reports[0].condition, Some(IslandCondition::Shedding));
+}
+
+/// Two independently-dispatched regions joined by a double-circuit tie:
+/// `g0` (slack, `p_max=3.0`) with a 4.0 pu local load `l0`, and `g1` (a
+/// second, non-slack generator, `p_max=3.0`) with a 1.0 pu local load `l1`.
+/// Losing the tie strands `g0`'s side with more local load than `g0` alone
+/// can supply, even though the SYSTEM as a whole had enough capacity —
+/// `g1`'s spare 2.0 pu was crossing the tie to help cover `g0`'s own
+/// shortfall before the tie was lost.
+///
+/// `"a"` and `"b"` are each rated generously (6.0, 2.0) so neither ever
+/// trips; only the tie is tight.
+fn two_generator_case() -> Case {
+    let base = Base::new(100e6, 345e3).expect("a valid base");
+
+    let buses = vec![
+        Bus::slack("g0", 1.0)
+            .with_real_limits(0.0, 3.0)
+            .with_machine(4.0, 0.05),
+        Bus::load("l0", -4.0, 0.0),
+        Bus::generator("g1", 0.0, 1.0)
+            .with_real_limits(0.0, 3.0)
+            .with_machine(4.0, 0.05),
+        Bus::load("l1", -1.0, 0.0),
+    ];
+
+    let branches = vec![
+        Branch::new("a", 0, 1, 0.01, 0.1).with_rating(6.0),
+        Branch::new("tie1", 0, 2, 0.01, 0.1).with_rating(1.0),
+        Branch::new("tie2", 0, 2, 0.01, 0.1).with_rating(1.0),
+        Branch::new("b", 2, 3, 0.01, 0.1).with_rating(2.0),
+    ];
+
+    Case::new("two-generator", base, buses, branches)
+}
+
+/// A final island's `condition` survives a REAL mid-run split, attributed
+/// to the correct island rather than to whichever island happened to sit at
+/// the same array position a step earlier.
+///
+/// `a_surviving_islands_condition_reaches_the_report` above never
+/// re-partitions (`heavy_deficit_case` is one bus pair, one island, always),
+/// and the five-bus golden's two final islands land on the SAME condition
+/// (`Shedding`, for both — see its own test), so neither can tell correct
+/// per-bus attribution apart from a naive positional one
+/// (`reports[i].condition = last_responses[i]`): with a constant island
+/// count, or with two islands that agree anyway, a positional bug is
+/// invisible. This case is built specifically to make that bug visible: the
+/// island count changes from 1 to 2 partway through the run, `g0`'s side
+/// ends `Shedding` and `g1`'s side ends `Stable`, and only correct
+/// bus-indexed attribution can put the right verdict on each.
+///
+/// # The arithmetic
+///
+/// **Pre-split (`tie1` open at `t=0`, network still one island through
+/// `tie2`).** Dispatch, fresh: combined load `4.0 + 1.0 = 5.0`, combined
+/// headroom `3.0 + 3.0 = 6.0` — pro-rata split evenly since both units'
+/// headroom is identical: factor `= 5.0 / 6.0`, so both `g0` and `g1` end at
+/// `3.0 x 5/6 = 2.5` pu. Gap fully covered (`5.0 <= 6.0`): no residual, no
+/// shed. This step's only loggable candidate is the tie: in a radial tree,
+/// a branch's flow is exactly the net injection of the subtree beyond it,
+/// so the tie carries `g1`'s output minus `l1`'s load: `2.5 - 1.0 = 1.5` pu,
+/// flowing from `g1`'s side toward `g0`'s — `g1`'s spare capacity crossing
+/// the tie to help `g0`. `tie2` alone (the survivor) now carries the full
+/// 1.5 pu against its 1.0 pu rating: `m = 1.5`, the exact loading the
+/// five-bus golden's own `tie2` sees, so the same closed form gives the
+/// same interval, `t = 0.014 / (1.5^0.02 - 1) ~= 1.7194` s. With no shed to
+/// anchor an earlier, faster timeline entry this time, `tie2` is the
+/// timeline's only, and therefore earliest, candidate — so it fires in
+/// this very first step, splitting the network into `{g0, l0}` (bus 0, 1)
+/// and `{g1, l1}` (bus 2, 3).
+///
+/// **Next step, post-split.** `g0`'s island: gap `= 4.0 - 2.5 = 1.5`,
+/// headroom `3.0 - 2.5 = 0.5`, covered up to headroom: `g0 -> 3.0`,
+/// residual `= 1.0` — the same 1.0 pu residual the five-bus golden derives,
+/// against the same 4.0 pu served load, so the same one-stage, 25% scheme
+/// closes it exactly (`0.25 x 4.0 = 1.0`): `g0`'s island sheds and settles
+/// `Shedding`. `g1`'s island: gap `= 1.0 - 2.5 = -1.5` (a surplus) —
+/// dispatch backs `g1` down to `1.0` exactly, residual `0`, no shed:
+/// `Stable`.
+///
+/// **Final step.** Both islands' gaps are already zero; nothing left to
+/// trip or shed. Settled.
+///
+/// Sticky severity per bus: `g0`'s side sees `Stable` (the pre-split,
+/// whole-network step), then `Shedding` — `Shedding` wins. `g1`'s side sees
+/// `Stable`, `Stable`, `Stable` throughout — never anything to raise it.
+///
+/// # What would make this fail
+///
+/// A regression to positional matching would very plausibly assign island
+/// 1's (post-split) condition using whatever sat at array position 1 in an
+/// earlier step's `responses` — a step where position 1 didn't exist yet
+/// (one combined island) or meant something else entirely — producing
+/// `None`, a panic on an out-of-range index, or `g1`'s island wrongly
+/// inheriting `Shedding`. A bug that erases severity instead of keeping the
+/// maximum (the exact defect fix round 2 corrects) would report `g0`'s
+/// island as `Stable`, its last-instant condition, discarding the shed.
+#[test]
+fn condition_attribution_survives_a_real_split() {
+    let scheme = Scheme {
+        stages: vec![Stage {
+            at_hz: 59.99,
+            shed_fraction: 0.25,
+            delay: 0.0,
+        }],
+        floor_hz: 40.0,
+        ceiling_hz: 70.0,
+    };
+
+    let got = simulate(
+        &two_generator_case(),
+        &[1], // "tie1"
+        &Protection::new(Settings::default(), Vec::new()),
+        &scheme,
+        &Options::default(),
+        &Limits::default(),
+        &Verification::default(),
+    )
+    .expect("solvable");
+
+    assert_eq!(got.outcome, CascadeOutcome::Settled);
+    assert_eq!(got.islands.count(), 2);
+    assert_eq!(got.reports.len(), 2);
+
+    // g0's island (containing bus 0) sorts first.
+    assert_eq!(got.reports[0].members, vec![0, 1]);
+    assert_eq!(got.reports[1].members, vec![2, 3]);
+
+    assert_eq!(got.reports[0].condition, Some(IslandCondition::Shedding));
+    assert_eq!(got.reports[1].condition, Some(IslandCondition::Stable));
 }

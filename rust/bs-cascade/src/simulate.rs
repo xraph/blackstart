@@ -184,11 +184,15 @@ pub struct Cascade {
     /// until now. See [`Verification`] for the voltage band and AC solver
     /// options this verification runs under.
     ///
-    /// Each report's `condition` comes from the cascade's own frequency
-    /// history where one is available — see [`simulate`]'s body for how a
-    /// final island is matched back to the step that last observed it, and
-    /// why `None` is a real, distinct answer rather than a placeholder for
-    /// "nobody checked".
+    /// Each report's `condition` is the MOST SEVERE frequency condition the
+    /// cascade's own history ever observed for that island — not merely
+    /// its condition at the final instant. An island that shed a quarter of
+    /// its load and then settled `Stable` reports `Shedding`: the shed is
+    /// the single most important fact about it, and a snapshot of the last
+    /// step alone would discard it. See [`simulate`]'s body for the
+    /// severity order and how a final island is matched back to what the
+    /// loop observed, and why `None` is a real, distinct answer rather than
+    /// a placeholder for "nobody checked".
     pub reports: Vec<IslandReport>,
 }
 
@@ -230,14 +234,11 @@ pub fn simulate(
     let mut steps = 0;
     let mut shed_total = 0.0;
 
-    // The islands and responses `step` last computed, for every call —
-    // including one that turns out to be the very last, whether it fired
-    // anything or not. An uncounted "nothing left to do" call is exactly the
-    // one that reveals an island's true settled condition, so it has to be
-    // captured here rather than only inside the branches below that log an
-    // event.
-    let mut last_islands: Option<Islands> = None;
-    let mut last_responses: Option<Vec<Option<Response>>> = None;
+    // The most severe condition any step ever observed for each bus — see
+    // `severity` below for why this is a maximum accumulated across the
+    // whole run rather than a snapshot of the last call. `None` until some
+    // step observes a machine on that bus's island.
+    let mut bus_condition: Vec<Option<IslandCondition>> = vec![None; case.n_bus()];
 
     let outcome = loop {
         if steps >= limits.max_steps || elapsed >= limits.horizon {
@@ -257,8 +258,26 @@ pub fn simulate(
 
         let out = step(&mut case, protection, scheme, options)?;
 
-        last_islands = Some(out.islands.clone());
-        last_responses = Some(out.responses.clone());
+        // Sticky, not overwritten: an island that sheds once and settles
+        // `Stable` a moment later must not have that shed erased from its
+        // record. `respond` (in `bs-frequency`) is deliberately memory-less
+        // per call — each step's integration starts fresh from rest against
+        // that step's own dispatch and topology, which is correct, since a
+        // step's trajectory has no business inheriting a *different* step's
+        // imbalance. That is exactly why severity has to be accumulated
+        // here, by the caller, instead: nothing inside a single `step` call
+        // has the whole run's history to draw on. Keyed by bus, not island
+        // identity — see the end-of-run comment below for why.
+        for (members, response) in out.islands.members.iter().zip(&out.responses) {
+            let Some(response) = response else { continue };
+            for &bus in members {
+                let candidate = response.condition;
+                bus_condition[bus] = Some(match bus_condition[bus] {
+                    Some(existing) if severity(existing) >= severity(candidate) => existing,
+                    _ => candidate,
+                });
+            }
+        }
 
         // Checked before "nothing fired": a step can find nothing left to
         // trip or shed and still be the step that reveals every remaining
@@ -315,46 +334,30 @@ pub fn simulate(
 
     // `verify_islands` never sees a frequency `Response` — see its own doc
     // comment — so every report comes back with `condition: None`. This is
-    // where that gap gets closed, from the last islands/responses the loop
-    // itself observed.
+    // where that gap gets closed, from `bus_condition`, the peak severity
+    // the loop above accumulated.
     //
-    // A final island can differ from the partition `step` last computed —
-    // that call's own fired trips are applied to `case` at the very end of
-    // `step`, after `islands`/`responses` were already captured against the
-    // topology as it stood at the *start* of that call. So a bus is matched
-    // back to its last observed condition individually, keyed by bus index
-    // rather than by island identity: bus indices never move under
-    // re-partitioning, which makes them the one stable key available here,
-    // where an island's own identity is not stable across a split.
-    //
-    // Every `step` call partitions every bus in the case (`Islands::of`
-    // never omits one), so the last call's observation completely
-    // supersedes any earlier one for every bus, not just the ones whose
-    // island changed — there is no need to merge across calls, only to keep
-    // the most recent.
-    //
-    // A final island is represented by its lowest-index member, the same
-    // "lowest member stands for the island" convention `representative`
+    // A final island can differ from the partition any one `step` call
+    // computed — a call's own fired trips are applied to `case` at the very
+    // end of `step`, after `islands`/`responses` were already captured
+    // against the topology as it stood at the *start* of that call. So a
+    // final island is matched back by its lowest-index member, not by
+    // island identity: bus indices never move under re-partitioning, which
+    // is what makes `bus_condition` keyable by bus at all, and "lowest
+    // member stands for the island" is the same convention `representative`
     // uses elsewhere in this module. `None` results exactly when either no
-    // step ever ran (an immediately truncated cascade) or the last
-    // observation of that bus was itself a machine-less island — both
-    // honest, distinct answers from `Some(Stable)`, not a placeholder for
-    // "nobody checked".
+    // step ever ran (an immediately truncated cascade) or every observation
+    // of that bus was itself a machine-less island — both honest, distinct
+    // answers from `Some(Stable)`, not a placeholder for "nobody checked".
     //
-    // One acknowledged gap: if a single call's own fired trips *both*
-    // collapse the network *and* newly split it, the pre-firing snapshot
-    // that call captured is what gets used here, the same staleness
-    // `is_collapsed` above already tolerates for the same reason — there is
-    // no further call to refine it with.
-    let mut bus_condition = vec![None; case.n_bus()];
-    if let (Some(islands), Some(responses)) = (&last_islands, &last_responses) {
-        for (members, response) in islands.members.iter().zip(responses) {
-            let condition = response.as_ref().map(|r| r.condition);
-            for &bus in members {
-                bus_condition[bus] = condition;
-            }
-        }
-    }
+    // One acknowledged gap: a call's own fired trips are not reflected in
+    // `islands`/`responses` from that same call — see above — so if that
+    // call's firing is what both collapses the network and newly splits it,
+    // the newly-split piece's very first moment as its own island is never
+    // separately observed. Its buses still carry whatever `bus_condition`
+    // already held from being part of a larger island a moment earlier,
+    // which is the same staleness `is_collapsed` above already tolerates,
+    // for the same reason — there is no further call to refine it with.
     for report in &mut reports {
         if let Some(&lowest) = report.members.first() {
             report.condition = bus_condition[lowest];
@@ -497,6 +500,24 @@ fn record_step(
         events,
         shed,
         island_count: after,
+    }
+}
+
+/// Ranks an [`IslandCondition`] for the sticky severity tracking in
+/// [`simulate`]: `Stable < Recovering < Shedding < Collapsed`, matching the
+/// order the variants are declared in on `IslandCondition` itself in
+/// `bs-frequency`.
+///
+/// Kept local to this module rather than added as a derived `Ord` on
+/// `IslandCondition` itself: severity-as-a-maximum is specific to how a
+/// cascade accumulates a condition across many steps, and `bs-frequency`
+/// has no such accumulation of its own to justify carrying the ordering.
+fn severity(condition: IslandCondition) -> u8 {
+    match condition {
+        IslandCondition::Stable => 0,
+        IslandCondition::Recovering => 1,
+        IslandCondition::Shedding => 2,
+        IslandCondition::Collapsed => 3,
     }
 }
 

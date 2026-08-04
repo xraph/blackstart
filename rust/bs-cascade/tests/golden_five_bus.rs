@@ -113,10 +113,13 @@
 //!
 //! The exact event sequence (count, kind, order, branch, island), the two
 //! `detail` strings (loading percentage and shed fraction, both exact,
-//! closed-form numbers), `outcome`, `islands.count()`, `steps`, and
-//! `load_lost` are all asserted exactly or to a tight tolerance — every one of
-//! them is derived above from the ratings and the relay/shedding settings
-//! alone.
+//! closed-form numbers), `outcome`, `islands.count()`, `steps`, `load_lost`,
+//! and each final island's `Cascade::reports[..].condition` are all asserted
+//! exactly or to a tight tolerance — every one of them is derived above from
+//! the ratings and the relay/shedding settings alone. Both islands' sticky
+//! condition happens to come out the same (`Shedding`) here — see the
+//! assertion's own comment for why, and for a case where two final islands'
+//! conditions genuinely differ.
 //!
 //! The individual event `at` timestamps are **not** asserted to high
 //! precision. The shed's own crossing time is the output of a fixed-step RK4
@@ -130,7 +133,7 @@
 
 use bs_cascade::{CascadeOutcome, EventKind, Limits, Options, Verification, simulate};
 use bs_case::{Branch, Bus, Case};
-use bs_frequency::{Scheme, Stage};
+use bs_frequency::{IslandCondition, Scheme, Stage};
 use bs_protection::{Protection, Settings};
 use bs_quantity::Base;
 
@@ -289,4 +292,19 @@ fn the_five_bus_cascade_matches_the_hand_derivation() {
     // other two. The generating island (containing bus 0) sorts first.
     assert_eq!(got.islands.members[0], vec![0, 1, 2]);
     assert_eq!(got.islands.members[1], vec![3, 4]);
+
+    // Both final islands' sticky condition is `Shedding` — the SAME value,
+    // for a reason worth being explicit about rather than surprised by. The
+    // shed in step 1 fires while the network is still one undivided piece
+    // (buses 0-4 together, see the module docs): at that instant `l2` and
+    // `l3` are genuinely, if briefly, part of the island that shed, and
+    // sticky severity tracking (see `simulate`'s doc comment on
+    // `Cascade::reports`) does not erase that just because those buses are
+    // cut off a moment later. This is exactly why this golden alone cannot
+    // stand in for a test of *correct per-island attribution* — identical
+    // final values cannot distinguish that from an accidental positional
+    // match — see `condition_attribution_survives_a_real_split` in
+    // `tests/simulate.rs` for the case that can.
+    assert_eq!(got.reports[0].condition, Some(IslandCondition::Shedding));
+    assert_eq!(got.reports[1].condition, Some(IslandCondition::Shedding));
 }
