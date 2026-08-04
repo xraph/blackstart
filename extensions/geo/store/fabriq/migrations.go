@@ -22,6 +22,7 @@ func Group() *migrate.Group {
 
 	g.MustRegister(migration0001Tables)
 	g.MustRegister(migration0002Carrier)
+	g.MustRegister(migration0003Circuits)
 
 	return g
 }
@@ -150,5 +151,48 @@ func down0002(ctx context.Context, exec migrate.Executor) error {
 		`ALTER INDEX IF EXISTS ` + RouteTable + `_carrier_idx
 			RENAME TO ` + RouteTable + `_branch_idx`,
 		`ALTER TABLE ` + RouteTable + ` RENAME COLUMN carrier_id TO branch_id`,
+	})
+}
+
+// Circuits are the lines somebody actually built, imported from public
+// sources. No impedance, no rating, no tap: a circuit is not a branch, and a
+// column here would be filled by a guess indistinguishable from a measurement
+// once stored — see the real-circuit-identity design, §3.1.
+var migration0003Circuits = &migrate.Migration{
+	Name:    "geo_circuits",
+	Version: "20260804000020",
+	Comment: "circuits imported from public geometry sources",
+	Up:      up0003,
+	Down:    down0003,
+}
+
+func up0003(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`CREATE TABLE IF NOT EXISTS ` + CircuitTable + ` (
+			id           TEXT PRIMARY KEY,
+			tenant_id    TEXT NOT NULL,
+			version      BIGINT NOT NULL,
+			external_id  TEXT NOT NULL,
+			source       TEXT NOT NULL,
+			voltage_kv   DOUBLE PRECISION NOT NULL DEFAULT 0,
+			operator     TEXT NOT NULL DEFAULT ''
+		)`,
+
+		`CREATE INDEX IF NOT EXISTS ` + CircuitTable + `_tenant_idx
+			ON ` + CircuitTable + ` (tenant_id)`,
+
+		// The reconciliation key, and unique because that is what makes an
+		// import re-runnable rather than merely repeatable: the same OSM way
+		// seen twice has to update one circuit, not create a second that looks
+		// exactly as real as the first. Source is part of it because OSM way
+		// 4625 and HIFLD feature 4625 are different lines sharing a number.
+		`CREATE UNIQUE INDEX IF NOT EXISTS ` + CircuitTable + `_external_idx
+			ON ` + CircuitTable + ` (tenant_id, source, external_id)`,
+	})
+}
+
+func down0003(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`DROP TABLE IF EXISTS ` + CircuitTable,
 	})
 }

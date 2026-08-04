@@ -21,13 +21,22 @@ type Store struct {
 
 	routes map[id.ID]asset.Route
 	spans  map[id.ID][]asset.Span
+
+	circuits map[id.ID]asset.Circuit
+
+	// byExternal is the reconciliation index, kept beside the circuits rather
+	// than scanned for on every import: an import re-runs over thousands of
+	// lines and a linear scan per line makes it quadratic.
+	byExternal map[externalKey]id.ID
 }
 
 // New builds an empty store.
 func New() *Store {
 	return &Store{
-		routes: map[id.ID]asset.Route{},
-		spans:  map[id.ID][]asset.Span{},
+		routes:     map[id.ID]asset.Route{},
+		spans:      map[id.ID][]asset.Span{},
+		circuits:   map[id.ID]asset.Circuit{},
+		byExternal: map[externalKey]id.ID{},
 	}
 }
 
@@ -64,6 +73,17 @@ func (s *routes) Put(_ context.Context, route asset.Route, spans []asset.Span) e
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// A carrier has one route, so a re-trace replaces rather than joining it.
+	// The Fabriq store gets this from a unique index; here it has to be done by
+	// hand, and not doing it made this store accept what Postgres would refuse
+	// — the worst kind of divergence, because the tests run against this one.
+	for existing, held := range s.routes {
+		if held.CarrierID == route.CarrierID && existing != route.ID {
+			delete(s.routes, existing)
+			delete(s.spans, existing)
+		}
+	}
 
 	s.routes[route.ID] = route
 
