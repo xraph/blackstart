@@ -124,6 +124,51 @@ fn an_explicit_non_positive_droop_is_excluded_not_defaulted() {
     );
 }
 
+/// When a machine states no `p_max` — infinite, meaning unlimited rather
+/// than large — present output stands in for its rating.
+///
+/// `Bus::generator` already leaves `p_max` at `f64::INFINITY` by default, so
+/// this is exercised by simply not calling `with_real_limits`. `p_injection`
+/// is 3.0, so the fallback rating is `|3.0| = 3.0`; with one machine,
+/// `generation_base` is that rating exactly, since nothing else is summed
+/// into it.
+///
+/// What would make this fail: the fallback using `p_max` itself (infinity)
+/// instead of `p_injection.abs()`, which would leave `generation_base`
+/// infinite rather than 3.0.
+#[test]
+fn a_machine_with_unlimited_p_max_uses_present_output_as_its_rating() {
+    let mut bus = Bus::generator("g0", 3.0, 1.0);
+    bus.inertia_h = Some(4.0);
+
+    let got =
+        Aggregate::of(&[bus], &[0], DEFAULT_DROOP_R).expect("inertia data with infinite p_max");
+
+    assert!(
+        (got.generation_base - 3.0).abs() < 1e-12,
+        "generation_base = {}, want the present output 3.0",
+        got.generation_base
+    );
+}
+
+/// The same infinite-`p_max` fallback, but with zero present output: the
+/// fallback rating is `|0.0| = 0.0`, which the `rating <= 0.0` guard then
+/// excludes — the same treatment a machine with an explicit zero rating
+/// gets. With this as the island's only machine, excluding it leaves
+/// `machines == 0`, so the whole aggregate is `None`, not a `Some` carrying
+/// a zero-rated machine.
+///
+/// What would make this fail: the guard admitting a zero rating (say, by
+/// substituting a floor value instead of excluding it), which would produce
+/// `Some` with a `generation_base` of 0.0 rather than `None`.
+#[test]
+fn a_machine_with_unlimited_p_max_and_no_output_contributes_nothing() {
+    let mut bus = Bus::generator("g0", 0.0, 1.0);
+    bus.inertia_h = Some(4.0);
+
+    assert!(Aggregate::of(&[bus], &[0], DEFAULT_DROOP_R).is_none());
+}
+
 /// A load bus is not a machine, whatever data it happens to carry.
 #[test]
 fn load_buses_are_not_machines() {
