@@ -63,7 +63,7 @@ type datasetModel struct {
 	Version  int64  `grove:"version,notnull"`
 
 	// SourceID is the column the graph projection follows, tying a retrieval
-	// back to a licence and a publisher rather than to a bare URL.
+	// back to a license and a publisher rather than to a bare URL.
 	//
 	// Untagged rather than notnull, and the distinction is not cosmetic:
 	// Fabriq reads that tag as "required, and an empty value is a validation
@@ -229,7 +229,7 @@ func datasetFromModel(m datasetModel) (record.DatasetVersion, error) {
 }
 
 func modelToModel(in record.ModelVersion) (*modelModel, error) {
-	// Marshalled even when nil, so the column holds `{}` rather than SQL NULL
+	// Marshaled even when nil, so the column holds `{}` rather than SQL NULL
 	// and a reader never has to distinguish "no parameters" from "not
 	// recorded" — for a producer version they are the same thing.
 	params := in.Parameters

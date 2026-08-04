@@ -83,7 +83,7 @@ func (s *records) CreateDataset(
 	// The Fabriq store gets this from a unique index on (tenant_id,
 	// content_hash), and this store has to agree: the engine is tested here
 	// and deployed there, so a divergence would be a suite describing
-	// behaviour the deployment does not have.
+	// behavior the deployment does not have.
 	if existing, seen := s.byHash[in.ContentHash]; seen {
 		return s.datasets[existing], nil
 	}
