@@ -39,6 +39,12 @@ data/**                 linguist-generated=true -diff
 # src/index.ts is hand-written and deliberately not covered by this rule.
 web/packages/api-client/src/generated/** linguist-generated=true -diff
 
+# Recorded HTTP responses used as parser fixtures. Captured from a live
+# service and trimmed, never written by hand — marked so they do not count as
+# authored work, unlike the hand-built fixtures alongside them in testdata/
+# (a small SCD written from the schema, a MATPOWER case trimmed by hand).
+extensions/*/source/testdata/*.json linguist-generated=true -diff
+
 # Package-local golden files, produced by `go test -update`. Marked by
 # extension rather than by directory: a testdata/ directory also holds
 # hand-authored fixtures — a small SCD written from the schema, a MATPOWER
