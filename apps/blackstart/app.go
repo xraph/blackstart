@@ -17,6 +17,7 @@ import (
 	geofabriq "github.com/xraph/blackstart/extensions/geo/store/fabriq"
 	nmfabriq "github.com/xraph/blackstart/extensions/networkmodel/store/fabriq"
 	pffabriq "github.com/xraph/blackstart/extensions/powerflow/store/fabriq"
+	pvfabriq "github.com/xraph/blackstart/extensions/provenance/store/fabriq"
 	sclfabriq "github.com/xraph/blackstart/extensions/scl/store/fabriq"
 	wxfabriq "github.com/xraph/blackstart/extensions/weather/store/fabriq"
 	"github.com/xraph/blackstart/internal/entities"
@@ -36,6 +37,7 @@ const Name = "blackstart"
 var Contributors = []entities.Contributor{
 	fabric.Contributor{},
 	dsfabriq.Contributor{},
+	pvfabriq.Contributor{},
 	nmfabriq.Contributor{},
 	geofabriq.Contributor{},
 	sclfabriq.Contributor{},

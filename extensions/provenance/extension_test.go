@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xraph/blackstart/extensions/fabric"
 	"github.com/xraph/blackstart/extensions/provenance"
 	"github.com/xraph/blackstart/extensions/provenance/store/memory"
 )
@@ -24,12 +25,29 @@ func TestTheExtensionIdentifiesItself(t *testing.T) {
 	}
 }
 
-// The recorder holds its own store and publishes an interface. Extensions that
-// record provenance depend on that interface rather than on this extension's
-// startup order.
-func TestTheExtensionDependsOnNothing(t *testing.T) {
-	if deps := provenance.New().Dependencies(); len(deps) != 0 {
-		t.Errorf("declared dependencies %v", deps)
+// One dependency, and only one. The default store borrows the fabric
+// extension's Fabriq facade, so fabric has to start first; everything else that
+// records provenance depends on the Recorder interface rather than on this
+// extension's startup order, which is what publishing an interface is for.
+func TestTheExtensionDependsOnlyOnFabric(t *testing.T) {
+	deps := provenance.New().Dependencies()
+
+	if len(deps) != 1 || deps[0] != fabric.ExtensionName {
+		t.Errorf("declared dependencies %v, want only %q", deps, fabric.ExtensionName)
+	}
+}
+
+// The store is built in Start now rather than in New, so an extension that was
+// constructed and never started holds none — the state a failed startup leaves
+// behind, and the one Stop runs against.
+func TestHealthBeforeStartSaysSo(t *testing.T) {
+	err := provenance.New().Health(t.Context())
+	if err == nil {
+		t.Fatal("an unstarted extension reported itself healthy")
+	}
+
+	if !strings.Contains(err.Error(), "has not started") {
+		t.Errorf("the message should say why, got %v", err)
 	}
 }
 

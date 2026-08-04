@@ -50,6 +50,7 @@ import (
 	"github.com/xraph/blackstart/extensions/powerflow"
 	pfmigrations "github.com/xraph/blackstart/extensions/powerflow/store/fabriq"
 	"github.com/xraph/blackstart/extensions/provenance"
+	pvmigrations "github.com/xraph/blackstart/extensions/provenance/store/fabriq"
 	"github.com/xraph/blackstart/extensions/scl"
 	sclmigrations "github.com/xraph/blackstart/extensions/scl/store/fabriq"
 	"github.com/xraph/blackstart/extensions/topology"
@@ -190,6 +191,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		groveext.WithMigrations(
 			fabriqmigrations.Group(),
 			dsmigrations.Group(),
+			pvmigrations.Group(),
 			nmmigrations.Group(),
 			geomigrations.Group(),
 			sclmigrations.Group(),
