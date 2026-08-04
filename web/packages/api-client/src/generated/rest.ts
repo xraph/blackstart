@@ -43,7 +43,7 @@ export class RESTClient extends Client {
        * List cascades for a network
        * Every recorded cascade simulation of one network model, most recent first.
        */
-      list: async (modelHash?: string, limit?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.runsResponse> => {
+      list: async (modelHash?: string, limit?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.cascadeRunsResponse> => {
         let __path = `/api/v1/cascade/runs`;
         const queryParams: Record<string, any> = {};
         queryParams['modelHash'] = modelHash;
@@ -59,10 +59,10 @@ export class RESTClient extends Client {
           url: __path,
           signal: options?.signal,
           retry: options?.retry,
-          responseCodec: "runsResponse",
+          responseCodec: "cascadeRunsResponse",
         };
 
-        return this.request<types.runsResponse>(config);
+        return this.request<types.cascadeRunsResponse>(config);
       },
 
     },
@@ -92,7 +92,7 @@ export class RESTClient extends Client {
        * List sweeps for a network
        * Every recorded N-1 analysis of one network model, most recent first.
        */
-      list: async (modelHash?: string, limit?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.runsResponse> => {
+      list: async (modelHash?: string, limit?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.sweepRunsResponse> => {
         let __path = `/api/v1/contingency/runs`;
         const queryParams: Record<string, any> = {};
         queryParams['modelHash'] = modelHash;
@@ -108,10 +108,10 @@ export class RESTClient extends Client {
           url: __path,
           signal: options?.signal,
           retry: options?.retry,
-          responseCodec: "runsResponse",
+          responseCodec: "sweepRunsResponse",
         };
 
-        return this.request<types.runsResponse>(config);
+        return this.request<types.sweepRunsResponse>(config);
       },
 
       /**

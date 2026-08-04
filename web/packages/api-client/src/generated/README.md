@@ -36,18 +36,18 @@ const client = new Client({
 
 This API supports the following authentication methods:
 
+### apiKey
+
+- **Type**: apiKey
+- **Location**: header
+- **Header Name**: apiKey
+
 ### bearerAuth
 
 - **Type**: http
 - **Scheme**: bearer
 - **Bearer Format**: JWT
 - **Usage**: Pass the token in the `Authorization` header as `Bearer <token>`
-
-### apiKey
-
-- **Type**: apiKey
-- **Location**: header
-- **Header Name**: apiKey
 
 
 ## API Overview
