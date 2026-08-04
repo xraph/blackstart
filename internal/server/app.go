@@ -38,6 +38,7 @@ import (
 	_ "github.com/xraph/grove/drivers/pgdriver/pgmigrate" // registers its migration executor
 	groveext "github.com/xraph/grove/extension"
 
+	"github.com/xraph/blackstart/extensions/cascade"
 	"github.com/xraph/blackstart/extensions/contingency"
 	ctgmigrations "github.com/xraph/blackstart/extensions/contingency/store/fabriq"
 	"github.com/xraph/blackstart/extensions/datasource"
@@ -305,6 +306,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		extensions = append(extensions,
 			powerflow.New(),
 			contingency.New(contingency.WithSolverVersion(cfg.SolverVersion)),
+			cascade.New(),
 		)
 	}
 
