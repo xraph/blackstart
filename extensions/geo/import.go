@@ -8,6 +8,7 @@ import (
 	"github.com/xraph/blackstart/extensions/geo/asset"
 	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/geo/shape"
+	"github.com/xraph/blackstart/extensions/geo/source"
 	"github.com/xraph/blackstart/pkg/id"
 )
 
@@ -129,4 +130,61 @@ func (e *Engine) resolveGeometry(in ImportRequest) (shape.Line, asset.Provenance
 	// imaginary structures between real ones and quietly downgrade the claim
 	// while still calling it Surveyed.
 	return in.Structures, asset.Surveyed, nil
+}
+
+// ImportLine stores a circuit and its geometry from a published source.
+//
+// The call the two fetchers in extensions/geo/source exist to feed, and the
+// one that makes an import re-runnable. The circuit is reconciled on the
+// source's own identity, so re-importing the same bounding box updates what is
+// there rather than doubling it — and the route follows the circuit's existing
+// identifier, so geometry is never orphaned by a fresh one.
+//
+// Both halves are decided from the data, not from the caller. Which circuit
+// this is comes from the source's identifier; whether the structures are real
+// comes from whether the source published them.
+//
+// # Errors
+//
+// Returns an error when the line has no external identifier, its path is not a
+// line, or either the circuit or the route cannot be stored.
+func (e *Engine) ImportLine(ctx context.Context, line source.Line) (asset.Circuit, asset.Route, error) {
+	if err := line.Validate(); err != nil {
+		return asset.Circuit{}, asset.Route{}, err
+	}
+
+	circuit, err := e.store.Circuits().Reconcile(ctx, asset.Circuit{
+		// Used only if the source's key is new. Reconcile keeps the existing
+		// identifier when it is not, which is the whole point of the key.
+		ID:         gid.NewCircuit(),
+		ExternalID: line.ExternalID,
+		Source:     line.Source,
+		VoltageKV:  line.VoltageKV,
+		Operator:   line.Owner,
+	})
+	if err != nil {
+		return asset.Circuit{}, asset.Route{}, fmt.Errorf(
+			"geo: reconciling %s from %s: %w", line.ExternalID, line.Source, err)
+	}
+
+	route, err := e.Import(ctx, ImportRequest{
+		CarrierID:  circuit.ID,
+		Path:       line.Path,
+		Structures: line.Structures,
+	})
+	if err != nil {
+		return asset.Circuit{}, asset.Route{}, err
+	}
+
+	return circuit, route, nil
+}
+
+// Circuit reads one circuit.
+func (e *Engine) Circuit(ctx context.Context, want id.ID) (asset.Circuit, error) {
+	return e.store.Circuits().Get(ctx, want)
+}
+
+// Circuits lists imported circuits.
+func (e *Engine) Circuits(ctx context.Context, limit int) ([]asset.Circuit, error) {
+	return e.store.Circuits().List(ctx, limit)
 }
