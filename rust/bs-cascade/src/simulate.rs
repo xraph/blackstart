@@ -272,12 +272,6 @@ pub fn simulate(
     let mut steps = 0;
     let mut shed_total = 0.0;
 
-    // Nominal frequency does not change mid-run — `options` is the same
-    // `&Options` handed to every `step` call below — so it is hoisted here
-    // rather than re-read from `options.defaults.nominal_hz` at every
-    // observation.
-    let nominal = options.defaults.nominal_hz;
-
     // Every frequency figure any step ever observed for each bus, reduced to
     // the single number `IslandReport` wants for each — see `BusHistory` for
     // which of the four is a peak-severity maximum and which (settling) is
@@ -350,14 +344,7 @@ pub fn simulate(
         // assembled curve monotonic; the terminal step is the one exception,
         // since nothing comes after it to supersede what it integrated.
         let bound = if terminal { None } else { Some(out.at) };
-        accumulate_bus_history(
-            &mut bus_history,
-            &out,
-            &served_before,
-            nominal,
-            elapsed,
-            bound,
-        );
+        accumulate_bus_history(&mut bus_history, &out, &served_before, elapsed, bound);
 
         // `record_step` is computed here, before either exit check, because
         // both `Collapsed` and `Settled` can be reached by the SAME step
@@ -518,21 +505,40 @@ fn open_initiating(case: &mut Case, initiating: &[usize]) -> (Vec<Event>, usize)
     (events, opened.count())
 }
 
+/// The portion of `trace` this step actually contributes: everything before
+/// `bound`, or all of it when there is none.
+///
+/// `trace` is sorted non-decreasing in local time by construction (see
+/// `Response::trace`'s own doc), so `partition_point` finds the same cut
+/// point `take_while` would — one pass, not a scan restarted from the front
+/// for each of the three callers below that used to write this predicate
+/// out separately. All three read from this ONE slice, so a `trace` sample
+/// past `bound`, a `nadir_hz` past `bound`, and a `settling_hz` past `bound`
+/// are now the same mistake instead of three that each had to be caught on
+/// their own.
+fn truncated_slice(trace: &[bs_frequency::Sample], bound: Option<f64>) -> &[bs_frequency::Sample] {
+    match bound {
+        None => trace,
+        Some(limit) => &trace[..trace.partition_point(|s| s.at < limit)],
+    }
+}
+
 /// Folds one step's responses into the running per-bus history — see the
 /// call site in [`simulate`] for why this has to be unconditional, keyed by
 /// bus, and run before either of the loop's own exit checks.
 ///
-/// `bound` truncates the TRACE contribution only — every other field here is
-/// already a whole-run reduction (a peak, a last-write, a sum) that has
-/// nothing in it to truncate. `Some(t)` keeps a response's trace samples
-/// with a local time strictly less than `t`; `None` keeps all of them. See
-/// the call site for why a non-terminal step passes `Some(out.at)` and the
-/// terminal one passes `None`.
+/// `condition`, `rocof_hz_s`, and `shed` are already whole-run reductions (a
+/// peak, a peak, a sum) with nothing in them for `bound` to truncate —
+/// `rocof_hz_s` in particular is a closed-form INITIAL derivative, computed
+/// before any integration sample exists at all, so there is no series for a
+/// bound to bite on. `trace`, `nadir_hz`, and `settling_hz` all read from
+/// [`truncated_slice`] instead, computed once per response — see there for
+/// why, and the call site in `simulate` for why a non-terminal step passes
+/// `Some(out.at)` and the terminal one passes `None`.
 fn accumulate_bus_history(
     bus_history: &mut [BusHistory],
     out: &Outcome,
     served_before: &[f64],
-    nominal: f64,
     elapsed: f64,
     bound: Option<f64>,
 ) {
@@ -548,36 +554,33 @@ fn accumulate_bus_history(
             0.0
         };
 
-        // The same `bound` truncation `history.trace.extend` applies below,
-        // computed once here rather than per bus since every bus in this
-        // island shares the one `response`. `response.nadir_hz` is this
-        // step's minimum over its OWN full local horizon — unbounded by
-        // `bound` — so on a non-terminal step it can name a frequency past
-        // the instant a later cascade event supersedes this island's
-        // contribution to `trace`: exactly the violation
-        // `bs_frequency::ufls::respond` was fixed for, one level up. Folding
-        // over the same truncated slice `trace` takes keeps the two in
-        // agreement by construction. `response.trace` is already absolute
-        // hertz (unlike `response.nadir_hz`, a deviation), so — unlike the
-        // `nominal +` a few lines below — no conversion is needed here.
-        //
+        // Computed once here rather than per bus, since every bus in this
+        // island shares the one `response`. This is the island's REAL,
+        // lived contribution this step — anything past `bound` is a later
+        // cascade event's business, not this step's, whether that shows up
+        // as `Trajectory::nadir_hz`'s counterfactual tail past a shed
+        // crossing (`bs_frequency::ufls::respond`'s own fix) or as a plain
+        // 60 s horizon projection past whatever ends this step first.
+        // `response.trace` is already absolute hertz (unlike
+        // `response.nadir_hz`/`response.settling_hz`, both deviations), so —
+        // unlike the old `nominal +` this replaced — no conversion is
+        // needed for either figure derived from it below.
+        let truncated = truncated_slice(&response.trace, bound);
+
         // `None` when the truncated slice is empty (a quiet island whose
         // real contribution this step is nothing at all, e.g. `bound` is
         // `Some(0.0)` because some OTHER island's event ends the step at
-        // `t = 0`): the `if let` below then leaves `history.nadir_hz`
-        // exactly as it was, rather than manufacturing a value from samples
-        // this step never actually contributed.
-        let step_min_hz = response
-            .trace
-            .iter()
-            .take_while(|s| bound.is_none_or(|limit| s.at < limit))
-            .map(|s| s.hz)
-            .fold(f64::INFINITY, f64::min);
+        // `t = 0`): the `if let`s below then leave `history.nadir_hz` and
+        // `history.settling_hz` exactly as they were, rather than
+        // manufacturing a value from samples this step never actually
+        // contributed.
+        let step_min_hz = truncated.iter().map(|s| s.hz).fold(f64::INFINITY, f64::min);
         let step_nadir = if step_min_hz.is_finite() {
             Some(step_min_hz)
         } else {
             None
         };
+        let step_settling = truncated.last().map(|s| s.hz);
 
         for &bus in members {
             let history = &mut bus_history[bus];
@@ -604,8 +607,14 @@ fn accumulate_bus_history(
             // Last-write-wins, not a severity maximum — see
             // `IslandReport::settling_hz` for why this one field is
             // deliberately a final-instant quantity rather than an extremum
-            // accumulated across the run.
-            history.settling_hz = Some(nominal + response.settling_hz);
+            // accumulated across the run: "where it stopped being observed
+            // earlier ... this is the last value seen." `step_settling`,
+            // from `truncated`, IS that last-seen value — the state at the
+            // instant this step's own contribution ends, not a 60 s
+            // projection of a swing the next cascade event pre-empted.
+            if let Some(settling) = step_settling {
+                history.settling_hz = Some(settling);
+            }
 
             // Each response's trace starts at zero on its own clock. The run
             // clock is what a scrubber moves along, so every segment shifts
@@ -614,23 +623,12 @@ fn accumulate_bus_history(
             // and the event log agree about when things happened. Dropping
             // this offset would stack every step's curve on top of the
             // first.
-            //
-            // `take_while` on `bound` is the other half of that same
-            // agreement — see this function's own doc and the call site in
-            // `simulate` for why a non-terminal step's own tail, run all the
-            // way to the integration horizon, has to be cut off where the
-            // NEXT step's `elapsed` takes over, on pain of the assembled
-            // curve doubling back at every step boundary.
-            history.trace.extend(
-                response
-                    .trace
-                    .iter()
-                    .take_while(|s| bound.is_none_or(|limit| s.at < limit))
-                    .map(|s| bs_frequency::Sample {
-                        at: elapsed + s.at,
-                        hz: s.hz,
-                    }),
-            );
+            history
+                .trace
+                .extend(truncated.iter().map(|s| bs_frequency::Sample {
+                    at: elapsed + s.at,
+                    hz: s.hz,
+                }));
 
             history.shed += shed;
         }

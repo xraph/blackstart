@@ -1106,3 +1106,96 @@ fn nadir_hz_is_the_minimum_of_the_trace_across_a_split() {
          the split had never happened (~53.74 Hz measured)"
     );
 }
+
+/// THE TEST THIS TASK EXISTS FOR, a third and final level of the same
+/// defect `nadir_hz_is_the_minimum_of_the_trace_across_a_split` (just
+/// above) and `bs-frequency`'s own `nadir_hz_is_the_minimum_of_the_trace`
+/// already closed.
+///
+/// `IslandReport::settling_hz`'s own doc, in `verify.rs`, already states
+/// the correct semantics: "where it stopped being observed earlier — its
+/// last machine left the island, say — this is the last value seen." Before
+/// this fix, `accumulate_bus_history` stored `nominal + response.settling_hz`
+/// unconditionally, with no `bound` gating at all — the state at the end of
+/// `response`'s own FULL, un-truncated 60 s local horizon, regardless of
+/// whether a later cascade event superseded this island's contribution
+/// before that horizon ran out.
+///
+/// Reuses `quiet_split_case` — the same fixture as the sibling test above,
+/// for the same reason: `l0` gets exactly one, non-terminal, `bound`-limited
+/// observation (`t < 0.05` s) before losing its machine in the very split
+/// that ends the step, with nothing later to ever correct a wrong value.
+///
+/// Confirmed against this fixture's own instrumented output. Unlike the
+/// sibling test's transient nadir, the PRE-FIX figure here has an exact
+/// closed form — it is the ordinary swing-equation settling point for the
+/// pre-split, COMBINED island (the same `heavy_deficit_case`-style
+/// arithmetic used throughout this file), not a transient: with the
+/// residual `1.0` pu deficit derived in the sibling test's own doc,
+/// `D = 1.0`, `1/R = 20.0`, `Δf = -1.0 / (1.0 + 20.0) = -0.047619...` pu,
+/// `x 60 = -2.857142857142857` Hz, settling at
+/// `60 - 2.857142857142857 = 57.142857142857143` Hz — and the pre-fix code
+/// measured `57.14285714285877` Hz, matching to float precision. The real,
+/// lived value — the LAST of the 5 bound-truncated samples — is
+/// `59.70520645730025` Hz, the same number the sibling test's own nadir
+/// happens to land on for this fixture: `settling_hz` and `nadir_hz` ask
+/// different questions ("where did it end up" vs. "how low did it go") and
+/// are not always equal, they simply coincide here because the swing is
+/// still falling steeply, with no recovery yet, across all 5 of this
+/// fixture's real samples — so the LAST one is also the LOWEST one.
+#[test]
+fn settling_hz_is_the_last_point_of_the_trace_across_a_split() {
+    let got = simulate(
+        &quiet_split_case(),
+        &[],
+        &Protection::new(Settings::default(), Vec::new()),
+        &Scheme::none(),
+        &Options::default(),
+        &Limits::default(),
+        &Verification::default(),
+    )
+    .expect("solvable");
+
+    let dead = got
+        .reports
+        .iter()
+        .find(|r| r.members == vec![1])
+        .expect("l0 ends up alone, machine-less, after the split");
+
+    let last_hz = dead
+        .trace
+        .last()
+        .expect("the dead island must still carry the one real segment it lived through")
+        .hz;
+    let settling = dead
+        .settling_hz
+        .expect("l0 had a real machine-bearing island for one whole step");
+
+    // Bit-for-bit: both trace back to the very same last sample, so a
+    // correct implementation reproduces the identical `f64` — the same
+    // standard the sibling nadir test above already holds this fixture to.
+    assert_eq!(
+        settling.to_bits(),
+        last_hz.to_bits(),
+        "settling_hz ({settling}) must equal the reported trace's own LAST \
+         point ({last_hz} Hz) — \"the last value seen\", per \
+         IslandReport::settling_hz's own doc — not a 60 s projection of a \
+         swing the split pre-empted"
+    );
+
+    // And pin the actual number, not merely the equality: an implementation
+    // that made both sides consistently wrong in the same way (e.g. by
+    // reading the FIRST sample instead of the last, or by folding settling
+    // through the same minimum as nadir) would still pass the check above.
+    // `59.0` sits strictly between the real, bound-truncated value
+    // (~59.71 Hz) and the counterfactual, unbounded closed-form projection
+    // this fixture's own measured/derived output puts on either side of it.
+    assert!(
+        settling > 59.0,
+        "settling {settling} Hz should be the mild, real value this \
+         fixture's 0.05 s truncation actually allows (~59.71 Hz measured), \
+         not the deeper 60 s closed-form projection the pre-split swing \
+         would settle to if the split had never happened (~57.14 Hz, \
+         derived above)"
+    );
+}
