@@ -15,39 +15,11 @@ use bs_powerflow::ac::{AcError, LimitedSolution, Options, solve_with_limits};
 
 use crate::screen::{Contingency, ScreenResult, Violation};
 
-/// Voltage limits applied during verification, per unit.
-///
-/// Defaults are the usual transmission planning band. They are configuration
-/// rather than constants because the acceptable band is a utility's decision,
-/// and a tool that hard-codes one is asserting a policy it has no standing to
-/// assert.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct VoltageLimits {
-    /// Lower limit.
-    pub min: f64,
-    /// Upper limit.
-    pub max: f64,
-}
-
-impl Default for VoltageLimits {
-    fn default() -> Self {
-        Self {
-            min: 0.95,
-            max: 1.05,
-        }
-    }
-}
-
-/// A bus outside its voltage limits.
-#[derive(Debug, Clone, PartialEq)]
-pub struct VoltageViolation {
-    /// Index of the bus.
-    pub bus: usize,
-    /// The magnitude it settled at, per unit.
-    pub magnitude: f64,
-    /// The limit it crossed.
-    pub limit: f64,
-}
+// Re-exported rather than defined here. Assessing an AC solution against a
+// voltage band is the power-flow crate's domain, and bs-cascade needs the same
+// types without needing anything else about contingency analysis. Kept
+// re-exported so no existing caller has to move.
+pub use bs_powerflow::ac::{VoltageLimits, VoltageViolation};
 
 /// What a full AC solve found for one contingency.
 #[derive(Debug, Clone, PartialEq)]
