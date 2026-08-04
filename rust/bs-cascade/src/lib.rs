@@ -16,6 +16,8 @@
 
 pub mod dispatch;
 pub mod island;
+pub mod step;
 
 pub use dispatch::{Balance, Dispatchable, Plan, apply, rebalance};
 pub use island::{Islands, Subcase};
+pub use step::{Options, Outcome, StepError, step};
