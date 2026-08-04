@@ -8,11 +8,13 @@ package blackstart.solver.v1;
 // actually used rather than because of protobuf convention.
 //
 // First: ALL WIRE UNITS ARE SI. Watts, volt-amperes reactive, volts, ohms,
-// radians. Per-unit conversion happens exactly twice — once on each side of
-// this boundary — and never on the wire. A per-unit number is meaningless
-// without the base it was computed against, and a wire format that carries one
-// without the other is an invitation to combine two cases on different bases
-// and get a plausible answer. Every field below states its unit.
+// radians, hertz. Per-unit conversion happens exactly twice — once on each
+// side of this boundary — and never on the wire. A per-unit number is
+// meaningless without the base it was computed against, and a wire format
+// that carries one without the other is an invitation to combine two cases on
+// different bases and get a plausible answer. Every field below states its
+// unit. Frequencies in particular are carried in HERTZ, never as a fraction
+// of a power base — 60 Hz is 60, not 1.0.
 //
 // Second: a network model is uploaded once and referenced by content hash
 // thereafter. A contingency sweep runs thousands of solves against one model,
@@ -46,6 +48,17 @@ service SolverService {
   // and waiting for all of them before seeing any is a worse experience for no
   // gain.
   rpc ScreenContingencies(ScreenContingenciesRequest) returns (stream ScreenContingenciesResponse);
+
+  // Simulates a cascading failure from a set of initiating outages.
+  //
+  // Unary, deliberately, where ScreenContingencies streams. A cascade is one
+  // atomic answer: step 3 means nothing without knowing whether step 30
+  // happened, and a streamed partial cascade invites a client to render it as
+  // a result — the same candidate-versus-finding error this contract guards
+  // against everywhere else. The streaming on the screen exists so a caller
+  // can rank thousands of INDEPENDENT contingencies and stop early. Neither
+  // property holds here.
+  rpc SimulateCascade(SimulateCascadeRequest) returns (SimulateCascadeResponse);
 }
 
 // How a bus participates in the power flow.
@@ -91,6 +104,28 @@ message Bus {
   // Shunt admittance to ground, SIEMENS.
   double g_shunt_s = 9;
   double b_shunt_s = 10;
+
+  // Real output limits, WATTS.
+  //
+  // Optional for the same reason the reactive limits above are: absent means
+  // unknown, not zero, and a generator defaulted to a maximum of zero would
+  // make every island short of generation. These are not cascade-only — they
+  // are what DC-OPF needs later.
+  optional double p_min_w = 11;
+  optional double p_max_w = 12;
+
+  // Inertia constant, SECONDS, on the machine's own rating.
+  //
+  // Optional, and unlike the limits there is no numeric value here that could
+  // mean "unknown". Zero inertia says an island collapses on any imbalance;
+  // infinite inertia says frequency never moves. Both are confident physical
+  // claims, and an unpopulated import must make neither.
+  optional double inertia_h_s = 13;
+
+  // Governor droop, per unit, dimensionless. Typically 0.05.
+  //
+  // One of the few fields here with no unit suffix, like `tap`.
+  optional double droop_r = 14;
 }
 
 // A branch: a line, cable, or transformer.
@@ -362,4 +397,293 @@ message ScreenContingenciesResponse {
   // and sorting it as though it had no loading buries exactly the case that
   // most needs a simulation.
   optional double worst_loading = 4;
+}
+
+// One stage of an under-frequency load-shedding scheme.
+message UflsStage {
+  // Trip frequency, HERTZ.
+  double at_hz = 1;
+  // Fraction of the island's load shed when this stage fires, in [0, 1].
+  double shed_fraction = 2;
+  // Intentional delay before the stage acts, SECONDS, on top of relay and
+  // breaker time.
+  double delay_s = 3;
+}
+
+// An under-frequency load-shedding scheme: an ordered ladder of shed stages,
+// bounded by the frequencies where the scheme gives up and where it lets shed
+// load back on.
+message UflsScheme {
+  // Conventionally shallowest first, though the simulator evaluates every
+  // stage against the instantaneous frequency rather than trusting the order.
+  repeated UflsStage stages = 1;
+  // Frequency below which the island is treated as lost regardless of what
+  // stages remain, HERTZ.
+  double floor_hz = 2;
+  // Frequency above which previously shed load may be restored, HERTZ.
+  double ceiling_hz = 3;
+}
+
+// An IEC 60255-151 inverse-time overcurrent characteristic. Mirrors
+// bs_protection::Curve on the Rust side; this is that type's wire form.
+enum Curve {
+  CURVE_UNSPECIFIED = 0;
+  // A = 0.14, B = 0.02. The usual transmission choice.
+  CURVE_STANDARD_INVERSE = 1;
+  // A = 13.5, B = 1.
+  CURVE_VERY_INVERSE = 2;
+  // A = 80, B = 2. Grades against fuses.
+  CURVE_EXTREMELY_INVERSE = 3;
+}
+
+// Overcurrent protection on one branch: an inverse-time curve plus an
+// optional instantaneous element.
+message OvercurrentSettings {
+  // Pickup, as a multiple of the branch's own rating. Dimensionless. Zero
+  // means the server's default of 1.0 — pickup at rating, the same physical
+  // convention the defaults below follow.
+  double pickup = 1;
+  // Time multiplier, scaling the whole curve. Dimensionless. Zero means the
+  // server's default.
+  double time_multiplier = 2;
+  // Instantaneous element, as a multiple of the rating. Optional because
+  // absence disables it outright — a multiple of zero would trip on any flow
+  // at all, which is a different and much more aggressive setting.
+  optional double instantaneous = 3;
+  Curve curve = 4;
+  // Breaker operating time, SECONDS. The floor on any trip: the curve can ask
+  // for less than the breaker can physically deliver. Zero means the
+  // server's default.
+  double breaker_time_s = 5;
+}
+
+// One distance-relay zone.
+message DistanceZone {
+  // Reach, as a multiple of the protected branch's own reactance.
+  // Dimensionless, and deliberately relative to the branch rather than an
+  // absolute ohm value: the branch's own reactance is what a relay set at its
+  // own line is graded against.
+  double reach = 1;
+  // Intentional delay, SECONDS, on top of the breaker time.
+  double delay_s = 2;
+}
+
+// Distance protection on one branch: a set of impedance zones.
+message DistanceSettings {
+  // Conventionally narrowest first, though the fastest zone that sees the
+  // branch is the one that operates regardless of list order.
+  repeated DistanceZone zones = 1;
+  // Breaker operating time, SECONDS. Zero means the server's default.
+  double breaker_time_s = 2;
+}
+
+// Protection on one branch: overcurrent, distance, or both. Either half may
+// be left unset, which disables that scheme on the branch rather than
+// defaulting it — a branch protected by distance only should not gain a
+// phantom overcurrent element because the message has a field for one.
+message ProtectionSettings {
+  OvercurrentSettings overcurrent = 1;
+  DistanceSettings distance = 2;
+}
+
+// Protection settings for one branch, overriding whatever
+// SimulateCascadeRequest.protection supplies as the network-wide default.
+message BranchProtection {
+  uint32 branch = 1;
+  ProtectionSettings settings = 2;
+}
+
+message SimulateCascadeRequest {
+  string content_hash = 1;
+
+  // Applied before the cascade starts, so a run can begin from an off-nominal
+  // operating point without re-uploading the model.
+  repeated Override overrides = 2;
+
+  // Branches taken out of service at t=0. Everything after this is the
+  // simulator's consequence of these outages, not a further instruction.
+  repeated uint32 initiating = 3;
+
+  // Network-wide protection, applied to every branch that BranchProtection
+  // below does not override. Its zero-valued fields default server-side to a
+  // relay set at its own branch's rating — a physical convention, the same
+  // reasoning the per-field comments above spell out.
+  ProtectionSettings protection = 4;
+
+  // Per-branch overrides of `protection`, for the branches whose relays are
+  // not at the network default.
+  repeated BranchProtection branch_protection = 5;
+
+  // Under-frequency load shedding, network-wide.
+  //
+  // Unlike protection settings, this has NO server-side default. Absent means
+  // no shedding happens at all, ever, on any island. A shedding schedule is a
+  // utility's policy choice — which frequency, which fraction, which delay —
+  // and a tool that quietly supplied one would be asserting a policy it has
+  // no standing to assert. Protection settings default because a relay set at
+  // its own line's rating is a physical convention available to everyone;
+  // there is no equivalent convention for load-shedding policy.
+  UflsScheme ufls = 6;
+
+  // Events within this many seconds of each other on the same element are
+  // merged into one, SECONDS. Zero means no coalescing. Exists because a
+  // relay chattering across a step boundary would otherwise log the same
+  // trip twice.
+  double coalesce_window_s = 7;
+
+  // Hard cap on the number of discrete events simulated. Zero means the
+  // server's default. Guards against a cascade that never settles consuming
+  // unbounded time; hitting the cap produces outcome TRUNCATED rather than a
+  // silently incomplete SETTLED result.
+  uint32 max_steps = 8;
+
+  // Simulated time horizon, SECONDS. Zero means the server's default. A
+  // cascade still running at the horizon also produces TRUNCATED.
+  double horizon_s = 9;
+}
+
+// Why a protective element operated.
+enum TripCause {
+  TRIP_CAUSE_UNSPECIFIED = 0;
+  TRIP_CAUSE_OVERCURRENT = 1;
+  TRIP_CAUSE_DISTANCE = 2;
+}
+
+// What kind of thing happened at one point in the cascade.
+//
+// Must match the operator console's schema exactly — see
+// web/packages/schema/src/cascade.ts, CASCADE_EVENT_KINDS. The console
+// validates every event against that list and rejects anything it does not
+// recognize, so a value added here without a matching console change
+// produces a cascade the console refuses to render.
+enum CascadeEventKind {
+  CASCADE_EVENT_KIND_UNSPECIFIED = 0;
+  // An element crossed its rating. Logged separately from the trip it may
+  // cause, so a reader can see how long the margin was gone before
+  // protection acted.
+  CASCADE_EVENT_KIND_OVERLOAD = 1;
+  // A branch's protection operated and removed it from service.
+  CASCADE_EVENT_KIND_TRIP = 2;
+  // The network split, forming or reshaping islands.
+  CASCADE_EVENT_KIND_ISLAND = 3;
+  // Under-frequency load shedding fired.
+  CASCADE_EVENT_KIND_SHED = 4;
+  // An island stopped changing and is being reported as settled.
+  CASCADE_EVENT_KIND_STABILISE = 5;
+}
+
+message CascadeEvent {
+  // Seconds since the initiating outage.
+  double at_s = 1;
+
+  CascadeEventKind kind = 2;
+
+  // The element as an operator names it, e.g. "ln TULIA-PLAINVIEW 345".
+  string element = 3;
+
+  // Why, in the operator's terms, e.g. "dist zone 1", "163% - 2s", "underfreq".
+  string detail = 4;
+
+  // Which island this event belongs to.
+  //
+  // Optional, and distinct from island zero: an event before the network has
+  // split — an overload on the still-connected system, say — is not
+  // island-specific, and reporting it against island 0 would claim a split
+  // that has not happened yet.
+  optional uint32 island = 5;
+}
+
+// The worst thing that happened to an island over the whole run, on the
+// frequency axis. See IslandState.condition for why this is peak severity
+// rather than the state at the final instant.
+//
+// Order is significant: STABLE < RECOVERING < SHEDDING < COLLAPSED. Reporting
+// logic takes the maximum over the run's history in this order.
+enum IslandCondition {
+  ISLAND_CONDITION_UNSPECIFIED = 0;
+  ISLAND_CONDITION_STABLE = 1;
+  ISLAND_CONDITION_RECOVERING = 2;
+  ISLAND_CONDITION_SHEDDING = 3;
+  ISLAND_CONDITION_COLLAPSED = 4;
+}
+
+// What the AC solve on an island's final state found. Separate from
+// IslandCondition deliberately: an island that is frequency-stable and
+// voltage-insolvable is a real and important combination, and a single field
+// would force it to be reported as only one of the two.
+enum AcVerdict {
+  AC_VERDICT_UNSPECIFIED = 0;
+  AC_VERDICT_SECURE = 1;
+  AC_VERDICT_VIOLATED = 2;
+  AC_VERDICT_INSOLVABLE = 3;
+}
+
+message IslandState {
+  // Indices into the model's bus list.
+  repeated uint32 buses = 1;
+
+  // Peak severity reached anywhere in the run, not the state at the final
+  // instant. An island that shed a quarter of its load and then recovered
+  // reports SHEDDING, not STABLE — collapsing to the final state would hide
+  // the most important thing that happened to it.
+  IslandCondition condition = 2;
+
+  AcVerdict verdict = 3;
+
+  // Generation minus load at the final instant, WATTS.
+  double balance_w = 4;
+
+  // Frequency, HERTZ, at the final instant.
+  //
+  // Optional along with nadir and rate-of-change below: an island with no
+  // machine data — no inertia, no governors — has no frequency to report,
+  // which is not the same as a frequency of zero.
+  optional double frequency_hz = 5;
+  // Lowest frequency reached anywhere in the run, HERTZ. What decides whether
+  // the island survives.
+  optional double nadir_hz = 6;
+  // Rate of change of frequency at the final instant, HERTZ PER SECOND.
+  optional double rocof_hz_s = 7;
+
+  // Load shed on this island over the whole run, WATTS.
+  double shed_w = 8;
+}
+
+// How the cascade ended.
+enum CascadeOutcome {
+  CASCADE_OUTCOME_UNSPECIFIED = 0;
+  // Every island reached a state that stopped changing before the horizon or
+  // step cap.
+  CASCADE_OUTCOME_SETTLED = 1;
+  // The horizon or max_steps was reached with at least one island still
+  // changing. Not a failure of the solver — a cascade that genuinely runs
+  // longer than the budget allowed.
+  CASCADE_OUTCOME_TRUNCATED = 2;
+  // Every island collapsed.
+  CASCADE_OUTCOME_COLLAPSED = 3;
+}
+
+message SimulateCascadeResponse {
+  CascadeOutcome outcome = 1;
+
+  // In simulated-time order, as produced. Reordering, if a client wants
+  // newest-first, is a display concern and stays off the wire.
+  repeated CascadeEvent events = 2;
+
+  repeated IslandState islands = 3;
+
+  // Total load shed across every island, WATTS.
+  double load_lost_w = 4;
+
+  // Discrete events simulated, for comparing against max_steps.
+  uint32 steps = 5;
+
+  // Wall-clock time the simulation took, SECONDS. Not part of the physical
+  // result; carried for performance tracking the way iterations is on
+  // SolvePowerFlowResponse for the same reason.
+  double elapsed_s = 6;
+
+  // The versions this result came from, so it can be reproduced.
+  string solver_version = 7;
+  string model_hash = 8;
 }

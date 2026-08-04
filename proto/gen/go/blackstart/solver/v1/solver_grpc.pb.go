@@ -23,6 +23,7 @@ const (
 	SolverService_HasNetworkModel_FullMethodName     = "/blackstart.solver.v1.SolverService/HasNetworkModel"
 	SolverService_SolvePowerFlow_FullMethodName      = "/blackstart.solver.v1.SolverService/SolvePowerFlow"
 	SolverService_ScreenContingencies_FullMethodName = "/blackstart.solver.v1.SolverService/ScreenContingencies"
+	SolverService_SimulateCascade_FullMethodName     = "/blackstart.solver.v1.SolverService/SimulateCascade"
 )
 
 // SolverServiceClient is the client API for SolverService service.
@@ -47,6 +48,16 @@ type SolverServiceClient interface {
 	// and waiting for all of them before seeing any is a worse experience for no
 	// gain.
 	ScreenContingencies(ctx context.Context, in *ScreenContingenciesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ScreenContingenciesResponse], error)
+	// Simulates a cascading failure from a set of initiating outages.
+	//
+	// Unary, deliberately, where ScreenContingencies streams. A cascade is one
+	// atomic answer: step 3 means nothing without knowing whether step 30
+	// happened, and a streamed partial cascade invites a client to render it as
+	// a result — the same candidate-versus-finding error this contract guards
+	// against everywhere else. The streaming on the screen exists so a caller
+	// can rank thousands of INDEPENDENT contingencies and stop early. Neither
+	// property holds here.
+	SimulateCascade(ctx context.Context, in *SimulateCascadeRequest, opts ...grpc.CallOption) (*SimulateCascadeResponse, error)
 }
 
 type solverServiceClient struct {
@@ -109,6 +120,16 @@ func (c *solverServiceClient) ScreenContingencies(ctx context.Context, in *Scree
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SolverService_ScreenContingenciesClient = grpc.ServerStreamingClient[ScreenContingenciesResponse]
 
+func (c *solverServiceClient) SimulateCascade(ctx context.Context, in *SimulateCascadeRequest, opts ...grpc.CallOption) (*SimulateCascadeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SimulateCascadeResponse)
+	err := c.cc.Invoke(ctx, SolverService_SimulateCascade_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SolverServiceServer is the server API for SolverService service.
 // All implementations should embed UnimplementedSolverServiceServer
 // for forward compatibility.
@@ -131,6 +152,16 @@ type SolverServiceServer interface {
 	// and waiting for all of them before seeing any is a worse experience for no
 	// gain.
 	ScreenContingencies(*ScreenContingenciesRequest, grpc.ServerStreamingServer[ScreenContingenciesResponse]) error
+	// Simulates a cascading failure from a set of initiating outages.
+	//
+	// Unary, deliberately, where ScreenContingencies streams. A cascade is one
+	// atomic answer: step 3 means nothing without knowing whether step 30
+	// happened, and a streamed partial cascade invites a client to render it as
+	// a result — the same candidate-versus-finding error this contract guards
+	// against everywhere else. The streaming on the screen exists so a caller
+	// can rank thousands of INDEPENDENT contingencies and stop early. Neither
+	// property holds here.
+	SimulateCascade(context.Context, *SimulateCascadeRequest) (*SimulateCascadeResponse, error)
 }
 
 // UnimplementedSolverServiceServer should be embedded to have
@@ -151,6 +182,9 @@ func (UnimplementedSolverServiceServer) SolvePowerFlow(context.Context, *SolvePo
 }
 func (UnimplementedSolverServiceServer) ScreenContingencies(*ScreenContingenciesRequest, grpc.ServerStreamingServer[ScreenContingenciesResponse]) error {
 	return status.Error(codes.Unimplemented, "method ScreenContingencies not implemented")
+}
+func (UnimplementedSolverServiceServer) SimulateCascade(context.Context, *SimulateCascadeRequest) (*SimulateCascadeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SimulateCascade not implemented")
 }
 func (UnimplementedSolverServiceServer) testEmbeddedByValue() {}
 
@@ -226,6 +260,24 @@ func _SolverService_ScreenContingencies_Handler(srv interface{}, stream grpc.Ser
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SolverService_ScreenContingenciesServer = grpc.ServerStreamingServer[ScreenContingenciesResponse]
 
+func _SolverService_SimulateCascade_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SimulateCascadeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SolverServiceServer).SimulateCascade(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SolverService_SimulateCascade_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SolverServiceServer).SimulateCascade(ctx, req.(*SimulateCascadeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SolverService_ServiceDesc is the grpc.ServiceDesc for SolverService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -240,6 +292,10 @@ var SolverService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SolvePowerFlow",
 			Handler:    _SolverService_SolvePowerFlow_Handler,
+		},
+		{
+			MethodName: "SimulateCascade",
+			Handler:    _SolverService_SimulateCascade_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
