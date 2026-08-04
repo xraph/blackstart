@@ -59,6 +59,11 @@ type runRow struct {
 
 	Events  []byte `grove:"events,notnull"`
 	Islands []byte `grove:"islands,notnull"`
+
+	// Initiating carries no notnull tag: a cascade whose initiating outage was
+	// not recorded still encodes as "[]", and fabriq would refuse that as
+	// empty for a notnull field.
+	Initiating []byte `grove:"initiating"`
 }
 
 // fromDomain maps a run onto the persistence shape.
@@ -73,6 +78,11 @@ func fromDomain(in run.Run) (runRow, error) {
 		return runRow{}, fmt.Errorf("cascade: encoding islands: %w", err)
 	}
 
+	initiating, err := json.Marshal(in.Initiating)
+	if err != nil {
+		return runRow{}, fmt.Errorf("cascade: encoding initiating outages: %w", err)
+	}
+
 	return runRow{
 		ID:            in.ID.String(),
 		ModelHash:     in.ModelHash,
@@ -85,6 +95,7 @@ func fromDomain(in run.Run) (runRow, error) {
 		FinishedAt:    in.FinishedAt.UTC(),
 		Events:        events,
 		Islands:       islands,
+		Initiating:    initiating,
 	}, nil
 }
 
@@ -118,6 +129,13 @@ func (r runRow) toDomain() (run.Run, error) {
 		if err := json.Unmarshal(r.Islands, &out.Islands); err != nil {
 			return run.Run{}, fmt.Errorf(
 				"cascade: run %s: decoding islands: %w", r.ID, err)
+		}
+	}
+
+	if len(r.Initiating) > 0 {
+		if err := json.Unmarshal(r.Initiating, &out.Initiating); err != nil {
+			return run.Run{}, fmt.Errorf(
+				"cascade: run %s: decoding initiating outages: %w", r.ID, err)
 		}
 	}
 

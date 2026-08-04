@@ -22,6 +22,7 @@ func Group() *migrate.Group {
 	g := migrate.NewGroup(GroupName, migrate.DependsOn(fabriqmigrations.GroupName))
 
 	g.MustRegister(migration0001Tables)
+	g.MustRegister(migration0002Initiating)
 
 	return g
 }
@@ -36,6 +37,39 @@ var migration0001Tables = &migrate.Migration{
 	Comment: "cascade run table with tenancy and RLS",
 	Up:      up0001,
 	Down:    down0001,
+}
+
+// migration0002Initiating adds the column for run.Initiating.
+//
+// A second migration rather than an edit to the first. 0001 had already been
+// applied to a running database by the time the field landed, and grove will
+// not re-run a version it has recorded — so amending it in place would leave
+// that database silently without the column.
+var migration0002Initiating = &migrate.Migration{
+	Name:    "cascade_initiating",
+	Version: "20260803000031",
+	Comment: "the outages that started each cascade",
+	Up:      up0002,
+	Down:    down0002,
+}
+
+func up0002(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, initiatingColumn())
+}
+
+// initiatingColumn is the DDL, separated from the executor so a test can read
+// it alongside the rest of the schema.
+func initiatingColumn() []string {
+	return []string{
+		`ALTER TABLE ` + RunTable + `
+			ADD COLUMN IF NOT EXISTS initiating JSONB NOT NULL DEFAULT '[]'::jsonb`,
+	}
+}
+
+func down0002(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`ALTER TABLE ` + RunTable + ` DROP COLUMN IF EXISTS initiating`,
+	})
 }
 
 func up0001(ctx context.Context, exec migrate.Executor) error {

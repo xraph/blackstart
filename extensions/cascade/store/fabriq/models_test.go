@@ -1,6 +1,7 @@
 package fabriq
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +44,7 @@ func aRun() run.Run {
 				Condition: run.ConditionStable, Verdict: run.VerdictSecure,
 			},
 		},
+		Initiating: []string{"branch:14", "branch:22"},
 		LoadLost:   0.08,
 		Steps:      4,
 		Elapsed:    12.5,
@@ -97,6 +99,20 @@ func TestRunRoundTrips(t *testing.T) {
 
 	if len(got.Islands) != len(want.Islands) {
 		t.Fatalf("read back %d islands, wrote %d", len(got.Islands), len(want.Islands))
+	}
+
+	// The field a concurrent change added after these mappers were written.
+	// It is the whole reason this test exists.
+	if len(got.Initiating) != len(want.Initiating) {
+		t.Fatalf("read back %d initiating outages, wrote %d",
+			len(got.Initiating), len(want.Initiating))
+	}
+
+	for index, outage := range got.Initiating {
+		if outage != want.Initiating[index] {
+			t.Errorf("initiating %d round-tripped as %q, wrote %q",
+				index, outage, want.Initiating[index])
+		}
 	}
 }
 
@@ -229,20 +245,30 @@ func TestAStoredIdentifierOfTheWrongTypeIsRefused(t *testing.T) {
 	}
 }
 
-// The DDL has to carry every column the model tags, or the first write against
-// a live database is the thing that finds out.
-func TestTheTableCarriesEveryTaggedColumn(t *testing.T) {
+// Every column the model tags must appear in the migration DDL.
+//
+// Derived by reflection rather than from a written-out list, and that is the
+// point: a field added to runRow with no column to land in fails here without
+// anyone remembering to update a list. A concurrent change adding
+// run.Initiating after these mappers were written is exactly how that happens.
+func TestEveryTaggedColumnExistsInTheSchema(t *testing.T) {
 	t.Parallel()
 
-	ddl := tables()[0]
+	ddl := strings.Join(tables(), "\n") + "\n" + strings.Join(initiatingColumn(), "\n")
 
-	for _, column := range []string{
-		"id", "tenant_id", "version", "model_hash", "solver_version",
-		"outcome", "load_lost", "steps", "elapsed_s",
-		"started_at", "finished_at", "events", "islands",
-	} {
+	for field := range reflect.TypeFor[runRow]().Fields() {
+		tag := field.Tag.Get("grove")
+		if tag == "" {
+			continue
+		}
+
+		column, _, _ := strings.Cut(tag, ",")
+		if column == "" || strings.HasPrefix(column, "table:") {
+			continue
+		}
+
 		if !strings.Contains(ddl, column) {
-			t.Errorf("the run table has no %s column", column)
+			t.Errorf("runRow tags column %q, which no migration creates", column)
 		}
 	}
 }

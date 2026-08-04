@@ -88,6 +88,7 @@ func aRun(modelHash string, at time.Time) run.Run {
 				Condition: run.ConditionStable, Verdict: run.VerdictSecure,
 			},
 		},
+		Initiating: []string{"branch:14", "branch:22"},
 		LoadLost:   0.08,
 		Steps:      3,
 		Elapsed:    12.5,
@@ -122,6 +123,11 @@ func TestRunRoundTripsThroughPostgres(t *testing.T) {
 
 	if len(got.Islands) != len(want.Islands) {
 		t.Errorf("read back %d islands, wrote %d", len(got.Islands), len(want.Islands))
+	}
+
+	if len(got.Initiating) != len(want.Initiating) {
+		t.Errorf("read back %d initiating outages, wrote %d",
+			len(got.Initiating), len(want.Initiating))
 	}
 }
 
