@@ -25,11 +25,13 @@
 
 use bs_case::{Bus, Case};
 use bs_frequency::{IslandCondition, Response, Scheme};
+use bs_powerflow::ac::{Options as AcOptions, VoltageLimits};
 use bs_protection::{Protection, TripCandidate, TripCause};
 
 use crate::dispatch::Balance;
 use crate::island::{Islands, Subcase};
 use crate::step::{Options, Outcome, StepError, step};
+use crate::verify::{IslandReport, verify_islands};
 
 /// The five event kinds the operator console's schema recognizes.
 ///
@@ -148,6 +150,24 @@ pub struct Cascade {
     pub steps: usize,
     /// Simulated seconds elapsed.
     pub elapsed: f64,
+    /// A full AC verification of every island the cascade ended with, in
+    /// canonical order.
+    ///
+    /// The loop above runs entirely in the linearised DC model — real
+    /// voltages are not what makes a cascade propagate fast enough to
+    /// simulate. This is computed once, after the loop, against the final
+    /// islands: DC cannot see a voltage violation at all, and it cannot see
+    /// a network with no steady state, so neither question has an answer
+    /// until now.
+    ///
+    /// `VoltageLimits` and the AC solver's `Options` are supplied as their
+    /// defaults here rather than threaded through as parameters to
+    /// [`simulate`]. `VoltageLimits::default` is documented as a utility's
+    /// policy choice this crate has no standing to assert — using it
+    /// silently is a real simplification, kept so [`simulate`]'s signature
+    /// stays the one every existing caller already has, and a fair thing to
+    /// revisit if a caller ever needs its own band.
+    pub reports: Vec<IslandReport>,
 }
 
 /// Runs a cascade from an initiating outage to a settled, truncated, or
@@ -247,6 +267,17 @@ pub fn simulate(
     }
     let load_lost = dead_load + shed_total;
 
+    // Once, here, against the final partition — never per step. Every
+    // intermediate island the loop passed through was a transient state on
+    // its way to this one, and an AC solve is exactly the expensive
+    // verification a DC-model loop exists to defer.
+    let reports = verify_islands(
+        &case,
+        &final_islands,
+        VoltageLimits::default(),
+        AcOptions::default(),
+    );
+
     Ok(Cascade {
         outcome,
         events,
@@ -254,6 +285,7 @@ pub fn simulate(
         load_lost,
         steps,
         elapsed,
+        reports,
     })
 }
 
