@@ -122,6 +122,13 @@ Stated plainly so there is no ambiguity about what this repository is.
 - The benchmark suite and the numerical validation record
 - The reference web client
 
+**Open, separately licensed:**
+
+- OSM-derived route and structure geometry, as a standalone **ODbL 1.0** artifact. The
+  connector that fetches it is Apache-2.0 code in this repository; the geometry it
+  produces is a derived database and inherits OpenStreetMap's share-alike terms, so it
+  ships on its own rather than inside the Apache-2.0 release.
+
 **Not open:**
 
 - Trained model weights
