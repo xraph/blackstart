@@ -28,6 +28,7 @@ export const TYPE_PREFIXES = {
   gen: "generator",
   scn: "scenario",
   run: "run",
+  casc: "cascade run",
   mdl: "model",
   ds: "dataset",
   fs: "feature set",

@@ -29,9 +29,10 @@ type fake struct {
 
 	models map[string][]byte
 
-	solves  int
-	screens int
-	uploads int
+	solves    int
+	simulates int
+	screens   int
+	uploads   int
 
 	// forgetOnce drops every model exactly once, when the next solve or screen
 	// arrives. That is what a restarted solver looks like to a client holding
@@ -111,6 +112,22 @@ func (f *fake) SolvePowerFlow(
 	}
 
 	return &solverv1.SolvePowerFlowResponse{
+		ModelHash:     request.GetContentHash(),
+		SolverVersion: "fake",
+	}, nil
+}
+
+func (f *fake) SimulateCascade(
+	_ context.Context, request *solverv1.SimulateCascadeRequest,
+) (*solverv1.SimulateCascadeResponse, error) {
+	f.forget()
+	f.simulates++
+
+	if _, present := f.models[request.GetContentHash()]; !present {
+		return nil, status.Error(codes.FailedPrecondition, "upload it with PutNetworkModel")
+	}
+
+	return &solverv1.SimulateCascadeResponse{
 		ModelHash:     request.GetContentHash(),
 		SolverVersion: "fake",
 	}, nil
@@ -322,6 +339,62 @@ func TestSolveNamesTheModelItWasGiven(t *testing.T) {
 
 	if response.GetModelHash() != hash {
 		t.Errorf("solved %q, want the hash of the model passed in, %q",
+			response.GetModelHash(), hash)
+	}
+}
+
+// Simulate shares Solve's upload-and-retry, proven the same way: a model
+// present before the server forgets it must still simulate successfully
+// after, with exactly one extra upload and one retried call.
+func TestSimulateReUploadsAfterTheServerForgets(t *testing.T) {
+	server := newFake()
+	client := dial(t, server)
+
+	if _, err := client.Upload(t.Context(), model()); err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+
+	server.forgetOnce = true
+
+	response, err := client.Simulate(t.Context(), model(), &solverv1.SimulateCascadeRequest{})
+	if err != nil {
+		t.Fatalf("Simulate should have recovered from a restarted server: %v", err)
+	}
+
+	if response.GetSolverVersion() != "fake" {
+		t.Errorf("got %q back", response.GetSolverVersion())
+	}
+
+	if server.simulates != 2 {
+		t.Errorf("simulated %d times, want one failure and one retry", server.simulates)
+	}
+
+	if server.uploads != 2 {
+		t.Errorf("uploaded %d times, want the original plus the recovery", server.uploads)
+	}
+}
+
+// A caller must not be able to supply a hash naming something other than the
+// model it passed, same as Solve.
+func TestSimulateNamesTheModelItWasGiven(t *testing.T) {
+	server := newFake()
+	client := dial(t, server)
+
+	hash, err := client.Upload(t.Context(), model())
+	if err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+
+	response, err := client.Simulate(t.Context(), model(), &solverv1.SimulateCascadeRequest{
+		// Deliberately wrong, and deliberately ignored.
+		ContentHash: "not-the-model-you-passed",
+	})
+	if err != nil {
+		t.Fatalf("Simulate: %v", err)
+	}
+
+	if response.GetModelHash() != hash {
+		t.Errorf("simulated %q, want the hash of the model passed in, %q",
 			response.GetModelHash(), hash)
 	}
 }

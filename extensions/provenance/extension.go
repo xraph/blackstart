@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/xraph/fabriq"
 	"github.com/xraph/forge"
 	"github.com/xraph/vessel"
 
+	"github.com/xraph/blackstart/extensions/fabric"
 	"github.com/xraph/blackstart/extensions/provenance/store"
-	"github.com/xraph/blackstart/extensions/provenance/store/memory"
+	fabriqstore "github.com/xraph/blackstart/extensions/provenance/store/fabriq"
 	"github.com/xraph/blackstart/pkg/apiauth"
 	"github.com/xraph/blackstart/pkg/hooks"
 )
@@ -29,13 +31,12 @@ type Extension struct {
 // Option configures the extension.
 type Option func(*Extension)
 
-// WithStore supplies a store, overriding the in-memory default.
+// WithStore supplies a store, overriding the Fabriq-backed default.
 //
-// The default is in-memory for now, and that is a gap rather than a design:
+// The default is durable, which for this extension is not a preference:
 // provenance is durable data by definition — a chain that vanishes on restart
-// answers "what produced this number" only until the next deploy. The Fabriq
-// store lands with the network model, which is the first thing whose
-// provenance has to outlive a process.
+// answers "what produced this number" only until the next deploy, and a record
+// that looks traceable and is not is worse than one that is plainly missing.
 func WithStore(s store.Store) Option {
 	return func(e *Extension) { e.store = s }
 }
@@ -47,7 +48,6 @@ func New(opts ...Option) *Extension {
 			ExtensionName, "0.1.0",
 			"Records what produced every number: dataset version, producer version, code commit",
 		),
-		store: memory.New(),
 	}
 
 	for _, opt := range opts {
@@ -57,12 +57,13 @@ func New(opts ...Option) *Extension {
 	return e
 }
 
-// Dependencies declares nothing.
+// Dependencies declares what must start first.
 //
-// The recorder holds its own store and publishes an interface. Extensions that
-// record provenance depend on the Recorder interface rather than on this
-// extension's startup order.
-func (e *Extension) Dependencies() []string { return nil }
+// The fabric extension, because the default store borrows its Fabriq facade.
+// That is the only edge: extensions that record provenance still depend on the
+// Recorder interface rather than on this extension's startup order, which is
+// what publishing an interface is for.
+func (e *Extension) Dependencies() []string { return []string{fabric.ExtensionName} }
 
 // Register provides the engine and the Recorder interface into the container.
 //
@@ -110,6 +111,27 @@ func (e *Extension) Start(ctx context.Context) error {
 		return errors.New("provenance: started without an application")
 	}
 
+	if e.store == nil {
+		fab, err := forge.Inject[*fabriq.Fabriq](app.Container())
+		if err != nil {
+			return fmt.Errorf(
+				"provenance: resolving the data fabric: %w; the fabric extension "+
+					"must start first, which its Dependencies() declares", err)
+		}
+
+		fabricExt, err := forge.Inject[*fabric.Extension](app.Container())
+		if err != nil {
+			return fmt.Errorf("provenance: resolving the fabric extension: %w", err)
+		}
+
+		built, err := fabriqstore.New(fab, fabricExt.Tenant())
+		if err != nil {
+			return err
+		}
+
+		e.store = built
+	}
+
 	// The bus is optional: a host that publishes no domain events is a
 	// legitimate configuration, and bsctl is one.
 	bus, _ := forge.Inject[*hooks.Bus](app.Container())
@@ -134,14 +156,27 @@ func (e *Extension) Start(ctx context.Context) error {
 }
 
 // Stop releases the store.
+//
+// The nil check is not defensive padding: the store is built in Start now
+// rather than in New, so an extension that was constructed and never started
+// holds none — which is exactly the state a failed startup leaves behind, and
+// the moment Stop runs.
 func (e *Extension) Stop(context.Context) error {
 	e.engine = nil
+
+	if e.store == nil {
+		return nil
+	}
 
 	return e.store.Close()
 }
 
 // Health reports whether the store is reachable.
 func (e *Extension) Health(ctx context.Context) error {
+	if e.store == nil {
+		return errors.New("provenance: no store; the extension has not started")
+	}
+
 	return e.store.Ping(ctx)
 }
 

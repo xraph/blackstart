@@ -74,6 +74,20 @@ func (s *records) CreateDataset(
 			bserr.ErrConflict, in.ID)
 	}
 
+	// The same bytes are the same version, whatever the identifier and
+	// timestamp on this retrieval say. Returning the existing record rather
+	// than writing a second one is what makes a re-download that changed
+	// nothing cheap: there is no new version, so nothing derived from the
+	// previous one is invalidated.
+	//
+	// The Fabriq store gets this from a unique index on (tenant_id,
+	// content_hash), and this store has to agree: the engine is tested here
+	// and deployed there, so a divergence would be a suite describing
+	// behavior the deployment does not have.
+	if existing, seen := s.byHash[in.ContentHash]; seen {
+		return s.datasets[existing], nil
+	}
+
 	s.datasets[in.ID] = in
 	s.byHash[in.ContentHash] = in.ID
 

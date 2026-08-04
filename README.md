@@ -4,9 +4,10 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Status: early development, Phase 0 (foundation).** The repository is being built in
-> public from its first commit. Most of what this README describes is planned rather than
-> working. See [Status](#status) for what actually exists today.
+> **Status: early development, Phase 3 (weather and hazard) complete.** The repository is
+> being built in public from its first commit. The network model, the solver, and the
+> weather-to-line-rating path work end to end; the prediction and visualization layers do
+> not exist yet. See [Status](#status) for what actually exists today.
 
 ---
 
@@ -87,7 +88,7 @@ results are reproducible by people who do not work at a utility.
 | NERC TADS / DADS | Transmission and distribution outage statistics, aggregate reports only |
 | [EIA U.S. Energy Atlas](https://atlas.eia.gov) | Transmission line geospatial layer, 69–765 kV |
 | [PNNL-33587](https://www.pnnl.gov/main/publications/external/technical_reports/PNNL-33587.pdf) and the open-access fragility literature it catalogues | Published wind and ice fragility functions per structure class |
-| OpenStreetMap power layer | Supplementary network geometry |
+| [OpenStreetMap power layer](https://overpass-api.de) | Per-structure geometry — the only public source of structure positions (ODbL 1.0, share-alike) |
 | USGS 3DEP | Terrain elevation |
 | NLCD / LANDFIRE | Land cover and vegetation fuel |
 | ENTSO-E CGMES conformity models | CIM/CGMES parser test data |
@@ -121,6 +122,13 @@ Stated plainly so there is no ambiguity about what this repository is.
 - The grid domain model, including the bitemporal and provenance machinery
 - The benchmark suite and the numerical validation record
 - The reference web client
+
+**Open, separately licensed:**
+
+- OSM-derived route and structure geometry, as a standalone **ODbL 1.0** artifact. The
+  connector that fetches it is Apache-2.0 code in this repository; the geometry it
+  produces is a derived database and inherits OpenStreetMap's share-alike terms, so it
+  ships on its own rather than inside the Apache-2.0 release.
 
 **Not open:**
 
@@ -157,29 +165,36 @@ power-systems bug class, and the type system is arranged to make it hard.
 
 ## Status
 
-Phase 0 of nine, partway through.
+Phase 3 of nine, complete. Phase 4 next.
 
-What works today: the host application starts against Postgres, Redis and FalkorDB and
-serves health, liveness and readiness endpoints. The shared primitives are complete and
-tested — typed electrical quantities, type-prefixed identifiers, bitemporal intervals
-with their SQL predicate and exclusion constraint, the error vocabulary, the actor and
-event bus, and the store conventions. CI runs lint, build, unit tests, containerized
-integration tests, CodeQL, license compliance, commit hygiene, and the advisory-only
-boundary check.
+What works today, end to end against a live stack: a synthetic Texas network imported
+from MATPOWER and routed over real geography; AC and DC power flow and N-1 contingency
+analysis in the Rust solver, checked against committed pandapower reference solutions;
+NOAA HRRR retrieval by byte-range against the GRIB2 index sidecars, decoded by a
+first-party decoder verified against ecCodes, and sampled onto individual conductor
+spans; and per-span wind loading, ice accretion and IEEE 738 dynamic line ratings
+derived from those samples. Every number traces back through a provenance run to the
+model version, the code commit, and the dataset versions it was computed from.
 
-What does not exist yet: any domain extension. `bsctl entities` correctly reports that
-the system models nothing so far. The identity, provenance and audit extensions are next,
-along with the trivial end-to-end extension that proves the seven-stage contract.
+What does not exist yet: everything downstream of a rating. There is no cascade
+simulation, no outage-history ingest, no risk model, no backtest harness, and the viewer
+renders the network but carries no weather or hazard layer — so the Phase 3 demonstrable
+is half-met, with ratings queryable through the API and CLI but not yet drawn on a map.
 
 | Phase | Scope | State |
 |---|---|---|
-| 0 | Foundation — host, DI, migrations, provenance, audit, CI | **in progress** |
-| 1 | Network model — topology, geospatial routing, importers, 3D viewer | not started |
-| 2 | Solver — Rust AC/DC power flow, N-1, validated against pandapower and MATPOWER | not started |
-| 2.5 | IEC 61850 SCL parser | not started |
-| 3–8 | Weather, cascade, protocols, prediction, full visual system | not started |
+| 0 | Foundation — host, DI, migrations, provenance, audit, CI | **complete** |
+| 1 | Network model — topology, geospatial routing, importers, viewer | **complete** |
+| 2 | Solver — Rust AC/DC power flow, N-1, checked against pandapower reference solutions | **complete** |
+| 2.5 | IEC 61850 SCL parser | **complete** |
+| 3 | Weather and hazard — HRRR ingest, GRIB2 decoding, per-span wind, ice and IEEE 738 ratings | **complete** |
+| 4 | Cascade — propagation, scenario orchestration, blast-radius geometry | in progress |
+| 5–8 | Grid protocols, prediction, full visual system | not started |
 
 Nothing here is ready to be relied upon. There are no releases yet.
+
+Extension guides, as they land: [`weather`](docs/extensions/weather.md),
+[`hazard`](docs/extensions/hazard.md).
 
 ## Building
 

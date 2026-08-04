@@ -14,7 +14,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // compile and still shows up in the dependency graph.
         .build_client(false)
         .compile_protos(
-            &[proto_root.join("blackstart/solver/v1/solver.proto")],
+            &[
+                proto_root.join("blackstart/solver/v1/solver.proto"),
+                proto_root.join("blackstart/weather/v1/grid.proto"),
+            ],
             &[proto_root],
         )?;
 
@@ -22,6 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // leaves a stale binding in place and the mismatch surfaces somewhere far
     // from its cause.
     println!("cargo:rerun-if-changed=../../proto/blackstart/solver/v1/solver.proto");
+    println!("cargo:rerun-if-changed=../../proto/blackstart/weather/v1/grid.proto");
 
     Ok(())
 }

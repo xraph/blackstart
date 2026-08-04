@@ -45,6 +45,8 @@ import {
  * twenty-six a TypeID suffix requires. */
 const LN = (tail: string): string => `ln_01k3qf8m2xw7rb4n09yt${tail}`;
 const RUN = (tail: string): string => `run_01k3qf8m2xw7rb4n09yv${tail}`;
+/** Same suffix scheme as `RUN`, under the prefix the engine mints for a cascade. */
+const CASC = (tail: string): string => `casc_01k3qf8m2xw7rb4n09yv${tail}`;
 
 export const LINE_TULIA_LEVELLAND = LN("vdhjkm");
 
@@ -125,7 +127,7 @@ export const CONTINGENCIES = ContingencyList.parse(rankByExpectedCost(UNRANKED))
 
 export const CASCADE = CascadeRun.parse({
   provenance: PROVENANCE,
-  run: RUN("tvdhjk"),
+  run: CASC("tvdhjk"),
   initiating: "ln TULIA–LEVELLAND 345 kV",
   events: [
     { t: 0, kind: "trip", element: "ln TULIA–LEVELLAND 345", detail: "INITIATING" },

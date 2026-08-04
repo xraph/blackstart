@@ -3,6 +3,10 @@ package server
 import (
 	"strings"
 	"testing"
+
+	"github.com/xraph/blackstart/extensions/hazard"
+	"github.com/xraph/blackstart/extensions/weather"
+	"github.com/xraph/blackstart/extensions/weather/model"
 )
 
 func TestValidateRequiresADatabase(t *testing.T) {
@@ -187,5 +191,86 @@ func TestBuildRejectsAnInvalidConfiguration(t *testing.T) {
 
 	if _, err := Build(Config{}); err == nil {
 		t.Error("built an application with no database DSN")
+	}
+}
+
+// The ingest loop needs somewhere to fetch from and a process that runs
+// workers. Neither is a flag, because a flag could claim a loop was on in a
+// process that would never tick it.
+func TestWeatherPollIsEnabledOnlyWhenItCanRun(t *testing.T) {
+	t.Parallel()
+
+	full := Config{
+		RunWorker:     true,
+		WeatherSource: "noaa",
+		WeatherFeeds:  map[string]string{"hrrr": "hrrr"},
+	}
+
+	for name, tt := range map[string]struct {
+		cfg  Config
+		want bool
+	}{
+		"source, feeds and a worker": {full, true},
+		"no worker":                  {func() Config { c := full; c.RunWorker = false; return c }(), false},
+		"no source":                  {func() Config { c := full; c.WeatherSource = ""; return c }(), false},
+		"no feeds":                   {func() Config { c := full; c.WeatherFeeds = nil; return c }(), false},
+	} {
+		if got := weatherPollConfig(tt.cfg).Enabled; got != tt.want {
+			t.Errorf("%s: enabled = %v, want %v", name, got, tt.want)
+		}
+	}
+}
+
+// A feed key naming no model is dropped rather than failing the load. The
+// vocabulary is closed and the file is hand-edited, so a typo should cost that
+// one model's ingest and not the whole process.
+func TestWeatherFeedsDropsUnknownModels(t *testing.T) {
+	t.Parallel()
+
+	got := weatherPollConfig(Config{
+		RunWorker:     true,
+		WeatherSource: "noaa",
+		WeatherFeeds:  map[string]string{"hrrr": "hrrr", "hrrrr": "typo", "gfs": ""},
+	}).Feeds
+
+	if len(got) != 1 {
+		t.Fatalf("resolved %d feeds from one good key and two bad, want 1: %v", len(got), got)
+	}
+
+	if got[model.HRRR] != "hrrr" {
+		t.Errorf("hrrr resolved to %q", got[model.HRRR])
+	}
+}
+
+// Zero values fall back to the extension's own defaults rather than producing
+// a loop that spins or sweeps nothing.
+func TestScheduleZeroesFallBackToDefaults(t *testing.T) {
+	t.Parallel()
+
+	poll := weatherPollConfig(Config{RunWorker: true})
+	if poll.Interval != weather.DefaultPollConfig().Interval ||
+		poll.Backfill != weather.DefaultPollConfig().Backfill ||
+		len(poll.Hours) == 0 {
+		t.Errorf("weather fell back to %+v", poll)
+	}
+
+	compute := hazardComputeConfig(Config{RunWorker: true})
+	if compute.Interval != hazard.DefaultComputeConfig().Interval ||
+		compute.Lookback != hazard.DefaultComputeConfig().Lookback {
+		t.Errorf("hazard fell back to %+v", compute)
+	}
+}
+
+// The rating loop needs no registry slugs — it reads what weather stored — so
+// running a worker is the whole condition.
+func TestHazardComputeFollowsTheWorkerFlag(t *testing.T) {
+	t.Parallel()
+
+	if !hazardComputeConfig(Config{RunWorker: true}).Enabled {
+		t.Error("a worker process did not enable the rating loop")
+	}
+
+	if hazardComputeConfig(Config{RunWorker: false}).Enabled {
+		t.Error("a non-worker process enabled the rating loop")
 	}
 }

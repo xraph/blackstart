@@ -64,8 +64,12 @@ export const ProvenanceLink = z.object({
   /**
    * Whether the link was checked, not whether it was recorded. A dataset whose
    * hash did not match what the manifest claimed is present and unverified.
+   *
+   * Defaults to false rather than being required: a caller that cites a link
+   * without stating whether it checked it has not checked it, and defaulting
+   * to true would let that omission pass as verification.
    */
-  verified: z.boolean(),
+  verified: z.boolean().default(false),
 });
 export type ProvenanceLink = z.infer<typeof ProvenanceLink>;
 

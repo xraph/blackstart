@@ -10,7 +10,7 @@
 import { z } from "zod";
 import { quantity } from "./quantity";
 import { typeId } from "./identity";
-import { cited } from "./provenance";
+import { cited, ProvenanceChain } from "./provenance";
 
 /**
  * What happened, in the order a cascade produces it.
@@ -44,32 +44,77 @@ export type CascadeEvent = z.infer<typeof CascadeEvent>;
 export const ISLAND_STATES = ["stable", "recovering", "shedding", "collapsed"] as const;
 export type IslandState = (typeof ISLAND_STATES)[number];
 
+/**
+ * One sample off the solver's decimated frequency curve.
+ *
+ * `at` shares the cascade's own clock — the same seconds the events use — so a
+ * trace can be plotted against the event log without a second time axis to
+ * reconcile.
+ */
+export const FrequencySample = z.object({
+  /** Seconds from the start of the cascade, the same clock the events use. */
+  at: z.number().nonnegative().finite(),
+  /** Absolute hertz. 60 Hz is 60, never a deviation and never per unit. */
+  hz: z.number().finite(),
+});
+export type FrequencySample = z.infer<typeof FrequencySample>;
+
 export const Island = z.object({
   id: IslandId,
   /** Generation minus load. Negative islands are shedding or collapsing. */
   balance: quantity("MW"),
-  /** Frequency at the end of the window shown. */
-  frequency: quantity("Hz"),
-  /** Lowest frequency reached, which is what decides whether it survives. */
-  nadir: quantity("Hz"),
+  /**
+   * Frequency at the end of the window shown.
+   *
+   * Absent, not zero: an island with no machine attached has no frequency to
+   * report, and 0 Hz is a collapse reading, not a "no data" reading.
+   */
+  frequency: quantity("Hz").optional(),
+  /** Lowest frequency reached, which is what decides whether it survives. Absent for the same reason as `frequency`. */
+  nadir: quantity("Hz").optional(),
   state: z.enum(ISLAND_STATES),
   busCount: z.number().int().positive(),
+  /**
+   * The island's frequency curve, already decimated by the solver.
+   *
+   * Absent, not empty-as-zero: an island with no machine has no frequency to
+   * plot, and a flat line at 0 Hz would render as a collapse that never
+   * happened.
+   */
+  trace: z.array(FrequencySample).optional(),
 });
 export type Island = z.infer<typeof Island>;
 
 export const CascadeRun = z
   .object({
     ...cited.shape,
-    run: typeId("run"),
+    run: typeId("casc"),
     /** The outage that started it. */
     initiating: z.string().min(1),
     events: z.array(CascadeEvent).min(1),
     islands: z.array(Island).max(MAX_ISLANDS),
-    customersInterrupted: quantity("customers"),
+    /**
+     * Absent, not zero: the engine has no customer model, so it never counts
+     * who lost power. A zero here would assert nobody was affected, which is
+     * a finding — and a calmer one than the truth, that nobody computed it.
+     */
+    customersInterrupted: quantity("customers").optional(),
     loadLost: quantity("MW"),
-    expectedUnservedEnergy: quantity("MW·h"),
-    blastRadius: quantity("km²"),
-    countiesAffected: z.number().int().nonnegative(),
+    /**
+     * Absent for the same reason as `customersInterrupted`: this needs a
+     * duration model over the outage the engine does not run.
+     */
+    expectedUnservedEnergy: quantity("MW·h").optional(),
+    /**
+     * Absent for the same reason as `customersInterrupted`: this needs the
+     * geography the engine does not carry.
+     */
+    blastRadius: quantity("km²").optional(),
+    /**
+     * Absent for the same reason as `customersInterrupted`: this needs the
+     * geography the engine does not carry.
+     */
+    countiesAffected: z.number().int().nonnegative().optional(),
   })
   .superRefine((run, ctx) => {
     for (let i = 1; i < run.events.length; i += 1) {
@@ -96,6 +141,28 @@ export const CascadeRun = z
     });
   });
 export type CascadeRun = z.infer<typeof CascadeRun>;
+
+/**
+ * The provenance a cascade run can honestly cite.
+ *
+ * Three links, from what the solver actually returns. There is no `dataset`
+ * link because the solver was handed a model by content hash and never saw
+ * the dataset behind it — so the chain is INCOMPLETE, which
+ * `chainCompleteness` computes and the UI displays. Inventing a placeholder
+ * dataset link to force completeness is the exact failure mode the
+ * provenance module's own comment warns against.
+ */
+export function provenanceOf(input: {
+  modelHash: string;
+  solverVersion: string;
+  run: string;
+}): ProvenanceChain {
+  return ProvenanceChain.parse([
+    { kind: "network", label: "network model", ref: input.modelHash, digest: input.modelHash },
+    { kind: "commit", label: "solver", ref: input.solverVersion },
+    { kind: "run", label: "cascade run", ref: input.run },
+  ]);
+}
 
 /**
  * Events newest-first, which is how the log reads.

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/xraph/confy"
 )
@@ -67,6 +68,31 @@ type fileConfig struct {
 				Driver string `yaml:"driver"`
 			} `yaml:"storage"`
 		} `yaml:"fabric"`
+
+		// Weather's poll block names what to retrieve. There is no enabled
+		// flag: the loop runs when a source and at least one feed are named
+		// and this binary drains workers, because a feed configured in a
+		// process that runs no workers is inert and a flag saying otherwise
+		// would only be able to lie.
+		Weather struct {
+			Poll struct {
+				Interval string            `yaml:"interval"`
+				Backfill string            `yaml:"backfill"`
+				Source   string            `yaml:"source"`
+				Feeds    map[string]string `yaml:"feeds"`
+				Hours    []int             `yaml:"hours"`
+			} `yaml:"poll"`
+		} `yaml:"weather"`
+
+		// Hazard's compute block needs no registry slugs — it reads what
+		// weather already stored — so the worker flag alone decides whether it
+		// runs.
+		Hazard struct {
+			Compute struct {
+				Interval string `yaml:"interval"`
+				Lookback string `yaml:"lookback"`
+			} `yaml:"compute"`
+		} `yaml:"hazard"`
 	} `yaml:"extensions"`
 }
 
@@ -181,7 +207,44 @@ func (f fileConfig) apply(cfg Config) Config {
 	cfg.SolverAddress = orKeep(f.Solver.Address, cfg.SolverAddress)
 	cfg.SolverVersion = orKeep(f.Solver.Version, cfg.SolverVersion)
 
+	poll := f.Extensions.Weather.Poll
+	cfg.WeatherSource = orKeep(poll.Source, cfg.WeatherSource)
+	cfg.WeatherInterval = orKeepDuration(poll.Interval, cfg.WeatherInterval)
+	cfg.WeatherBackfill = orKeepDuration(poll.Backfill, cfg.WeatherBackfill)
+
+	if len(poll.Feeds) > 0 {
+		cfg.WeatherFeeds = poll.Feeds
+	}
+
+	if len(poll.Hours) > 0 {
+		cfg.WeatherHours = poll.Hours
+	}
+
+	compute := f.Extensions.Hazard.Compute
+	cfg.HazardInterval = orKeepDuration(compute.Interval, cfg.HazardInterval)
+	cfg.HazardLookback = orKeepDuration(compute.Lookback, cfg.HazardLookback)
+
 	return cfg
+}
+
+// orKeepDuration parses a duration string, keeping the current value when the
+// file says nothing.
+//
+// An unparseable duration keeps the current value rather than failing the
+// load. The alternative is refusing to start a server over a typo in an
+// optional tuning knob, and the defaults these fall back to are the ones the
+// extension ships with.
+func orKeepDuration(raw string, current time.Duration) time.Duration {
+	if raw == "" {
+		return current
+	}
+
+	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed <= 0 {
+		return current
+	}
+
+	return parsed
 }
 
 // presence reports which kinds of config file discovery will actually find.

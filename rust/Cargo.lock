@@ -131,6 +131,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bs-cascade"
+version = "0.0.0"
+dependencies = [
+ "bs-case",
+ "bs-frequency",
+ "bs-powerflow",
+ "bs-protection",
+ "bs-quantity",
+]
+
+[[package]]
 name = "bs-case"
 version = "0.0.0"
 dependencies = [
@@ -158,6 +169,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bs-frequency"
+version = "0.0.0"
+dependencies = [
+ "bs-case",
+ "bs-quantity",
+]
+
+[[package]]
 name = "bs-golden"
 version = "0.0.0"
 dependencies = [
@@ -169,12 +188,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "bs-grib"
+version = "0.0.0"
+
+[[package]]
 name = "bs-powerflow"
 version = "0.0.0"
 dependencies = [
  "bs-case",
  "bs-quantity",
  "bs-sparse",
+]
+
+[[package]]
+name = "bs-protection"
+version = "0.0.0"
+dependencies = [
+ "bs-case",
+ "bs-quantity",
 ]
 
 [[package]]
@@ -185,10 +216,14 @@ version = "0.0.0"
 name = "bs-solver"
 version = "0.0.0"
 dependencies = [
+ "bs-cascade",
  "bs-case",
  "bs-contingency",
  "bs-factors",
+ "bs-frequency",
+ "bs-grib",
  "bs-powerflow",
+ "bs-protection",
  "bs-quantity",
  "bytes",
  "http-body-util",

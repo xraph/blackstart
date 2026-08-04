@@ -38,6 +38,8 @@ import (
 	_ "github.com/xraph/grove/drivers/pgdriver/pgmigrate" // registers its migration executor
 	groveext "github.com/xraph/grove/extension"
 
+	"github.com/xraph/blackstart/extensions/cascade"
+	cscmigrations "github.com/xraph/blackstart/extensions/cascade/store/fabriq"
 	"github.com/xraph/blackstart/extensions/contingency"
 	ctgmigrations "github.com/xraph/blackstart/extensions/contingency/store/fabriq"
 	"github.com/xraph/blackstart/extensions/datasource"
@@ -45,14 +47,20 @@ import (
 	"github.com/xraph/blackstart/extensions/fabric"
 	"github.com/xraph/blackstart/extensions/geo"
 	geomigrations "github.com/xraph/blackstart/extensions/geo/store/fabriq"
+	"github.com/xraph/blackstart/extensions/hazard"
+	hzmigrations "github.com/xraph/blackstart/extensions/hazard/store/fabriq"
 	"github.com/xraph/blackstart/extensions/networkmodel"
 	nmmigrations "github.com/xraph/blackstart/extensions/networkmodel/store/fabriq"
 	"github.com/xraph/blackstart/extensions/powerflow"
 	pfmigrations "github.com/xraph/blackstart/extensions/powerflow/store/fabriq"
 	"github.com/xraph/blackstart/extensions/provenance"
+	pvmigrations "github.com/xraph/blackstart/extensions/provenance/store/fabriq"
 	"github.com/xraph/blackstart/extensions/scl"
 	sclmigrations "github.com/xraph/blackstart/extensions/scl/store/fabriq"
 	"github.com/xraph/blackstart/extensions/topology"
+	"github.com/xraph/blackstart/extensions/weather"
+	"github.com/xraph/blackstart/extensions/weather/model"
+	wxmigrations "github.com/xraph/blackstart/extensions/weather/store/fabriq"
 	"github.com/xraph/blackstart/internal/entities"
 	"github.com/xraph/blackstart/pkg/buildinfo"
 )
@@ -113,6 +121,29 @@ type Config struct {
 	// CLI does not, because a short-lived command should not take over draining
 	// a shared queue and then exit mid-batch.
 	RunWorker bool
+
+	// WeatherSource and WeatherFeeds name what the ingest loop retrieves: the
+	// registry source slug, and the feed slug within it per model.
+	//
+	// There is no separate enable flag. The loop runs when both of these are
+	// set and RunWorker is true, because a feed configured in a process that
+	// drains no workers is inert — the same reasoning that ties the graph
+	// projection to the outbox relay. Leaving them empty is how a deployment
+	// says it does not ingest weather.
+	WeatherSource string
+	WeatherFeeds  map[string]string
+
+	// WeatherInterval, WeatherBackfill and WeatherHours tune the loop. Zero
+	// means the extension's own default.
+	WeatherInterval time.Duration
+	WeatherBackfill time.Duration
+	WeatherHours    []int
+
+	// HazardInterval and HazardLookback tune the rating loop, which runs
+	// whenever RunWorker is true. It needs no registry slugs: it reads what
+	// weather already stored.
+	HazardInterval time.Duration
+	HazardLookback time.Duration
 
 	// EnableAuth registers Authsome as this application's own authentication
 	// authority.
@@ -188,11 +219,15 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		groveext.WithMigrations(
 			fabriqmigrations.Group(),
 			dsmigrations.Group(),
+			pvmigrations.Group(),
 			nmmigrations.Group(),
 			geomigrations.Group(),
 			sclmigrations.Group(),
 			pfmigrations.Group(),
 			ctgmigrations.Group(),
+			wxmigrations.Group(),
+			hzmigrations.Group(),
+			cscmigrations.Group(),
 		),
 	)
 
@@ -215,6 +250,8 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		groveExt, fabricExt, auditExt,
 		provenance.New(), networkmodel.New(), datasource.New(),
 		topology.New(), geo.New(), scl.New(),
+		weather.New(weather.WithPolling(weatherPollConfig(cfg))),
+		hazard.New(hazard.WithComputeSchedule(hazardComputeConfig(cfg))),
 	}
 
 	// Authsome, this application's own authentication authority.
@@ -297,6 +334,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		extensions = append(extensions,
 			powerflow.New(),
 			contingency.New(contingency.WithSolverVersion(cfg.SolverVersion)),
+			cascade.New(),
 		)
 	}
 
@@ -380,6 +418,77 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 	}
 
 	return app, nil
+}
+
+// weatherPollConfig assembles the ingest loop's settings.
+//
+// Enabled is derived rather than configured: a loop needs a registry source
+// and at least one feed to have anything to ask for, and it needs a process
+// that runs workers. Declaring it on without either would be the same lie as
+// declaring a graph projection with no relay to advance it.
+func weatherPollConfig(cfg Config) weather.PollConfig {
+	pc := weather.DefaultPollConfig()
+
+	pc.SourceSlug = cfg.WeatherSource
+	pc.Feeds = weatherFeeds(cfg.WeatherFeeds)
+
+	if cfg.WeatherInterval > 0 {
+		pc.Interval = cfg.WeatherInterval
+	}
+
+	if cfg.WeatherBackfill > 0 {
+		pc.Backfill = cfg.WeatherBackfill
+	}
+
+	if len(cfg.WeatherHours) > 0 {
+		pc.Hours = cfg.WeatherHours
+	}
+
+	pc.Enabled = cfg.RunWorker && pc.SourceSlug != "" && len(pc.Feeds) > 0
+
+	return pc
+}
+
+// weatherFeeds converts the configured feed map into the model vocabulary.
+//
+// A key that names no model is dropped rather than failing the load. The
+// vocabulary is closed and the file is hand-edited, so a typo should cost that
+// one model's ingest and not the whole process — and the startup log reports
+// which models are actually polled.
+func weatherFeeds(configured map[string]string) map[model.Model]string {
+	if len(configured) == 0 {
+		return nil
+	}
+
+	out := make(map[model.Model]string, len(configured))
+
+	for _, known := range model.All() {
+		if slug, ok := configured[string(known)]; ok && slug != "" {
+			out[known] = slug
+		}
+	}
+
+	return out
+}
+
+// hazardComputeConfig assembles the rating loop's settings.
+//
+// No registry slugs to check: this loop reads what weather already stored, so
+// running a worker is the whole condition.
+func hazardComputeConfig(cfg Config) hazard.ComputeConfig {
+	hc := hazard.DefaultComputeConfig()
+
+	if cfg.HazardInterval > 0 {
+		hc.Interval = cfg.HazardInterval
+	}
+
+	if cfg.HazardLookback > 0 {
+		hc.Lookback = cfg.HazardLookback
+	}
+
+	hc.Enabled = cfg.RunWorker
+
+	return hc
 }
 
 func fabricConfig(cfg Config) fabric.Config {

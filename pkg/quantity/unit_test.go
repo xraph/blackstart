@@ -225,3 +225,168 @@ func TestUnitString(t *testing.T) {
 		}
 	}
 }
+
+// The meteorological units exist so that a hazard model cannot add a gust to
+// an ambient temperature. Each is checked for its dimension rather than its
+// symbol, because the symbol is cosmetic and the dimension is what the
+// checker actually uses.
+func TestMeteorologicalUnitDimensions(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		unit Unit
+		want Dimension
+	}{
+		{"wind speed", MeterPerSecond, Velocity},
+		{"ice load", KilogramPerSquareMeter, SurfaceDensity},
+		{"precipitation rate", KilogramPerSquareMeterSecond, PrecipitationRate},
+		{"CAPE", JoulePerKilogram, SpecificEnergy},
+		{"snow depth", Millimeter, Length},
+	} {
+		if tt.unit.Dim != tt.want {
+			t.Errorf("%s: dimension = %v, want %v", tt.name, tt.unit.Dim, tt.want)
+		}
+	}
+}
+
+// A gust and an ambient temperature must not be compatible. IEEE 738 takes
+// both, and adding them is exactly the class of mistake this package exists
+// to make impossible.
+func TestWindIsNotCompatibleWithTemperature(t *testing.T) {
+	t.Parallel()
+
+	if MeterPerSecond.Compatible(Kelvin) {
+		t.Fatal("m/s reports compatible with K; dimensional checking is not working")
+	}
+}
+
+// The derived meteorological dimensions are checkable by hand from the base
+// ones, and this asserts that rather than trusting the literals above.
+func TestMeteorologicalDimensionsDeriveFromBases(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		got  Dimension
+		want Dimension
+	}{
+		{"velocity is length over time", Length.Div(Time), Velocity},
+		{"specific energy is energy over mass", Energy.Div(Mass), SpecificEnergy},
+		{
+			"precipitation rate is surface density over time",
+			SurfaceDensity.Div(Time), PrecipitationRate,
+		},
+	} {
+		if tt.got != tt.want {
+			t.Errorf("%s: got %v, want %v", tt.name, tt.got, tt.want)
+		}
+	}
+}
+
+// SIUnitFor scans a hardcoded list for the unit whose ToSI is 1. A new SI unit
+// left out of that list makes conversion fail for its entire dimension, which
+// is a quiet failure rather than a loud one.
+func TestSIUnitForResolvesMeteorologicalDimensions(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		dim  Dimension
+		want string
+	}{
+		{Velocity, "m/s"},
+		{SurfaceDensity, "kg/m2"},
+		{PrecipitationRate, "kg/m2/s"},
+		{SpecificEnergy, "J/kg"},
+	} {
+		got, err := SIUnitFor(tt.dim, KindGeneric)
+		if err != nil {
+			t.Errorf("SIUnitFor(%v): %v", tt.dim, err)
+
+			continue
+		}
+
+		if got.Symbol != tt.want {
+			t.Errorf("SIUnitFor(%v) = %q, want %q", tt.dim, got.Symbol, tt.want)
+		}
+	}
+}
+
+// The mechanical units exist so a drag force cannot be added to an ice mass.
+// Combined loading takes both, which makes it exactly the place the mistake
+// would otherwise be made.
+func TestMechanicalUnitDimensions(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		unit Unit
+		want Dimension
+	}{
+		{"drag", Newton, Force},
+		{"drag per length", NewtonPerMeter, LinearForceDensity},
+		{"ice mass per length", KilogramPerMeter, LinearDensity},
+		{"solar", WattPerSquareMeter, Irradiance},
+	} {
+		if tt.unit.Dim != tt.want {
+			t.Errorf("%s: dimension = %v, want %v", tt.name, tt.unit.Dim, tt.want)
+		}
+	}
+}
+
+// The derived dimensions are checkable from the base ones, which is asserted
+// rather than trusted — a transposed exponent in the literals would otherwise
+// be invisible.
+func TestMechanicalDimensionsDeriveFromBases(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		got  Dimension
+		want Dimension
+	}{
+		{"force is mass times acceleration", Mass.Mul(Length).Div(Time).Div(Time), Force},
+		{"force per length", Force.Div(Length), LinearForceDensity},
+		{"mass per length", Mass.Div(Length), LinearDensity},
+		{"power per area", Power.Div(Length).Div(Length), Irradiance},
+	} {
+		if tt.got != tt.want {
+			t.Errorf("%s: got %v, want %v", tt.name, tt.got, tt.want)
+		}
+	}
+}
+
+// A drag force and an ice load per length are both "per meter" quantities and
+// are not the same thing. This is the confusion combined loading invites.
+func TestDragIsNotCompatibleWithIceMass(t *testing.T) {
+	t.Parallel()
+
+	if NewtonPerMeter.Compatible(KilogramPerMeter) {
+		t.Fatal("N/m reports compatible with kg/m; combined loading could add them")
+	}
+}
+
+func TestSIUnitForResolvesMechanicalDimensions(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		dim  Dimension
+		want string
+	}{
+		{Force, "N"},
+		{LinearForceDensity, "N/m"},
+		{LinearDensity, "kg/m"},
+		{Irradiance, "W/m2"},
+	} {
+		got, err := SIUnitFor(tt.dim, KindGeneric)
+		if err != nil {
+			t.Errorf("SIUnitFor(%v): %v", tt.dim, err)
+
+			continue
+		}
+
+		if got.Symbol != tt.want {
+			t.Errorf("SIUnitFor(%v) = %q, want %q", tt.dim, got.Symbol, tt.want)
+		}
+	}
+}

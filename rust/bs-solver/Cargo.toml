@@ -13,9 +13,13 @@ workspace = true
 
 [dependencies]
 bs-case = { path = "../bs-case" }
+bs-cascade = { path = "../bs-cascade" }
 bs-contingency = { path = "../bs-contingency" }
 bs-factors = { path = "../bs-factors" }
+bs-frequency = { path = "../bs-frequency" }
+bs-grib = { path = "../bs-grib" }
 bs-powerflow = { path = "../bs-powerflow" }
+bs-protection = { path = "../bs-protection" }
 bs-quantity = { path = "../bs-quantity" }
 prost = "0.13"
 sha2 = "0.10"

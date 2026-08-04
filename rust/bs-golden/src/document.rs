@@ -201,6 +201,10 @@ impl Golden {
                 v_angle: doc.v_angle,
                 q_min: doc.q_min.unwrap_or(f64::NEG_INFINITY),
                 q_max: doc.q_max.unwrap_or(f64::INFINITY),
+                p_min: f64::NEG_INFINITY,
+                p_max: f64::INFINITY,
+                inertia_h: None,
+                droop_r: None,
                 g_shunt: doc.g_shunt,
                 b_shunt: doc.b_shunt,
             });

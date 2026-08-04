@@ -146,6 +146,42 @@ var (
 	Celsius = Unit{Symbol: "degC", Dim: Temperature, ToSI: 1}
 )
 
+// Meteorological units, for the weather fields a hazard model conditions on.
+//
+// These are the units NOAA's GRIB2 products report in, kept rather than
+// converted to friendlier ones at ingest. A stored number that disagrees with
+// the bytes its provenance chain leads to is not much of a chain, and the
+// conversion a reader wants depends on what they are doing — so it belongs at
+// the point of use, not at the point of record.
+//
+//nolint:gochecknoglobals // a fixed physical vocabulary, not mutable state
+var (
+	MeterPerSecond = Unit{Symbol: "m/s", Dim: Velocity, ToSI: 1}
+
+	Millimeter = Unit{Symbol: "mm", Dim: Length, ToSI: 1e-3}
+
+	KilogramPerSquareMeter = Unit{Symbol: "kg/m2", Dim: SurfaceDensity, ToSI: 1}
+
+	KilogramPerSquareMeterSecond = Unit{
+		Symbol: "kg/m2/s", Dim: PrecipitationRate, ToSI: 1,
+	}
+
+	JoulePerKilogram = Unit{Symbol: "J/kg", Dim: SpecificEnergy, ToSI: 1}
+)
+
+// Mechanical and radiative units, for the hazard models.
+//
+//nolint:gochecknoglobals // a fixed physical vocabulary, not mutable state
+var (
+	Newton = Unit{Symbol: "N", Dim: Force, ToSI: 1}
+
+	NewtonPerMeter = Unit{Symbol: "N/m", Dim: LinearForceDensity, ToSI: 1}
+
+	KilogramPerMeter = Unit{Symbol: "kg/m", Dim: LinearDensity, ToSI: 1}
+
+	WattPerSquareMeter = Unit{Symbol: "W/m2", Dim: Irradiance, ToSI: 1}
+)
+
 // Per-unit units. Each carries the dimension of the quantity it normalizes, so
 // dimensional checking still works on per-unit arithmetic, but none can be
 // converted to SI without a Base.
@@ -190,9 +226,15 @@ func (u Unit) String() string {
 // SIUnitFor returns the SI base unit for a dimension and kind. It is the
 // target of conversions and the unit in which quantities are persisted.
 func SIUnitFor(dim Dimension, kind Kind) (Unit, error) {
+	// Every SI unit must appear here or SIUnitFor fails for its whole
+	// dimension — quietly, since the caller sees "no SI unit" rather than a
+	// missing entry.
 	for _, u := range []Unit{
 		Volt, Ampere, Watt, Var, VoltAmpere, Joule, Ohm, Siemens,
 		Hertz, Meter, Second, Kelvin, Ratio,
+		MeterPerSecond, KilogramPerSquareMeter,
+		KilogramPerSquareMeterSecond, JoulePerKilogram,
+		Newton, NewtonPerMeter, KilogramPerMeter, WattPerSquareMeter,
 	} {
 		if u.Dim == dim && u.Kind == kind && u.ToSI == 1 {
 			return u, nil

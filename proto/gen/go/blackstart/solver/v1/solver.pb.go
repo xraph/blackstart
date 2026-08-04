@@ -188,6 +188,311 @@ func (Screenability) EnumDescriptor() ([]byte, []int) {
 	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{2}
 }
 
+// An IEC 60255-151 inverse-time overcurrent characteristic. Mirrors
+// bs_protection::Curve on the Rust side; this is that type's wire form.
+type Curve int32
+
+const (
+	Curve_CURVE_UNSPECIFIED Curve = 0
+	// A = 0.14, B = 0.02. The usual transmission choice.
+	Curve_CURVE_STANDARD_INVERSE Curve = 1
+	// A = 13.5, B = 1.
+	Curve_CURVE_VERY_INVERSE Curve = 2
+	// A = 80, B = 2. Grades against fuses.
+	Curve_CURVE_EXTREMELY_INVERSE Curve = 3
+)
+
+// Enum value maps for Curve.
+var (
+	Curve_name = map[int32]string{
+		0: "CURVE_UNSPECIFIED",
+		1: "CURVE_STANDARD_INVERSE",
+		2: "CURVE_VERY_INVERSE",
+		3: "CURVE_EXTREMELY_INVERSE",
+	}
+	Curve_value = map[string]int32{
+		"CURVE_UNSPECIFIED":       0,
+		"CURVE_STANDARD_INVERSE":  1,
+		"CURVE_VERY_INVERSE":      2,
+		"CURVE_EXTREMELY_INVERSE": 3,
+	}
+)
+
+func (x Curve) Enum() *Curve {
+	p := new(Curve)
+	*p = x
+	return p
+}
+
+func (x Curve) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Curve) Descriptor() protoreflect.EnumDescriptor {
+	return file_blackstart_solver_v1_solver_proto_enumTypes[3].Descriptor()
+}
+
+func (Curve) Type() protoreflect.EnumType {
+	return &file_blackstart_solver_v1_solver_proto_enumTypes[3]
+}
+
+func (x Curve) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Curve.Descriptor instead.
+func (Curve) EnumDescriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{3}
+}
+
+// What kind of thing happened at one point in the cascade.
+//
+// Must match the operator console's schema exactly — see
+// web/packages/schema/src/cascade.ts, CASCADE_EVENT_KINDS. The console
+// validates every event against that list and rejects anything it does not
+// recognize, so a value added here without a matching console change
+// produces a cascade the console refuses to render.
+type CascadeEventKind int32
+
+const (
+	CascadeEventKind_CASCADE_EVENT_KIND_UNSPECIFIED CascadeEventKind = 0
+	// An element crossed its rating. Logged separately from the trip it may
+	// cause, so a reader can see how long the margin was gone before
+	// protection acted.
+	CascadeEventKind_CASCADE_EVENT_KIND_OVERLOAD CascadeEventKind = 1
+	// A branch's protection operated and removed it from service.
+	CascadeEventKind_CASCADE_EVENT_KIND_TRIP CascadeEventKind = 2
+	// The network split, forming or reshaping islands.
+	CascadeEventKind_CASCADE_EVENT_KIND_ISLAND CascadeEventKind = 3
+	// Under-frequency load shedding fired.
+	CascadeEventKind_CASCADE_EVENT_KIND_SHED CascadeEventKind = 4
+	// An island stopped changing and is being reported as settled.
+	CascadeEventKind_CASCADE_EVENT_KIND_STABILISE CascadeEventKind = 5
+)
+
+// Enum value maps for CascadeEventKind.
+var (
+	CascadeEventKind_name = map[int32]string{
+		0: "CASCADE_EVENT_KIND_UNSPECIFIED",
+		1: "CASCADE_EVENT_KIND_OVERLOAD",
+		2: "CASCADE_EVENT_KIND_TRIP",
+		3: "CASCADE_EVENT_KIND_ISLAND",
+		4: "CASCADE_EVENT_KIND_SHED",
+		5: "CASCADE_EVENT_KIND_STABILISE",
+	}
+	CascadeEventKind_value = map[string]int32{
+		"CASCADE_EVENT_KIND_UNSPECIFIED": 0,
+		"CASCADE_EVENT_KIND_OVERLOAD":    1,
+		"CASCADE_EVENT_KIND_TRIP":        2,
+		"CASCADE_EVENT_KIND_ISLAND":      3,
+		"CASCADE_EVENT_KIND_SHED":        4,
+		"CASCADE_EVENT_KIND_STABILISE":   5,
+	}
+)
+
+func (x CascadeEventKind) Enum() *CascadeEventKind {
+	p := new(CascadeEventKind)
+	*p = x
+	return p
+}
+
+func (x CascadeEventKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CascadeEventKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_blackstart_solver_v1_solver_proto_enumTypes[4].Descriptor()
+}
+
+func (CascadeEventKind) Type() protoreflect.EnumType {
+	return &file_blackstart_solver_v1_solver_proto_enumTypes[4]
+}
+
+func (x CascadeEventKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CascadeEventKind.Descriptor instead.
+func (CascadeEventKind) EnumDescriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{4}
+}
+
+// The worst thing that happened to an island over the whole run, on the
+// frequency axis. See IslandState.condition for why this is peak severity
+// rather than the state at the final instant.
+//
+// Order is significant: STABLE < RECOVERING < SHEDDING < COLLAPSED. Reporting
+// logic takes the maximum over the run's history in this order.
+type IslandCondition int32
+
+const (
+	IslandCondition_ISLAND_CONDITION_UNSPECIFIED IslandCondition = 0
+	IslandCondition_ISLAND_CONDITION_STABLE      IslandCondition = 1
+	IslandCondition_ISLAND_CONDITION_RECOVERING  IslandCondition = 2
+	IslandCondition_ISLAND_CONDITION_SHEDDING    IslandCondition = 3
+	IslandCondition_ISLAND_CONDITION_COLLAPSED   IslandCondition = 4
+)
+
+// Enum value maps for IslandCondition.
+var (
+	IslandCondition_name = map[int32]string{
+		0: "ISLAND_CONDITION_UNSPECIFIED",
+		1: "ISLAND_CONDITION_STABLE",
+		2: "ISLAND_CONDITION_RECOVERING",
+		3: "ISLAND_CONDITION_SHEDDING",
+		4: "ISLAND_CONDITION_COLLAPSED",
+	}
+	IslandCondition_value = map[string]int32{
+		"ISLAND_CONDITION_UNSPECIFIED": 0,
+		"ISLAND_CONDITION_STABLE":      1,
+		"ISLAND_CONDITION_RECOVERING":  2,
+		"ISLAND_CONDITION_SHEDDING":    3,
+		"ISLAND_CONDITION_COLLAPSED":   4,
+	}
+)
+
+func (x IslandCondition) Enum() *IslandCondition {
+	p := new(IslandCondition)
+	*p = x
+	return p
+}
+
+func (x IslandCondition) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (IslandCondition) Descriptor() protoreflect.EnumDescriptor {
+	return file_blackstart_solver_v1_solver_proto_enumTypes[5].Descriptor()
+}
+
+func (IslandCondition) Type() protoreflect.EnumType {
+	return &file_blackstart_solver_v1_solver_proto_enumTypes[5]
+}
+
+func (x IslandCondition) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use IslandCondition.Descriptor instead.
+func (IslandCondition) EnumDescriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{5}
+}
+
+// What the AC solve on an island's final state found. Separate from
+// IslandCondition deliberately: an island that is frequency-stable and
+// voltage-insolvable is a real and important combination, and a single field
+// would force it to be reported as only one of the two.
+type AcVerdict int32
+
+const (
+	AcVerdict_AC_VERDICT_UNSPECIFIED AcVerdict = 0
+	AcVerdict_AC_VERDICT_SECURE      AcVerdict = 1
+	AcVerdict_AC_VERDICT_VIOLATED    AcVerdict = 2
+	AcVerdict_AC_VERDICT_INSOLVABLE  AcVerdict = 3
+)
+
+// Enum value maps for AcVerdict.
+var (
+	AcVerdict_name = map[int32]string{
+		0: "AC_VERDICT_UNSPECIFIED",
+		1: "AC_VERDICT_SECURE",
+		2: "AC_VERDICT_VIOLATED",
+		3: "AC_VERDICT_INSOLVABLE",
+	}
+	AcVerdict_value = map[string]int32{
+		"AC_VERDICT_UNSPECIFIED": 0,
+		"AC_VERDICT_SECURE":      1,
+		"AC_VERDICT_VIOLATED":    2,
+		"AC_VERDICT_INSOLVABLE":  3,
+	}
+)
+
+func (x AcVerdict) Enum() *AcVerdict {
+	p := new(AcVerdict)
+	*p = x
+	return p
+}
+
+func (x AcVerdict) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AcVerdict) Descriptor() protoreflect.EnumDescriptor {
+	return file_blackstart_solver_v1_solver_proto_enumTypes[6].Descriptor()
+}
+
+func (AcVerdict) Type() protoreflect.EnumType {
+	return &file_blackstart_solver_v1_solver_proto_enumTypes[6]
+}
+
+func (x AcVerdict) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AcVerdict.Descriptor instead.
+func (AcVerdict) EnumDescriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{6}
+}
+
+// How the cascade ended.
+type CascadeOutcome int32
+
+const (
+	CascadeOutcome_CASCADE_OUTCOME_UNSPECIFIED CascadeOutcome = 0
+	// Every island reached a state that stopped changing before the horizon or
+	// step cap.
+	CascadeOutcome_CASCADE_OUTCOME_SETTLED CascadeOutcome = 1
+	// The horizon or max_steps was reached with at least one island still
+	// changing. Not a failure of the solver — a cascade that genuinely runs
+	// longer than the budget allowed.
+	CascadeOutcome_CASCADE_OUTCOME_TRUNCATED CascadeOutcome = 2
+	// Every island collapsed.
+	CascadeOutcome_CASCADE_OUTCOME_COLLAPSED CascadeOutcome = 3
+)
+
+// Enum value maps for CascadeOutcome.
+var (
+	CascadeOutcome_name = map[int32]string{
+		0: "CASCADE_OUTCOME_UNSPECIFIED",
+		1: "CASCADE_OUTCOME_SETTLED",
+		2: "CASCADE_OUTCOME_TRUNCATED",
+		3: "CASCADE_OUTCOME_COLLAPSED",
+	}
+	CascadeOutcome_value = map[string]int32{
+		"CASCADE_OUTCOME_UNSPECIFIED": 0,
+		"CASCADE_OUTCOME_SETTLED":     1,
+		"CASCADE_OUTCOME_TRUNCATED":   2,
+		"CASCADE_OUTCOME_COLLAPSED":   3,
+	}
+)
+
+func (x CascadeOutcome) Enum() *CascadeOutcome {
+	p := new(CascadeOutcome)
+	*p = x
+	return p
+}
+
+func (x CascadeOutcome) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CascadeOutcome) Descriptor() protoreflect.EnumDescriptor {
+	return file_blackstart_solver_v1_solver_proto_enumTypes[7].Descriptor()
+}
+
+func (CascadeOutcome) Type() protoreflect.EnumType {
+	return &file_blackstart_solver_v1_solver_proto_enumTypes[7]
+}
+
+func (x CascadeOutcome) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CascadeOutcome.Descriptor instead.
+func (CascadeOutcome) EnumDescriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{7}
+}
+
 // A bus in the network.
 type Bus struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -213,8 +518,27 @@ type Bus struct {
 	QMinVar *float64 `protobuf:"fixed64,7,opt,name=q_min_var,json=qMinVar,proto3,oneof" json:"q_min_var,omitempty"`
 	QMaxVar *float64 `protobuf:"fixed64,8,opt,name=q_max_var,json=qMaxVar,proto3,oneof" json:"q_max_var,omitempty"`
 	// Shunt admittance to ground, SIEMENS.
-	GShuntS       float64 `protobuf:"fixed64,9,opt,name=g_shunt_s,json=gShuntS,proto3" json:"g_shunt_s,omitempty"`
-	BShuntS       float64 `protobuf:"fixed64,10,opt,name=b_shunt_s,json=bShuntS,proto3" json:"b_shunt_s,omitempty"`
+	GShuntS float64 `protobuf:"fixed64,9,opt,name=g_shunt_s,json=gShuntS,proto3" json:"g_shunt_s,omitempty"`
+	BShuntS float64 `protobuf:"fixed64,10,opt,name=b_shunt_s,json=bShuntS,proto3" json:"b_shunt_s,omitempty"`
+	// Real output limits, WATTS.
+	//
+	// Optional for the same reason the reactive limits above are: absent means
+	// unknown, not zero, and a generator defaulted to a maximum of zero would
+	// make every island short of generation. These are not cascade-only — they
+	// are what DC-OPF needs later.
+	PMinW *float64 `protobuf:"fixed64,11,opt,name=p_min_w,json=pMinW,proto3,oneof" json:"p_min_w,omitempty"`
+	PMaxW *float64 `protobuf:"fixed64,12,opt,name=p_max_w,json=pMaxW,proto3,oneof" json:"p_max_w,omitempty"`
+	// Inertia constant, SECONDS, on the machine's own rating.
+	//
+	// Optional, and unlike the limits there is no numeric value here that could
+	// mean "unknown". Zero inertia says an island collapses on any imbalance;
+	// infinite inertia says frequency never moves. Both are confident physical
+	// claims, and an unpopulated import must make neither.
+	InertiaHS *float64 `protobuf:"fixed64,13,opt,name=inertia_h_s,json=inertiaHS,proto3,oneof" json:"inertia_h_s,omitempty"`
+	// Governor droop, per unit, dimensionless. Typically 0.05.
+	//
+	// One of the few fields here with no unit suffix, like `tap`.
+	DroopR        *float64 `protobuf:"fixed64,14,opt,name=droop_r,json=droopR,proto3,oneof" json:"droop_r,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -315,6 +639,34 @@ func (x *Bus) GetGShuntS() float64 {
 func (x *Bus) GetBShuntS() float64 {
 	if x != nil {
 		return x.BShuntS
+	}
+	return 0
+}
+
+func (x *Bus) GetPMinW() float64 {
+	if x != nil && x.PMinW != nil {
+		return *x.PMinW
+	}
+	return 0
+}
+
+func (x *Bus) GetPMaxW() float64 {
+	if x != nil && x.PMaxW != nil {
+		return *x.PMaxW
+	}
+	return 0
+}
+
+func (x *Bus) GetInertiaHS() float64 {
+	if x != nil && x.InertiaHS != nil {
+		return *x.InertiaHS
+	}
+	return 0
+}
+
+func (x *Bus) GetDroopR() float64 {
+	if x != nil && x.DroopR != nil {
+		return *x.DroopR
 	}
 	return 0
 }
@@ -1634,11 +1986,1032 @@ func (x *ScreenContingenciesResponse) GetWorstLoading() float64 {
 	return 0
 }
 
+// One stage of an under-frequency load-shedding scheme.
+type UflsStage struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Trip frequency, HERTZ.
+	AtHz float64 `protobuf:"fixed64,1,opt,name=at_hz,json=atHz,proto3" json:"at_hz,omitempty"`
+	// Fraction of the island's load shed when this stage fires, in [0, 1].
+	ShedFraction float64 `protobuf:"fixed64,2,opt,name=shed_fraction,json=shedFraction,proto3" json:"shed_fraction,omitempty"`
+	// Intentional delay before the stage acts, SECONDS, on top of relay and
+	// breaker time.
+	DelayS        float64 `protobuf:"fixed64,3,opt,name=delay_s,json=delayS,proto3" json:"delay_s,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UflsStage) Reset() {
+	*x = UflsStage{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UflsStage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UflsStage) ProtoMessage() {}
+
+func (x *UflsStage) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UflsStage.ProtoReflect.Descriptor instead.
+func (*UflsStage) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *UflsStage) GetAtHz() float64 {
+	if x != nil {
+		return x.AtHz
+	}
+	return 0
+}
+
+func (x *UflsStage) GetShedFraction() float64 {
+	if x != nil {
+		return x.ShedFraction
+	}
+	return 0
+}
+
+func (x *UflsStage) GetDelayS() float64 {
+	if x != nil {
+		return x.DelayS
+	}
+	return 0
+}
+
+// An under-frequency load-shedding scheme: an ordered ladder of shed stages,
+// bounded by the frequencies where the scheme gives up and where it lets shed
+// load back on.
+type UflsScheme struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Conventionally shallowest first, though the simulator evaluates every
+	// stage against the instantaneous frequency rather than trusting the order.
+	Stages []*UflsStage `protobuf:"bytes,1,rep,name=stages,proto3" json:"stages,omitempty"`
+	// Frequency below which the island is treated as lost regardless of what
+	// stages remain, HERTZ.
+	FloorHz float64 `protobuf:"fixed64,2,opt,name=floor_hz,json=floorHz,proto3" json:"floor_hz,omitempty"`
+	// Frequency above which previously shed load may be restored, HERTZ.
+	CeilingHz     float64 `protobuf:"fixed64,3,opt,name=ceiling_hz,json=ceilingHz,proto3" json:"ceiling_hz,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UflsScheme) Reset() {
+	*x = UflsScheme{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UflsScheme) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UflsScheme) ProtoMessage() {}
+
+func (x *UflsScheme) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UflsScheme.ProtoReflect.Descriptor instead.
+func (*UflsScheme) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *UflsScheme) GetStages() []*UflsStage {
+	if x != nil {
+		return x.Stages
+	}
+	return nil
+}
+
+func (x *UflsScheme) GetFloorHz() float64 {
+	if x != nil {
+		return x.FloorHz
+	}
+	return 0
+}
+
+func (x *UflsScheme) GetCeilingHz() float64 {
+	if x != nil {
+		return x.CeilingHz
+	}
+	return 0
+}
+
+// Overcurrent protection on one branch: an inverse-time curve plus an
+// optional instantaneous element.
+type OvercurrentSettings struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Pickup, as a multiple of the branch's own rating. Dimensionless. Zero
+	// means the server's default of 1.0 — pickup at rating, the same physical
+	// convention the defaults below follow.
+	Pickup float64 `protobuf:"fixed64,1,opt,name=pickup,proto3" json:"pickup,omitempty"`
+	// Time multiplier, scaling the whole curve. Dimensionless. Zero means the
+	// server's default.
+	TimeMultiplier float64 `protobuf:"fixed64,2,opt,name=time_multiplier,json=timeMultiplier,proto3" json:"time_multiplier,omitempty"`
+	// Instantaneous element, as a multiple of the rating. Optional because
+	// absence disables it outright — a multiple of zero would trip on any flow
+	// at all, which is a different and much more aggressive setting.
+	Instantaneous *float64 `protobuf:"fixed64,3,opt,name=instantaneous,proto3,oneof" json:"instantaneous,omitempty"`
+	// Zero (CURVE_UNSPECIFIED) means the server's default, StandardInverse —
+	// consistent with the other zero-valued fields on this message.
+	Curve Curve `protobuf:"varint,4,opt,name=curve,proto3,enum=blackstart.solver.v1.Curve" json:"curve,omitempty"`
+	// Breaker operating time, SECONDS. The floor on any trip: the curve can ask
+	// for less than the breaker can physically deliver. Zero means the
+	// server's default.
+	BreakerTimeS  float64 `protobuf:"fixed64,5,opt,name=breaker_time_s,json=breakerTimeS,proto3" json:"breaker_time_s,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OvercurrentSettings) Reset() {
+	*x = OvercurrentSettings{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OvercurrentSettings) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OvercurrentSettings) ProtoMessage() {}
+
+func (x *OvercurrentSettings) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OvercurrentSettings.ProtoReflect.Descriptor instead.
+func (*OvercurrentSettings) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *OvercurrentSettings) GetPickup() float64 {
+	if x != nil {
+		return x.Pickup
+	}
+	return 0
+}
+
+func (x *OvercurrentSettings) GetTimeMultiplier() float64 {
+	if x != nil {
+		return x.TimeMultiplier
+	}
+	return 0
+}
+
+func (x *OvercurrentSettings) GetInstantaneous() float64 {
+	if x != nil && x.Instantaneous != nil {
+		return *x.Instantaneous
+	}
+	return 0
+}
+
+func (x *OvercurrentSettings) GetCurve() Curve {
+	if x != nil {
+		return x.Curve
+	}
+	return Curve_CURVE_UNSPECIFIED
+}
+
+func (x *OvercurrentSettings) GetBreakerTimeS() float64 {
+	if x != nil {
+		return x.BreakerTimeS
+	}
+	return 0
+}
+
+// One distance-relay zone.
+type DistanceZone struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Reach, as a multiple of the protected branch's own reactance.
+	// Dimensionless, and deliberately relative to the branch rather than an
+	// absolute ohm value: the branch's own reactance is what a relay set at its
+	// own line is graded against.
+	Reach float64 `protobuf:"fixed64,1,opt,name=reach,proto3" json:"reach,omitempty"`
+	// Intentional delay, SECONDS, on top of the breaker time.
+	DelayS        float64 `protobuf:"fixed64,2,opt,name=delay_s,json=delayS,proto3" json:"delay_s,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DistanceZone) Reset() {
+	*x = DistanceZone{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DistanceZone) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DistanceZone) ProtoMessage() {}
+
+func (x *DistanceZone) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DistanceZone.ProtoReflect.Descriptor instead.
+func (*DistanceZone) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *DistanceZone) GetReach() float64 {
+	if x != nil {
+		return x.Reach
+	}
+	return 0
+}
+
+func (x *DistanceZone) GetDelayS() float64 {
+	if x != nil {
+		return x.DelayS
+	}
+	return 0
+}
+
+// Distance protection on one branch: a set of impedance zones.
+type DistanceSettings struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Conventionally narrowest first, though the fastest zone that sees the
+	// branch is the one that operates regardless of list order.
+	Zones []*DistanceZone `protobuf:"bytes,1,rep,name=zones,proto3" json:"zones,omitempty"`
+	// Breaker operating time, SECONDS. Zero means the server's default.
+	BreakerTimeS  float64 `protobuf:"fixed64,2,opt,name=breaker_time_s,json=breakerTimeS,proto3" json:"breaker_time_s,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DistanceSettings) Reset() {
+	*x = DistanceSettings{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DistanceSettings) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DistanceSettings) ProtoMessage() {}
+
+func (x *DistanceSettings) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DistanceSettings.ProtoReflect.Descriptor instead.
+func (*DistanceSettings) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *DistanceSettings) GetZones() []*DistanceZone {
+	if x != nil {
+		return x.Zones
+	}
+	return nil
+}
+
+func (x *DistanceSettings) GetBreakerTimeS() float64 {
+	if x != nil {
+		return x.BreakerTimeS
+	}
+	return 0
+}
+
+// Protection on one branch: overcurrent, distance, or both. Either half may
+// be left unset, which disables that scheme on the branch rather than
+// defaulting it — a branch protected by distance only should not gain a
+// phantom overcurrent element because the message has a field for one.
+type ProtectionSettings struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Overcurrent   *OvercurrentSettings   `protobuf:"bytes,1,opt,name=overcurrent,proto3" json:"overcurrent,omitempty"`
+	Distance      *DistanceSettings      `protobuf:"bytes,2,opt,name=distance,proto3" json:"distance,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProtectionSettings) Reset() {
+	*x = ProtectionSettings{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProtectionSettings) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProtectionSettings) ProtoMessage() {}
+
+func (x *ProtectionSettings) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProtectionSettings.ProtoReflect.Descriptor instead.
+func (*ProtectionSettings) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *ProtectionSettings) GetOvercurrent() *OvercurrentSettings {
+	if x != nil {
+		return x.Overcurrent
+	}
+	return nil
+}
+
+func (x *ProtectionSettings) GetDistance() *DistanceSettings {
+	if x != nil {
+		return x.Distance
+	}
+	return nil
+}
+
+// Protection settings for one branch, overriding whatever
+// SimulateCascadeRequest.protection supplies as the network-wide default.
+type BranchProtection struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Branch        uint32                 `protobuf:"varint,1,opt,name=branch,proto3" json:"branch,omitempty"`
+	Settings      *ProtectionSettings    `protobuf:"bytes,2,opt,name=settings,proto3" json:"settings,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BranchProtection) Reset() {
+	*x = BranchProtection{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BranchProtection) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BranchProtection) ProtoMessage() {}
+
+func (x *BranchProtection) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BranchProtection.ProtoReflect.Descriptor instead.
+func (*BranchProtection) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *BranchProtection) GetBranch() uint32 {
+	if x != nil {
+		return x.Branch
+	}
+	return 0
+}
+
+func (x *BranchProtection) GetSettings() *ProtectionSettings {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
+type SimulateCascadeRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ContentHash string                 `protobuf:"bytes,1,opt,name=content_hash,json=contentHash,proto3" json:"content_hash,omitempty"`
+	// Applied before the cascade starts, so a run can begin from an off-nominal
+	// operating point without re-uploading the model.
+	Overrides []*Override `protobuf:"bytes,2,rep,name=overrides,proto3" json:"overrides,omitempty"`
+	// Branches taken out of service at t=0. Everything after this is the
+	// simulator's consequence of these outages, not a further instruction.
+	Initiating []uint32 `protobuf:"varint,3,rep,packed,name=initiating,proto3" json:"initiating,omitempty"`
+	// Network-wide protection, applied to every branch that BranchProtection
+	// below does not override. Its zero-valued fields default server-side to a
+	// relay set at its own branch's rating — a physical convention, the same
+	// reasoning the per-field comments above spell out.
+	Protection *ProtectionSettings `protobuf:"bytes,4,opt,name=protection,proto3" json:"protection,omitempty"`
+	// Per-branch overrides of `protection`, for the branches whose relays are
+	// not at the network default.
+	BranchProtection []*BranchProtection `protobuf:"bytes,5,rep,name=branch_protection,json=branchProtection,proto3" json:"branch_protection,omitempty"`
+	// Under-frequency load shedding, network-wide.
+	//
+	// Unlike protection settings, this has NO server-side default. Absent means
+	// no shedding happens at all, ever, on any island. A shedding schedule is a
+	// utility's policy choice — which frequency, which fraction, which delay —
+	// and a tool that quietly supplied one would be asserting a policy it has
+	// no standing to assert. Protection settings default because a relay set at
+	// its own line's rating is a physical convention available to everyone;
+	// there is no equivalent convention for load-shedding policy.
+	Ufls *UflsScheme `protobuf:"bytes,6,opt,name=ufls,proto3" json:"ufls,omitempty"`
+	// Events within this many seconds of each other on the same element are
+	// merged into one, SECONDS. Zero means no coalescing. Exists because a
+	// relay chattering across a step boundary would otherwise log the same
+	// trip twice.
+	CoalesceWindowS float64 `protobuf:"fixed64,7,opt,name=coalesce_window_s,json=coalesceWindowS,proto3" json:"coalesce_window_s,omitempty"`
+	// Hard cap on the number of discrete events simulated. Zero means the
+	// server's default. Guards against a cascade that never settles consuming
+	// unbounded time; hitting the cap produces outcome TRUNCATED rather than a
+	// silently incomplete SETTLED result.
+	MaxSteps uint32 `protobuf:"varint,8,opt,name=max_steps,json=maxSteps,proto3" json:"max_steps,omitempty"`
+	// Simulated time horizon, SECONDS. Zero means the server's default. A
+	// cascade still running at the horizon also produces TRUNCATED.
+	HorizonS      float64 `protobuf:"fixed64,9,opt,name=horizon_s,json=horizonS,proto3" json:"horizon_s,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SimulateCascadeRequest) Reset() {
+	*x = SimulateCascadeRequest{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SimulateCascadeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SimulateCascadeRequest) ProtoMessage() {}
+
+func (x *SimulateCascadeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SimulateCascadeRequest.ProtoReflect.Descriptor instead.
+func (*SimulateCascadeRequest) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *SimulateCascadeRequest) GetContentHash() string {
+	if x != nil {
+		return x.ContentHash
+	}
+	return ""
+}
+
+func (x *SimulateCascadeRequest) GetOverrides() []*Override {
+	if x != nil {
+		return x.Overrides
+	}
+	return nil
+}
+
+func (x *SimulateCascadeRequest) GetInitiating() []uint32 {
+	if x != nil {
+		return x.Initiating
+	}
+	return nil
+}
+
+func (x *SimulateCascadeRequest) GetProtection() *ProtectionSettings {
+	if x != nil {
+		return x.Protection
+	}
+	return nil
+}
+
+func (x *SimulateCascadeRequest) GetBranchProtection() []*BranchProtection {
+	if x != nil {
+		return x.BranchProtection
+	}
+	return nil
+}
+
+func (x *SimulateCascadeRequest) GetUfls() *UflsScheme {
+	if x != nil {
+		return x.Ufls
+	}
+	return nil
+}
+
+func (x *SimulateCascadeRequest) GetCoalesceWindowS() float64 {
+	if x != nil {
+		return x.CoalesceWindowS
+	}
+	return 0
+}
+
+func (x *SimulateCascadeRequest) GetMaxSteps() uint32 {
+	if x != nil {
+		return x.MaxSteps
+	}
+	return 0
+}
+
+func (x *SimulateCascadeRequest) GetHorizonS() float64 {
+	if x != nil {
+		return x.HorizonS
+	}
+	return 0
+}
+
+type CascadeEvent struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Seconds since the initiating outage.
+	AtS  float64          `protobuf:"fixed64,1,opt,name=at_s,json=atS,proto3" json:"at_s,omitempty"`
+	Kind CascadeEventKind `protobuf:"varint,2,opt,name=kind,proto3,enum=blackstart.solver.v1.CascadeEventKind" json:"kind,omitempty"`
+	// The element as an operator names it, e.g. "ln TULIA-PLAINVIEW 345".
+	Element string `protobuf:"bytes,3,opt,name=element,proto3" json:"element,omitempty"`
+	// Why, in the operator's terms, e.g. "dist zone 1", "163% - 2s", "underfreq".
+	//
+	// No separate typed cause field: the simulator's own event log
+	// (`bs_cascade::Event`) keeps only this formatted string, not the
+	// structured `bs_protection::TripCause` it was built from, so a typed wire
+	// field could only be populated by parsing this text back apart — exactly
+	// the fragile, plausible-looking reconstruction this contract exists to
+	// avoid elsewhere. Threading the structured cause through would mean
+	// extending `bs-cascade`'s own event type, out of this contract's scope.
+	Detail string `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
+	// Which island this event belongs to.
+	//
+	// Optional, and distinct from island zero: an event before the network has
+	// split — an overload on the still-connected system, say — is not
+	// island-specific, and reporting it against island 0 would claim a split
+	// that has not happened yet.
+	Island        *uint32 `protobuf:"varint,5,opt,name=island,proto3,oneof" json:"island,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CascadeEvent) Reset() {
+	*x = CascadeEvent{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CascadeEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CascadeEvent) ProtoMessage() {}
+
+func (x *CascadeEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CascadeEvent.ProtoReflect.Descriptor instead.
+func (*CascadeEvent) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *CascadeEvent) GetAtS() float64 {
+	if x != nil {
+		return x.AtS
+	}
+	return 0
+}
+
+func (x *CascadeEvent) GetKind() CascadeEventKind {
+	if x != nil {
+		return x.Kind
+	}
+	return CascadeEventKind_CASCADE_EVENT_KIND_UNSPECIFIED
+}
+
+func (x *CascadeEvent) GetElement() string {
+	if x != nil {
+		return x.Element
+	}
+	return ""
+}
+
+func (x *CascadeEvent) GetDetail() string {
+	if x != nil {
+		return x.Detail
+	}
+	return ""
+}
+
+func (x *CascadeEvent) GetIsland() uint32 {
+	if x != nil && x.Island != nil {
+		return *x.Island
+	}
+	return 0
+}
+
+// One point on an island's frequency curve.
+type FrequencySample struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Seconds since the initiating outage, on the SAME clock as
+	// CascadeEvent.at_s — so a scrubber can put the curve and the event log on
+	// one axis without rescaling either.
+	AtS float64 `protobuf:"fixed64,1,opt,name=at_s,json=atS,proto3" json:"at_s,omitempty"`
+	// Absolute frequency, HERTZ, the same convention as every other frequency
+	// field on this wire — not a deviation from nominal. A curve of deviations
+	// would sit near zero on an axis calibrated to the survival band and read
+	// as a collapsed island when it is not.
+	Hz            float64 `protobuf:"fixed64,2,opt,name=hz,proto3" json:"hz,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FrequencySample) Reset() {
+	*x = FrequencySample{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FrequencySample) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FrequencySample) ProtoMessage() {}
+
+func (x *FrequencySample) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FrequencySample.ProtoReflect.Descriptor instead.
+func (*FrequencySample) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *FrequencySample) GetAtS() float64 {
+	if x != nil {
+		return x.AtS
+	}
+	return 0
+}
+
+func (x *FrequencySample) GetHz() float64 {
+	if x != nil {
+		return x.Hz
+	}
+	return 0
+}
+
+type IslandState struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Indices into the model's bus list.
+	Buses []uint32 `protobuf:"varint,1,rep,packed,name=buses,proto3" json:"buses,omitempty"`
+	// Peak severity reached anywhere in the run, not the state at the final
+	// instant. An island that shed a quarter of its load and then recovered
+	// reports SHEDDING, not STABLE — collapsing to the final state would hide
+	// the most important thing that happened to it.
+	Condition IslandCondition `protobuf:"varint,2,opt,name=condition,proto3,enum=blackstart.solver.v1.IslandCondition" json:"condition,omitempty"`
+	Verdict   AcVerdict       `protobuf:"varint,3,opt,name=verdict,proto3,enum=blackstart.solver.v1.AcVerdict" json:"verdict,omitempty"`
+	// Generation minus load at the final instant, WATTS. Negative means the
+	// island is short (load exceeds generation); positive means it has
+	// surplus. This message is the authority on the sign: both the Rust
+	// producer (bs_cascade::verify::IslandReport::balance) and the Go
+	// consumer (extensions/cascade/run.Island.Balance) must agree with it,
+	// not with bs-cascade's own internal dispatch convention
+	// (bs_cascade::dispatch::Balance::gap), which is the opposite sign
+	// (load minus generation, positive for a shortfall) because it exists to
+	// match bs-frequency's imbalance convention instead.
+	BalanceW float64 `protobuf:"fixed64,4,opt,name=balance_w,json=balanceW,proto3" json:"balance_w,omitempty"`
+	// Frequency, HERTZ, at the LAST instant this island had a machine to
+	// report one from — the settling value, deliberately a final-instant
+	// quantity unlike nadir and rate-of-change below. "Where did it end up"
+	// is the question this field answers, not "how bad did it get"; folding
+	// it into a peak-severity figure the way those two are would hide a
+	// genuine recovery behind whatever the worst moment looked like.
+	//
+	// Optional along with nadir and rate-of-change below: an island with no
+	// machine data — no inertia, no governors — has no frequency to report,
+	// which is not the same as a frequency of zero.
+	FrequencyHz *float64 `protobuf:"fixed64,5,opt,name=frequency_hz,json=frequencyHz,proto3,oneof" json:"frequency_hz,omitempty"`
+	// Lowest frequency reached ANYWHERE in the run, HERTZ — the most severe
+	// value seen, not the value at the final instant, the same peak-severity
+	// rule `condition` above already follows. What decides whether the
+	// island survives.
+	NadirHz *float64 `protobuf:"fixed64,6,opt,name=nadir_hz,json=nadirHz,proto3,oneof" json:"nadir_hz,omitempty"`
+	// Largest-MAGNITUDE rate of change of frequency observed anywhere in the
+	// run, HERTZ PER SECOND, SIGNED. "Largest magnitude" is deliberately not
+	// "maximum": rate of change is negative for a shortfall, so the more
+	// severe swing is the one furthest from zero in either direction: a plain
+	// maximum would let a mild positive recovery swing outrank a severe
+	// negative collapse swing just for being the larger signed number.
+	RocofHzS *float64 `protobuf:"fixed64,7,opt,name=rocof_hz_s,json=rocofHzS,proto3,oneof" json:"rocof_hz_s,omitempty"`
+	// Load shed on this island over the whole run, WATTS — accumulated across
+	// every UFLS stage that fired for it, not merely the fraction shed at
+	// whichever instant the island is being reported for.
+	ShedW float64 `protobuf:"fixed64,8,opt,name=shed_w,json=shedW,proto3" json:"shed_w,omitempty"`
+	// The island's frequency curve over the run, in time order.
+	//
+	// Decimated server-side to a couple of hundred points — the integration
+	// produces thousands, which is far more than a scrubber resolves. The
+	// reduction keeps each bucket's extrema rather than sampling at a stride,
+	// so the nadir reported in `nadir_hz` above is guaranteed to appear on the
+	// curve too. A curve that disagreed with the number printed beside it
+	// would be worse than a coarse one.
+	//
+	// Empty, not a flat line at zero, when no step ever observed a machine on
+	// this island — the same "absent, not zero" rule `frequency_hz`,
+	// `nadir_hz`, and `rocof_hz_s` above already follow.
+	Trace         []*FrequencySample `protobuf:"bytes,9,rep,name=trace,proto3" json:"trace,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IslandState) Reset() {
+	*x = IslandState{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IslandState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IslandState) ProtoMessage() {}
+
+func (x *IslandState) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IslandState.ProtoReflect.Descriptor instead.
+func (*IslandState) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *IslandState) GetBuses() []uint32 {
+	if x != nil {
+		return x.Buses
+	}
+	return nil
+}
+
+func (x *IslandState) GetCondition() IslandCondition {
+	if x != nil {
+		return x.Condition
+	}
+	return IslandCondition_ISLAND_CONDITION_UNSPECIFIED
+}
+
+func (x *IslandState) GetVerdict() AcVerdict {
+	if x != nil {
+		return x.Verdict
+	}
+	return AcVerdict_AC_VERDICT_UNSPECIFIED
+}
+
+func (x *IslandState) GetBalanceW() float64 {
+	if x != nil {
+		return x.BalanceW
+	}
+	return 0
+}
+
+func (x *IslandState) GetFrequencyHz() float64 {
+	if x != nil && x.FrequencyHz != nil {
+		return *x.FrequencyHz
+	}
+	return 0
+}
+
+func (x *IslandState) GetNadirHz() float64 {
+	if x != nil && x.NadirHz != nil {
+		return *x.NadirHz
+	}
+	return 0
+}
+
+func (x *IslandState) GetRocofHzS() float64 {
+	if x != nil && x.RocofHzS != nil {
+		return *x.RocofHzS
+	}
+	return 0
+}
+
+func (x *IslandState) GetShedW() float64 {
+	if x != nil {
+		return x.ShedW
+	}
+	return 0
+}
+
+func (x *IslandState) GetTrace() []*FrequencySample {
+	if x != nil {
+		return x.Trace
+	}
+	return nil
+}
+
+type SimulateCascadeResponse struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Outcome CascadeOutcome         `protobuf:"varint,1,opt,name=outcome,proto3,enum=blackstart.solver.v1.CascadeOutcome" json:"outcome,omitempty"`
+	// In simulated-time order, as produced. Reordering, if a client wants
+	// newest-first, is a display concern and stays off the wire.
+	Events  []*CascadeEvent `protobuf:"bytes,2,rep,name=events,proto3" json:"events,omitempty"`
+	Islands []*IslandState  `protobuf:"bytes,3,rep,name=islands,proto3" json:"islands,omitempty"`
+	// Total load shed across every island, WATTS.
+	LoadLostW float64 `protobuf:"fixed64,4,opt,name=load_lost_w,json=loadLostW,proto3" json:"load_lost_w,omitempty"`
+	// Discrete events simulated, for comparing against max_steps.
+	Steps uint32 `protobuf:"varint,5,opt,name=steps,proto3" json:"steps,omitempty"`
+	// SIMULATED time the cascade covered, SECONDS — the run's own clock, the
+	// sum of every step's `at`, not how long the solve took on the wall
+	// clock. This is the useful number for a caller comparing against a
+	// request's horizon; wall-clock duration is a deployment concern this
+	// message does not carry.
+	ElapsedS float64 `protobuf:"fixed64,6,opt,name=elapsed_s,json=elapsedS,proto3" json:"elapsed_s,omitempty"`
+	// The versions this result came from, so it can be reproduced.
+	SolverVersion string `protobuf:"bytes,7,opt,name=solver_version,json=solverVersion,proto3" json:"solver_version,omitempty"`
+	ModelHash     string `protobuf:"bytes,8,opt,name=model_hash,json=modelHash,proto3" json:"model_hash,omitempty"`
+	// The outages that started this cascade, as branch IDENTIFIERS rather than
+	// the indices SimulateCascadeRequest.initiating carries — an operator
+	// names lines, and the event log above already reports ids for that
+	// reason.
+	//
+	// Resolved against the model server-side and echoed back here so a client
+	// can caption its own result without holding the index space the request
+	// used to name them.
+	Initiating    []string `protobuf:"bytes,9,rep,name=initiating,proto3" json:"initiating,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SimulateCascadeResponse) Reset() {
+	*x = SimulateCascadeResponse{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SimulateCascadeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SimulateCascadeResponse) ProtoMessage() {}
+
+func (x *SimulateCascadeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SimulateCascadeResponse.ProtoReflect.Descriptor instead.
+func (*SimulateCascadeResponse) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *SimulateCascadeResponse) GetOutcome() CascadeOutcome {
+	if x != nil {
+		return x.Outcome
+	}
+	return CascadeOutcome_CASCADE_OUTCOME_UNSPECIFIED
+}
+
+func (x *SimulateCascadeResponse) GetEvents() []*CascadeEvent {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
+func (x *SimulateCascadeResponse) GetIslands() []*IslandState {
+	if x != nil {
+		return x.Islands
+	}
+	return nil
+}
+
+func (x *SimulateCascadeResponse) GetLoadLostW() float64 {
+	if x != nil {
+		return x.LoadLostW
+	}
+	return 0
+}
+
+func (x *SimulateCascadeResponse) GetSteps() uint32 {
+	if x != nil {
+		return x.Steps
+	}
+	return 0
+}
+
+func (x *SimulateCascadeResponse) GetElapsedS() float64 {
+	if x != nil {
+		return x.ElapsedS
+	}
+	return 0
+}
+
+func (x *SimulateCascadeResponse) GetSolverVersion() string {
+	if x != nil {
+		return x.SolverVersion
+	}
+	return ""
+}
+
+func (x *SimulateCascadeResponse) GetModelHash() string {
+	if x != nil {
+		return x.ModelHash
+	}
+	return ""
+}
+
+func (x *SimulateCascadeResponse) GetInitiating() []string {
+	if x != nil {
+		return x.Initiating
+	}
+	return nil
+}
+
 var File_blackstart_solver_v1_solver_proto protoreflect.FileDescriptor
 
 const file_blackstart_solver_v1_solver_proto_rawDesc = "" +
 	"\n" +
-	"!blackstart/solver/v1/solver.proto\x12\x14blackstart.solver.v1\"\xee\x02\n" +
+	"!blackstart/solver/v1/solver.proto\x12\x14blackstart.solver.v1\"\x9f\x04\n" +
 	"\x03Bus\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x121\n" +
 	"\x04kind\x18\x02 \x01(\x0e2\x1d.blackstart.solver.v1.BusKindR\x04kind\x12\"\n" +
@@ -1650,11 +3023,22 @@ const file_blackstart_solver_v1_solver_proto_rawDesc = "" +
 	"\tq_max_var\x18\b \x01(\x01H\x01R\aqMaxVar\x88\x01\x01\x12\x1a\n" +
 	"\tg_shunt_s\x18\t \x01(\x01R\agShuntS\x12\x1a\n" +
 	"\tb_shunt_s\x18\n" +
-	" \x01(\x01R\abShuntSB\f\n" +
+	" \x01(\x01R\abShuntS\x12\x1b\n" +
+	"\ap_min_w\x18\v \x01(\x01H\x02R\x05pMinW\x88\x01\x01\x12\x1b\n" +
+	"\ap_max_w\x18\f \x01(\x01H\x03R\x05pMaxW\x88\x01\x01\x12#\n" +
+	"\vinertia_h_s\x18\r \x01(\x01H\x04R\tinertiaHS\x88\x01\x01\x12\x1c\n" +
+	"\adroop_r\x18\x0e \x01(\x01H\x05R\x06droopR\x88\x01\x01B\f\n" +
 	"\n" +
 	"_q_min_varB\f\n" +
 	"\n" +
-	"_q_max_var\"\xfb\x01\n" +
+	"_q_max_varB\n" +
+	"\n" +
+	"\b_p_min_wB\n" +
+	"\n" +
+	"\b_p_max_wB\x0e\n" +
+	"\f_inertia_h_sB\n" +
+	"\n" +
+	"\b_droop_r\"\xfb\x01\n" +
 	"\x06Branch\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
 	"\bfrom_bus\x18\x02 \x01(\rR\afromBus\x12\x15\n" +
@@ -1749,7 +3133,87 @@ const file_blackstart_solver_v1_solver_proto_rawDesc = "" +
 	"violations\x18\x03 \x03(\v2\x1f.blackstart.solver.v1.ViolationR\n" +
 	"violations\x12(\n" +
 	"\rworst_loading\x18\x04 \x01(\x01H\x00R\fworstLoading\x88\x01\x01B\x10\n" +
-	"\x0e_worst_loading*Y\n" +
+	"\x0e_worst_loading\"^\n" +
+	"\tUflsStage\x12\x13\n" +
+	"\x05at_hz\x18\x01 \x01(\x01R\x04atHz\x12#\n" +
+	"\rshed_fraction\x18\x02 \x01(\x01R\fshedFraction\x12\x17\n" +
+	"\adelay_s\x18\x03 \x01(\x01R\x06delayS\"\x7f\n" +
+	"\n" +
+	"UflsScheme\x127\n" +
+	"\x06stages\x18\x01 \x03(\v2\x1f.blackstart.solver.v1.UflsStageR\x06stages\x12\x19\n" +
+	"\bfloor_hz\x18\x02 \x01(\x01R\afloorHz\x12\x1d\n" +
+	"\n" +
+	"ceiling_hz\x18\x03 \x01(\x01R\tceilingHz\"\xec\x01\n" +
+	"\x13OvercurrentSettings\x12\x16\n" +
+	"\x06pickup\x18\x01 \x01(\x01R\x06pickup\x12'\n" +
+	"\x0ftime_multiplier\x18\x02 \x01(\x01R\x0etimeMultiplier\x12)\n" +
+	"\rinstantaneous\x18\x03 \x01(\x01H\x00R\rinstantaneous\x88\x01\x01\x121\n" +
+	"\x05curve\x18\x04 \x01(\x0e2\x1b.blackstart.solver.v1.CurveR\x05curve\x12$\n" +
+	"\x0ebreaker_time_s\x18\x05 \x01(\x01R\fbreakerTimeSB\x10\n" +
+	"\x0e_instantaneous\"=\n" +
+	"\fDistanceZone\x12\x14\n" +
+	"\x05reach\x18\x01 \x01(\x01R\x05reach\x12\x17\n" +
+	"\adelay_s\x18\x02 \x01(\x01R\x06delayS\"r\n" +
+	"\x10DistanceSettings\x128\n" +
+	"\x05zones\x18\x01 \x03(\v2\".blackstart.solver.v1.DistanceZoneR\x05zones\x12$\n" +
+	"\x0ebreaker_time_s\x18\x02 \x01(\x01R\fbreakerTimeS\"\xa5\x01\n" +
+	"\x12ProtectionSettings\x12K\n" +
+	"\vovercurrent\x18\x01 \x01(\v2).blackstart.solver.v1.OvercurrentSettingsR\vovercurrent\x12B\n" +
+	"\bdistance\x18\x02 \x01(\v2&.blackstart.solver.v1.DistanceSettingsR\bdistance\"p\n" +
+	"\x10BranchProtection\x12\x16\n" +
+	"\x06branch\x18\x01 \x01(\rR\x06branch\x12D\n" +
+	"\bsettings\x18\x02 \x01(\v2(.blackstart.solver.v1.ProtectionSettingsR\bsettings\"\xd4\x03\n" +
+	"\x16SimulateCascadeRequest\x12!\n" +
+	"\fcontent_hash\x18\x01 \x01(\tR\vcontentHash\x12<\n" +
+	"\toverrides\x18\x02 \x03(\v2\x1e.blackstart.solver.v1.OverrideR\toverrides\x12\x1e\n" +
+	"\n" +
+	"initiating\x18\x03 \x03(\rR\n" +
+	"initiating\x12H\n" +
+	"\n" +
+	"protection\x18\x04 \x01(\v2(.blackstart.solver.v1.ProtectionSettingsR\n" +
+	"protection\x12S\n" +
+	"\x11branch_protection\x18\x05 \x03(\v2&.blackstart.solver.v1.BranchProtectionR\x10branchProtection\x124\n" +
+	"\x04ufls\x18\x06 \x01(\v2 .blackstart.solver.v1.UflsSchemeR\x04ufls\x12*\n" +
+	"\x11coalesce_window_s\x18\a \x01(\x01R\x0fcoalesceWindowS\x12\x1b\n" +
+	"\tmax_steps\x18\b \x01(\rR\bmaxSteps\x12\x1b\n" +
+	"\thorizon_s\x18\t \x01(\x01R\bhorizonS\"\xb7\x01\n" +
+	"\fCascadeEvent\x12\x11\n" +
+	"\x04at_s\x18\x01 \x01(\x01R\x03atS\x12:\n" +
+	"\x04kind\x18\x02 \x01(\x0e2&.blackstart.solver.v1.CascadeEventKindR\x04kind\x12\x18\n" +
+	"\aelement\x18\x03 \x01(\tR\aelement\x12\x16\n" +
+	"\x06detail\x18\x04 \x01(\tR\x06detail\x12\x1b\n" +
+	"\x06island\x18\x05 \x01(\rH\x00R\x06island\x88\x01\x01B\t\n" +
+	"\a_island\"4\n" +
+	"\x0fFrequencySample\x12\x11\n" +
+	"\x04at_s\x18\x01 \x01(\x01R\x03atS\x12\x0e\n" +
+	"\x02hz\x18\x02 \x01(\x01R\x02hz\"\xac\x03\n" +
+	"\vIslandState\x12\x14\n" +
+	"\x05buses\x18\x01 \x03(\rR\x05buses\x12C\n" +
+	"\tcondition\x18\x02 \x01(\x0e2%.blackstart.solver.v1.IslandConditionR\tcondition\x129\n" +
+	"\averdict\x18\x03 \x01(\x0e2\x1f.blackstart.solver.v1.AcVerdictR\averdict\x12\x1b\n" +
+	"\tbalance_w\x18\x04 \x01(\x01R\bbalanceW\x12&\n" +
+	"\ffrequency_hz\x18\x05 \x01(\x01H\x00R\vfrequencyHz\x88\x01\x01\x12\x1e\n" +
+	"\bnadir_hz\x18\x06 \x01(\x01H\x01R\anadirHz\x88\x01\x01\x12!\n" +
+	"\n" +
+	"rocof_hz_s\x18\a \x01(\x01H\x02R\brocofHzS\x88\x01\x01\x12\x15\n" +
+	"\x06shed_w\x18\b \x01(\x01R\x05shedW\x12;\n" +
+	"\x05trace\x18\t \x03(\v2%.blackstart.solver.v1.FrequencySampleR\x05traceB\x0f\n" +
+	"\r_frequency_hzB\v\n" +
+	"\t_nadir_hzB\r\n" +
+	"\v_rocof_hz_s\"\x8b\x03\n" +
+	"\x17SimulateCascadeResponse\x12>\n" +
+	"\aoutcome\x18\x01 \x01(\x0e2$.blackstart.solver.v1.CascadeOutcomeR\aoutcome\x12:\n" +
+	"\x06events\x18\x02 \x03(\v2\".blackstart.solver.v1.CascadeEventR\x06events\x12;\n" +
+	"\aislands\x18\x03 \x03(\v2!.blackstart.solver.v1.IslandStateR\aislands\x12\x1e\n" +
+	"\vload_lost_w\x18\x04 \x01(\x01R\tloadLostW\x12\x14\n" +
+	"\x05steps\x18\x05 \x01(\rR\x05steps\x12\x1b\n" +
+	"\telapsed_s\x18\x06 \x01(\x01R\belapsedS\x12%\n" +
+	"\x0esolver_version\x18\a \x01(\tR\rsolverVersion\x12\x1d\n" +
+	"\n" +
+	"model_hash\x18\b \x01(\tR\tmodelHash\x12\x1e\n" +
+	"\n" +
+	"initiating\x18\t \x03(\tR\n" +
+	"initiating*Y\n" +
 	"\aBusKind\x12\x18\n" +
 	"\x14BUS_KIND_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vBUS_KIND_PQ\x10\x01\x12\x0f\n" +
@@ -1763,12 +3227,41 @@ const file_blackstart_solver_v1_solver_proto_rawDesc = "" +
 	"\x19SCREENABILITY_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16SCREENABILITY_SCREENED\x10\x01\x12\x18\n" +
 	"\x14SCREENABILITY_RADIAL\x10\x02\x12 \n" +
-	"\x1cSCREENABILITY_NOT_APPLICABLE\x10\x032\xdc\x03\n" +
+	"\x1cSCREENABILITY_NOT_APPLICABLE\x10\x03*o\n" +
+	"\x05Curve\x12\x15\n" +
+	"\x11CURVE_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16CURVE_STANDARD_INVERSE\x10\x01\x12\x16\n" +
+	"\x12CURVE_VERY_INVERSE\x10\x02\x12\x1b\n" +
+	"\x17CURVE_EXTREMELY_INVERSE\x10\x03*\xd2\x01\n" +
+	"\x10CascadeEventKind\x12\"\n" +
+	"\x1eCASCADE_EVENT_KIND_UNSPECIFIED\x10\x00\x12\x1f\n" +
+	"\x1bCASCADE_EVENT_KIND_OVERLOAD\x10\x01\x12\x1b\n" +
+	"\x17CASCADE_EVENT_KIND_TRIP\x10\x02\x12\x1d\n" +
+	"\x19CASCADE_EVENT_KIND_ISLAND\x10\x03\x12\x1b\n" +
+	"\x17CASCADE_EVENT_KIND_SHED\x10\x04\x12 \n" +
+	"\x1cCASCADE_EVENT_KIND_STABILISE\x10\x05*\xb0\x01\n" +
+	"\x0fIslandCondition\x12 \n" +
+	"\x1cISLAND_CONDITION_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17ISLAND_CONDITION_STABLE\x10\x01\x12\x1f\n" +
+	"\x1bISLAND_CONDITION_RECOVERING\x10\x02\x12\x1d\n" +
+	"\x19ISLAND_CONDITION_SHEDDING\x10\x03\x12\x1e\n" +
+	"\x1aISLAND_CONDITION_COLLAPSED\x10\x04*r\n" +
+	"\tAcVerdict\x12\x1a\n" +
+	"\x16AC_VERDICT_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11AC_VERDICT_SECURE\x10\x01\x12\x17\n" +
+	"\x13AC_VERDICT_VIOLATED\x10\x02\x12\x19\n" +
+	"\x15AC_VERDICT_INSOLVABLE\x10\x03*\x8c\x01\n" +
+	"\x0eCascadeOutcome\x12\x1f\n" +
+	"\x1bCASCADE_OUTCOME_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17CASCADE_OUTCOME_SETTLED\x10\x01\x12\x1d\n" +
+	"\x19CASCADE_OUTCOME_TRUNCATED\x10\x02\x12\x1d\n" +
+	"\x19CASCADE_OUTCOME_COLLAPSED\x10\x032\xcc\x04\n" +
 	"\rSolverService\x12p\n" +
 	"\x0fPutNetworkModel\x12,.blackstart.solver.v1.PutNetworkModelRequest\x1a-.blackstart.solver.v1.PutNetworkModelResponse(\x01\x12n\n" +
 	"\x0fHasNetworkModel\x12,.blackstart.solver.v1.HasNetworkModelRequest\x1a-.blackstart.solver.v1.HasNetworkModelResponse\x12k\n" +
 	"\x0eSolvePowerFlow\x12+.blackstart.solver.v1.SolvePowerFlowRequest\x1a,.blackstart.solver.v1.SolvePowerFlowResponse\x12|\n" +
-	"\x13ScreenContingencies\x120.blackstart.solver.v1.ScreenContingenciesRequest\x1a1.blackstart.solver.v1.ScreenContingenciesResponse0\x01B\xe1\x01\n" +
+	"\x13ScreenContingencies\x120.blackstart.solver.v1.ScreenContingenciesRequest\x1a1.blackstart.solver.v1.ScreenContingenciesResponse0\x01\x12n\n" +
+	"\x0fSimulateCascade\x12,.blackstart.solver.v1.SimulateCascadeRequest\x1a-.blackstart.solver.v1.SimulateCascadeResponseB\xe1\x01\n" +
 	"\x18com.blackstart.solver.v1B\vSolverProtoP\x01ZFgithub.com/xraph/blackstart/proto/gen/go/blackstart/solver/v1;solverv1\xa2\x02\x03BSX\xaa\x02\x14Blackstart.Solver.V1\xca\x02\x14Blackstart\\Solver\\V1\xe2\x02 Blackstart\\Solver\\V1\\GPBMetadata\xea\x02\x16Blackstart::Solver::V1b\x06proto3"
 
 var (
@@ -1783,61 +3276,97 @@ func file_blackstart_solver_v1_solver_proto_rawDescGZIP() []byte {
 	return file_blackstart_solver_v1_solver_proto_rawDescData
 }
 
-var file_blackstart_solver_v1_solver_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_blackstart_solver_v1_solver_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_blackstart_solver_v1_solver_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
+var file_blackstart_solver_v1_solver_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_blackstart_solver_v1_solver_proto_goTypes = []any{
 	(BusKind)(0),                        // 0: blackstart.solver.v1.BusKind
 	(Method)(0),                         // 1: blackstart.solver.v1.Method
 	(Screenability)(0),                  // 2: blackstart.solver.v1.Screenability
-	(*Bus)(nil),                         // 3: blackstart.solver.v1.Bus
-	(*Branch)(nil),                      // 4: blackstart.solver.v1.Branch
-	(*NetworkModel)(nil),                // 5: blackstart.solver.v1.NetworkModel
-	(*PutNetworkModelRequest)(nil),      // 6: blackstart.solver.v1.PutNetworkModelRequest
-	(*PutNetworkModelHeader)(nil),       // 7: blackstart.solver.v1.PutNetworkModelHeader
-	(*PutNetworkModelResponse)(nil),     // 8: blackstart.solver.v1.PutNetworkModelResponse
-	(*HasNetworkModelRequest)(nil),      // 9: blackstart.solver.v1.HasNetworkModelRequest
-	(*HasNetworkModelResponse)(nil),     // 10: blackstart.solver.v1.HasNetworkModelResponse
-	(*Override)(nil),                    // 11: blackstart.solver.v1.Override
-	(*BranchStatus)(nil),                // 12: blackstart.solver.v1.BranchStatus
-	(*BusInjection)(nil),                // 13: blackstart.solver.v1.BusInjection
-	(*SolvePowerFlowRequest)(nil),       // 14: blackstart.solver.v1.SolvePowerFlowRequest
-	(*BusResult)(nil),                   // 15: blackstart.solver.v1.BusResult
-	(*BranchResult)(nil),                // 16: blackstart.solver.v1.BranchResult
-	(*SolvePowerFlowResponse)(nil),      // 17: blackstart.solver.v1.SolvePowerFlowResponse
-	(*Contingency)(nil),                 // 18: blackstart.solver.v1.Contingency
-	(*ScreenContingenciesRequest)(nil),  // 19: blackstart.solver.v1.ScreenContingenciesRequest
-	(*Violation)(nil),                   // 20: blackstart.solver.v1.Violation
-	(*ScreenContingenciesResponse)(nil), // 21: blackstart.solver.v1.ScreenContingenciesResponse
+	(Curve)(0),                          // 3: blackstart.solver.v1.Curve
+	(CascadeEventKind)(0),               // 4: blackstart.solver.v1.CascadeEventKind
+	(IslandCondition)(0),                // 5: blackstart.solver.v1.IslandCondition
+	(AcVerdict)(0),                      // 6: blackstart.solver.v1.AcVerdict
+	(CascadeOutcome)(0),                 // 7: blackstart.solver.v1.CascadeOutcome
+	(*Bus)(nil),                         // 8: blackstart.solver.v1.Bus
+	(*Branch)(nil),                      // 9: blackstart.solver.v1.Branch
+	(*NetworkModel)(nil),                // 10: blackstart.solver.v1.NetworkModel
+	(*PutNetworkModelRequest)(nil),      // 11: blackstart.solver.v1.PutNetworkModelRequest
+	(*PutNetworkModelHeader)(nil),       // 12: blackstart.solver.v1.PutNetworkModelHeader
+	(*PutNetworkModelResponse)(nil),     // 13: blackstart.solver.v1.PutNetworkModelResponse
+	(*HasNetworkModelRequest)(nil),      // 14: blackstart.solver.v1.HasNetworkModelRequest
+	(*HasNetworkModelResponse)(nil),     // 15: blackstart.solver.v1.HasNetworkModelResponse
+	(*Override)(nil),                    // 16: blackstart.solver.v1.Override
+	(*BranchStatus)(nil),                // 17: blackstart.solver.v1.BranchStatus
+	(*BusInjection)(nil),                // 18: blackstart.solver.v1.BusInjection
+	(*SolvePowerFlowRequest)(nil),       // 19: blackstart.solver.v1.SolvePowerFlowRequest
+	(*BusResult)(nil),                   // 20: blackstart.solver.v1.BusResult
+	(*BranchResult)(nil),                // 21: blackstart.solver.v1.BranchResult
+	(*SolvePowerFlowResponse)(nil),      // 22: blackstart.solver.v1.SolvePowerFlowResponse
+	(*Contingency)(nil),                 // 23: blackstart.solver.v1.Contingency
+	(*ScreenContingenciesRequest)(nil),  // 24: blackstart.solver.v1.ScreenContingenciesRequest
+	(*Violation)(nil),                   // 25: blackstart.solver.v1.Violation
+	(*ScreenContingenciesResponse)(nil), // 26: blackstart.solver.v1.ScreenContingenciesResponse
+	(*UflsStage)(nil),                   // 27: blackstart.solver.v1.UflsStage
+	(*UflsScheme)(nil),                  // 28: blackstart.solver.v1.UflsScheme
+	(*OvercurrentSettings)(nil),         // 29: blackstart.solver.v1.OvercurrentSettings
+	(*DistanceZone)(nil),                // 30: blackstart.solver.v1.DistanceZone
+	(*DistanceSettings)(nil),            // 31: blackstart.solver.v1.DistanceSettings
+	(*ProtectionSettings)(nil),          // 32: blackstart.solver.v1.ProtectionSettings
+	(*BranchProtection)(nil),            // 33: blackstart.solver.v1.BranchProtection
+	(*SimulateCascadeRequest)(nil),      // 34: blackstart.solver.v1.SimulateCascadeRequest
+	(*CascadeEvent)(nil),                // 35: blackstart.solver.v1.CascadeEvent
+	(*FrequencySample)(nil),             // 36: blackstart.solver.v1.FrequencySample
+	(*IslandState)(nil),                 // 37: blackstart.solver.v1.IslandState
+	(*SimulateCascadeResponse)(nil),     // 38: blackstart.solver.v1.SimulateCascadeResponse
 }
 var file_blackstart_solver_v1_solver_proto_depIdxs = []int32{
 	0,  // 0: blackstart.solver.v1.Bus.kind:type_name -> blackstart.solver.v1.BusKind
-	3,  // 1: blackstart.solver.v1.NetworkModel.buses:type_name -> blackstart.solver.v1.Bus
-	4,  // 2: blackstart.solver.v1.NetworkModel.branches:type_name -> blackstart.solver.v1.Branch
-	7,  // 3: blackstart.solver.v1.PutNetworkModelRequest.header:type_name -> blackstart.solver.v1.PutNetworkModelHeader
-	12, // 4: blackstart.solver.v1.Override.branch_status:type_name -> blackstart.solver.v1.BranchStatus
-	13, // 5: blackstart.solver.v1.Override.bus_injection:type_name -> blackstart.solver.v1.BusInjection
+	8,  // 1: blackstart.solver.v1.NetworkModel.buses:type_name -> blackstart.solver.v1.Bus
+	9,  // 2: blackstart.solver.v1.NetworkModel.branches:type_name -> blackstart.solver.v1.Branch
+	12, // 3: blackstart.solver.v1.PutNetworkModelRequest.header:type_name -> blackstart.solver.v1.PutNetworkModelHeader
+	17, // 4: blackstart.solver.v1.Override.branch_status:type_name -> blackstart.solver.v1.BranchStatus
+	18, // 5: blackstart.solver.v1.Override.bus_injection:type_name -> blackstart.solver.v1.BusInjection
 	1,  // 6: blackstart.solver.v1.SolvePowerFlowRequest.method:type_name -> blackstart.solver.v1.Method
-	11, // 7: blackstart.solver.v1.SolvePowerFlowRequest.overrides:type_name -> blackstart.solver.v1.Override
-	15, // 8: blackstart.solver.v1.SolvePowerFlowResponse.buses:type_name -> blackstart.solver.v1.BusResult
-	16, // 9: blackstart.solver.v1.SolvePowerFlowResponse.branches:type_name -> blackstart.solver.v1.BranchResult
-	11, // 10: blackstart.solver.v1.ScreenContingenciesRequest.overrides:type_name -> blackstart.solver.v1.Override
-	18, // 11: blackstart.solver.v1.ScreenContingenciesRequest.contingencies:type_name -> blackstart.solver.v1.Contingency
-	18, // 12: blackstart.solver.v1.ScreenContingenciesResponse.contingency:type_name -> blackstart.solver.v1.Contingency
+	16, // 7: blackstart.solver.v1.SolvePowerFlowRequest.overrides:type_name -> blackstart.solver.v1.Override
+	20, // 8: blackstart.solver.v1.SolvePowerFlowResponse.buses:type_name -> blackstart.solver.v1.BusResult
+	21, // 9: blackstart.solver.v1.SolvePowerFlowResponse.branches:type_name -> blackstart.solver.v1.BranchResult
+	16, // 10: blackstart.solver.v1.ScreenContingenciesRequest.overrides:type_name -> blackstart.solver.v1.Override
+	23, // 11: blackstart.solver.v1.ScreenContingenciesRequest.contingencies:type_name -> blackstart.solver.v1.Contingency
+	23, // 12: blackstart.solver.v1.ScreenContingenciesResponse.contingency:type_name -> blackstart.solver.v1.Contingency
 	2,  // 13: blackstart.solver.v1.ScreenContingenciesResponse.screenability:type_name -> blackstart.solver.v1.Screenability
-	20, // 14: blackstart.solver.v1.ScreenContingenciesResponse.violations:type_name -> blackstart.solver.v1.Violation
-	6,  // 15: blackstart.solver.v1.SolverService.PutNetworkModel:input_type -> blackstart.solver.v1.PutNetworkModelRequest
-	9,  // 16: blackstart.solver.v1.SolverService.HasNetworkModel:input_type -> blackstart.solver.v1.HasNetworkModelRequest
-	14, // 17: blackstart.solver.v1.SolverService.SolvePowerFlow:input_type -> blackstart.solver.v1.SolvePowerFlowRequest
-	19, // 18: blackstart.solver.v1.SolverService.ScreenContingencies:input_type -> blackstart.solver.v1.ScreenContingenciesRequest
-	8,  // 19: blackstart.solver.v1.SolverService.PutNetworkModel:output_type -> blackstart.solver.v1.PutNetworkModelResponse
-	10, // 20: blackstart.solver.v1.SolverService.HasNetworkModel:output_type -> blackstart.solver.v1.HasNetworkModelResponse
-	17, // 21: blackstart.solver.v1.SolverService.SolvePowerFlow:output_type -> blackstart.solver.v1.SolvePowerFlowResponse
-	21, // 22: blackstart.solver.v1.SolverService.ScreenContingencies:output_type -> blackstart.solver.v1.ScreenContingenciesResponse
-	19, // [19:23] is the sub-list for method output_type
-	15, // [15:19] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	25, // 14: blackstart.solver.v1.ScreenContingenciesResponse.violations:type_name -> blackstart.solver.v1.Violation
+	27, // 15: blackstart.solver.v1.UflsScheme.stages:type_name -> blackstart.solver.v1.UflsStage
+	3,  // 16: blackstart.solver.v1.OvercurrentSettings.curve:type_name -> blackstart.solver.v1.Curve
+	30, // 17: blackstart.solver.v1.DistanceSettings.zones:type_name -> blackstart.solver.v1.DistanceZone
+	29, // 18: blackstart.solver.v1.ProtectionSettings.overcurrent:type_name -> blackstart.solver.v1.OvercurrentSettings
+	31, // 19: blackstart.solver.v1.ProtectionSettings.distance:type_name -> blackstart.solver.v1.DistanceSettings
+	32, // 20: blackstart.solver.v1.BranchProtection.settings:type_name -> blackstart.solver.v1.ProtectionSettings
+	16, // 21: blackstart.solver.v1.SimulateCascadeRequest.overrides:type_name -> blackstart.solver.v1.Override
+	32, // 22: blackstart.solver.v1.SimulateCascadeRequest.protection:type_name -> blackstart.solver.v1.ProtectionSettings
+	33, // 23: blackstart.solver.v1.SimulateCascadeRequest.branch_protection:type_name -> blackstart.solver.v1.BranchProtection
+	28, // 24: blackstart.solver.v1.SimulateCascadeRequest.ufls:type_name -> blackstart.solver.v1.UflsScheme
+	4,  // 25: blackstart.solver.v1.CascadeEvent.kind:type_name -> blackstart.solver.v1.CascadeEventKind
+	5,  // 26: blackstart.solver.v1.IslandState.condition:type_name -> blackstart.solver.v1.IslandCondition
+	6,  // 27: blackstart.solver.v1.IslandState.verdict:type_name -> blackstart.solver.v1.AcVerdict
+	36, // 28: blackstart.solver.v1.IslandState.trace:type_name -> blackstart.solver.v1.FrequencySample
+	7,  // 29: blackstart.solver.v1.SimulateCascadeResponse.outcome:type_name -> blackstart.solver.v1.CascadeOutcome
+	35, // 30: blackstart.solver.v1.SimulateCascadeResponse.events:type_name -> blackstart.solver.v1.CascadeEvent
+	37, // 31: blackstart.solver.v1.SimulateCascadeResponse.islands:type_name -> blackstart.solver.v1.IslandState
+	11, // 32: blackstart.solver.v1.SolverService.PutNetworkModel:input_type -> blackstart.solver.v1.PutNetworkModelRequest
+	14, // 33: blackstart.solver.v1.SolverService.HasNetworkModel:input_type -> blackstart.solver.v1.HasNetworkModelRequest
+	19, // 34: blackstart.solver.v1.SolverService.SolvePowerFlow:input_type -> blackstart.solver.v1.SolvePowerFlowRequest
+	24, // 35: blackstart.solver.v1.SolverService.ScreenContingencies:input_type -> blackstart.solver.v1.ScreenContingenciesRequest
+	34, // 36: blackstart.solver.v1.SolverService.SimulateCascade:input_type -> blackstart.solver.v1.SimulateCascadeRequest
+	13, // 37: blackstart.solver.v1.SolverService.PutNetworkModel:output_type -> blackstart.solver.v1.PutNetworkModelResponse
+	15, // 38: blackstart.solver.v1.SolverService.HasNetworkModel:output_type -> blackstart.solver.v1.HasNetworkModelResponse
+	22, // 39: blackstart.solver.v1.SolverService.SolvePowerFlow:output_type -> blackstart.solver.v1.SolvePowerFlowResponse
+	26, // 40: blackstart.solver.v1.SolverService.ScreenContingencies:output_type -> blackstart.solver.v1.ScreenContingenciesResponse
+	38, // 41: blackstart.solver.v1.SolverService.SimulateCascade:output_type -> blackstart.solver.v1.SimulateCascadeResponse
+	37, // [37:42] is the sub-list for method output_type
+	32, // [32:37] is the sub-list for method input_type
+	32, // [32:32] is the sub-list for extension type_name
+	32, // [32:32] is the sub-list for extension extendee
+	0,  // [0:32] is the sub-list for field type_name
 }
 
 func init() { file_blackstart_solver_v1_solver_proto_init() }
@@ -1855,13 +3384,16 @@ func file_blackstart_solver_v1_solver_proto_init() {
 		(*Override_BusInjection)(nil),
 	}
 	file_blackstart_solver_v1_solver_proto_msgTypes[18].OneofWrappers = []any{}
+	file_blackstart_solver_v1_solver_proto_msgTypes[21].OneofWrappers = []any{}
+	file_blackstart_solver_v1_solver_proto_msgTypes[27].OneofWrappers = []any{}
+	file_blackstart_solver_v1_solver_proto_msgTypes[29].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_blackstart_solver_v1_solver_proto_rawDesc), len(file_blackstart_solver_v1_solver_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   19,
+			NumEnums:      8,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

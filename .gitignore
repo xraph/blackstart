@@ -48,6 +48,13 @@ config.local.yml
 *.grib2
 *.zarr/
 
+# The decoder's own fixtures are the exception, and a narrow one. A GRIB2
+# decoder cannot be tested against anything but real messages, and these are
+# byte-ranged out of published files — hundreds of bytes to tens of kilobytes,
+# not the 151 MB products they came from. Their provenance is recorded beside
+# them.
+!rust/bs-grib/tests/fixtures/*.grib2
+
 # ---- Editors and OS --------------------------------------------------------
 .DS_Store
 Thumbs.db
@@ -78,3 +85,7 @@ configs/config.local.yml
 # are rebuildable from their source cases by re-importing — the content hash is
 # what makes that safe — so the bytes themselves are not repository content.
 .data/
+
+# Subagent-driven-development scratch: ledgers, briefs, review packages.
+# Per-plan working state, reconstructible from git history.
+.superpowers/
