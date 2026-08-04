@@ -1,6 +1,6 @@
-use bs_cascade::{CascadeOutcome, Event, EventKind, Limits, Options, simulate};
+use bs_cascade::{CascadeOutcome, Event, EventKind, Limits, Options, Verification, simulate};
 use bs_case::{Branch, Bus, Case};
-use bs_frequency::{Scheme, Stage};
+use bs_frequency::{IslandCondition, Scheme, Stage};
 use bs_protection::{Protection, Settings};
 use bs_quantity::Base;
 
@@ -32,6 +32,7 @@ fn a_healthy_network_settles_immediately() {
         &Scheme::none(),
         &Options::default(),
         &Limits::default(),
+        &Verification::default(),
     )
     .expect("solvable");
 
@@ -58,6 +59,7 @@ fn an_initiating_outage_propagates() {
         &Scheme::none(),
         &Options::default(),
         &Limits::default(),
+        &Verification::default(),
     )
     .expect("solvable");
 
@@ -90,6 +92,7 @@ fn events_are_ordered_in_simulated_time() {
         &Scheme::none(),
         &Options::default(),
         &Limits::default(),
+        &Verification::default(),
     )
     .expect("solvable");
 
@@ -119,6 +122,7 @@ fn hitting_the_step_cap_is_truncated_not_settled() {
             max_steps: 1,
             horizon: 3600.0,
         },
+        &Verification::default(),
     )
     .expect("solvable");
 
@@ -139,6 +143,7 @@ fn losing_every_island_is_a_collapse() {
         &Scheme::none(),
         &Options::default(),
         &Limits::default(),
+        &Verification::default(),
     )
     .expect("solvable");
 
@@ -185,6 +190,7 @@ fn served_load_is_monotonically_non_increasing() {
                 max_steps,
                 horizon: 3600.0,
             },
+            &Verification::default(),
         )
         .expect("solvable");
 
@@ -219,6 +225,7 @@ fn the_event_sequence_is_reproducible() {
             &Scheme::none(),
             &Options::default(),
             &Limits::default(),
+            &Verification::default(),
         )
         .expect("solvable")
     };
@@ -243,6 +250,7 @@ fn an_out_of_range_initiating_outage_panics() {
         &Scheme::none(),
         &Options::default(),
         &Limits::default(),
+        &Verification::default(),
     );
 }
 
@@ -310,6 +318,7 @@ fn ufls_shedding_is_counted_in_load_lost() {
         &scheme,
         &Options::default(),
         &Limits::default(),
+        &Verification::default(),
     )
     .expect("solvable");
 
@@ -356,4 +365,69 @@ fn ufls_shedding_is_counted_in_load_lost() {
         "load_lost {}",
         got.load_lost
     );
+}
+
+/// The island's UFLS outcome reaches `Cascade::reports` — not merely
+/// `is_some()`, which would pass even if the wrong variant leaked through.
+///
+/// Reuses `heavy_deficit_case` and the exact two-stage scheme already hand-
+/// derived in `ufls_shedding_is_counted_in_load_lost` above, so no new
+/// arithmetic is needed here: that test already establishes both stages fire
+/// within the cascade's first step. `heavy_deficit_case` never splits (one
+/// branch, rated far above anything that reaches it), so there is exactly
+/// one island throughout and no cross-island attribution to reason about —
+/// the single report's `condition` has to be this island's own.
+///
+/// The cascade is truncated at `max_steps: 1`, deliberately — left to run to
+/// completion, this scheme's dispatch eventually self-corrects (the second
+/// stage oversheds past the deficit into a surplus, and a later, uncounted
+/// step brings the island fully back to `Stable` before `simulate` returns
+/// `Settled`; a `Settled` outcome's last-observed response always has empty
+/// `sheds` by construction, since that emptiness is what stops the loop, so
+/// its condition can never be `Shedding` — only `Stable` or `Recovering`).
+/// Truncating right after the shedding step is what makes `Shedding` the
+/// TRUE final answer here, and it is why this test could not be written
+/// against a `Settled` cascade at all.
+///
+/// Fails if `condition` stays `None` — the gap this fix closes, where
+/// `verify_islands` has no frequency `Response` to draw from and `simulate`
+/// previously never backfilled one — or comes back `Stable`, which is what a
+/// backfill reading the wrong (e.g. first-ever, or a hypothetical later)
+/// step's response instead of the actually-last-observed one would produce.
+#[test]
+fn a_surviving_islands_condition_reaches_the_report() {
+    let scheme = Scheme {
+        stages: vec![
+            Stage {
+                at_hz: 59.99,
+                shed_fraction: 0.5,
+                delay: 0.0,
+            },
+            Stage {
+                at_hz: 59.98,
+                shed_fraction: 0.5,
+                delay: 0.0,
+            },
+        ],
+        floor_hz: 40.0,
+        ceiling_hz: 70.0,
+    };
+
+    let got = simulate(
+        &heavy_deficit_case(),
+        &[],
+        &Protection::new(Settings::default(), Vec::new()),
+        &scheme,
+        &Options::default(),
+        &Limits {
+            max_steps: 1,
+            horizon: 3600.0,
+        },
+        &Verification::default(),
+    )
+    .expect("solvable");
+
+    assert_eq!(got.outcome, CascadeOutcome::Truncated { steps: 1 });
+    assert_eq!(got.reports.len(), 1);
+    assert_eq!(got.reports[0].condition, Some(IslandCondition::Shedding));
 }

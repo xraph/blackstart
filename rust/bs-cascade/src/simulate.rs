@@ -127,6 +127,29 @@ impl Default for Limits {
     }
 }
 
+/// How `simulate` should verify the islands it ends with — see
+/// [`verify_islands`].
+///
+/// Bundled into one parameter, alongside [`Limits`]' own "how much cascade to
+/// run", rather than as two more positional arguments to [`simulate`]: a
+/// caller passes one policy object for "how to verify" and a future
+/// verification-only tunable is a field added here, not another parameter
+/// threaded through every call site again.
+///
+/// [`Default`] exists for convenience — the same convenience [`Limits`]'
+/// `Default` already offers — but it is opt-in at the *call site*, not
+/// silently assumed inside [`simulate`]. `VoltageLimits::default` documents
+/// the acceptable voltage band as a utility's policy choice this crate has no
+/// standing to assert on a caller's behalf; a caller that has its own band
+/// passes it here instead.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Verification {
+    /// The voltage band an AC solution is checked against.
+    pub limits: VoltageLimits,
+    /// Tunables for the AC solver itself.
+    pub options: AcOptions,
+}
+
 /// A finished, or truncated, cascade.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cascade {
@@ -158,15 +181,14 @@ pub struct Cascade {
     /// simulate. This is computed once, after the loop, against the final
     /// islands: DC cannot see a voltage violation at all, and it cannot see
     /// a network with no steady state, so neither question has an answer
-    /// until now.
+    /// until now. See [`Verification`] for the voltage band and AC solver
+    /// options this verification runs under.
     ///
-    /// `VoltageLimits` and the AC solver's `Options` are supplied as their
-    /// defaults here rather than threaded through as parameters to
-    /// [`simulate`]. `VoltageLimits::default` is documented as a utility's
-    /// policy choice this crate has no standing to assert — using it
-    /// silently is a real simplification, kept so [`simulate`]'s signature
-    /// stays the one every existing caller already has, and a fair thing to
-    /// revisit if a caller ever needs its own band.
+    /// Each report's `condition` comes from the cascade's own frequency
+    /// history where one is available — see [`simulate`]'s body for how a
+    /// final island is matched back to the step that last observed it, and
+    /// why `None` is a real, distinct answer rather than a placeholder for
+    /// "nobody checked".
     pub reports: Vec<IslandReport>,
 }
 
@@ -199,6 +221,7 @@ pub fn simulate(
     scheme: &Scheme,
     options: &Options,
     limits: &Limits,
+    verification: &Verification,
 ) -> Result<Cascade, StepError> {
     let mut case = case.clone();
     let (mut events, mut island_count) = open_initiating(&mut case, initiating);
@@ -206,6 +229,15 @@ pub fn simulate(
     let mut elapsed = 0.0;
     let mut steps = 0;
     let mut shed_total = 0.0;
+
+    // The islands and responses `step` last computed, for every call —
+    // including one that turns out to be the very last, whether it fired
+    // anything or not. An uncounted "nothing left to do" call is exactly the
+    // one that reveals an island's true settled condition, so it has to be
+    // captured here rather than only inside the branches below that log an
+    // event.
+    let mut last_islands: Option<Islands> = None;
+    let mut last_responses: Option<Vec<Option<Response>>> = None;
 
     let outcome = loop {
         if steps >= limits.max_steps || elapsed >= limits.horizon {
@@ -224,6 +256,9 @@ pub fn simulate(
             .collect();
 
         let out = step(&mut case, protection, scheme, options)?;
+
+        last_islands = Some(out.islands.clone());
+        last_responses = Some(out.responses.clone());
 
         // Checked before "nothing fired": a step can find nothing left to
         // trip or shed and still be the step that reveals every remaining
@@ -271,12 +306,60 @@ pub fn simulate(
     // intermediate island the loop passed through was a transient state on
     // its way to this one, and an AC solve is exactly the expensive
     // verification a DC-model loop exists to defer.
-    let reports = verify_islands(
+    let mut reports = verify_islands(
         &case,
         &final_islands,
-        VoltageLimits::default(),
-        AcOptions::default(),
+        verification.limits,
+        verification.options,
     );
+
+    // `verify_islands` never sees a frequency `Response` — see its own doc
+    // comment — so every report comes back with `condition: None`. This is
+    // where that gap gets closed, from the last islands/responses the loop
+    // itself observed.
+    //
+    // A final island can differ from the partition `step` last computed —
+    // that call's own fired trips are applied to `case` at the very end of
+    // `step`, after `islands`/`responses` were already captured against the
+    // topology as it stood at the *start* of that call. So a bus is matched
+    // back to its last observed condition individually, keyed by bus index
+    // rather than by island identity: bus indices never move under
+    // re-partitioning, which makes them the one stable key available here,
+    // where an island's own identity is not stable across a split.
+    //
+    // Every `step` call partitions every bus in the case (`Islands::of`
+    // never omits one), so the last call's observation completely
+    // supersedes any earlier one for every bus, not just the ones whose
+    // island changed — there is no need to merge across calls, only to keep
+    // the most recent.
+    //
+    // A final island is represented by its lowest-index member, the same
+    // "lowest member stands for the island" convention `representative`
+    // uses elsewhere in this module. `None` results exactly when either no
+    // step ever ran (an immediately truncated cascade) or the last
+    // observation of that bus was itself a machine-less island — both
+    // honest, distinct answers from `Some(Stable)`, not a placeholder for
+    // "nobody checked".
+    //
+    // One acknowledged gap: if a single call's own fired trips *both*
+    // collapse the network *and* newly split it, the pre-firing snapshot
+    // that call captured is what gets used here, the same staleness
+    // `is_collapsed` above already tolerates for the same reason — there is
+    // no further call to refine it with.
+    let mut bus_condition = vec![None; case.n_bus()];
+    if let (Some(islands), Some(responses)) = (&last_islands, &last_responses) {
+        for (members, response) in islands.members.iter().zip(responses) {
+            let condition = response.as_ref().map(|r| r.condition);
+            for &bus in members {
+                bus_condition[bus] = condition;
+            }
+        }
+    }
+    for report in &mut reports {
+        if let Some(&lowest) = report.members.first() {
+            report.condition = bus_condition[lowest];
+        }
+    }
 
     Ok(Cascade {
         outcome,

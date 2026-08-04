@@ -22,6 +22,6 @@ pub mod verify;
 
 pub use dispatch::{Balance, Dispatchable, Plan, apply, rebalance};
 pub use island::{Islands, Subcase};
-pub use simulate::{Cascade, CascadeOutcome, Event, EventKind, Limits, simulate};
+pub use simulate::{Cascade, CascadeOutcome, Event, EventKind, Limits, Verification, simulate};
 pub use step::{Options, Outcome, StepError, step};
 pub use verify::{AcVerdict, IslandReport, verify_islands};

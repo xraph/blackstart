@@ -128,7 +128,7 @@
 //! `0.01 + 1.7194 ≈ 1.7294` s that comfortably contains any plausible
 //! crossing time, without pretending the crossing time itself was hand-solved.
 
-use bs_cascade::{CascadeOutcome, EventKind, Limits, Options, simulate};
+use bs_cascade::{CascadeOutcome, EventKind, Limits, Options, Verification, simulate};
 use bs_case::{Branch, Bus, Case};
 use bs_frequency::{Scheme, Stage};
 use bs_protection::{Protection, Settings};
@@ -187,6 +187,7 @@ fn the_five_bus_cascade_matches_the_hand_derivation() {
         &one_stage_scheme(),
         &Options::default(),
         &Limits::default(),
+        &Verification::default(),
     )
     .expect("solvable");
 
