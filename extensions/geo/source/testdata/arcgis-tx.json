@@ -1,0 +1,190 @@
+{
+ "objectIdFieldName": "FID",
+ "uniqueIdField": {
+  "name": "FID",
+  "isSystemMaintained": true
+ },
+ "globalIdFieldName": "",
+ "geometryProperties": {
+  "shapeLengthFieldName": "Shape__Length",
+  "units": "esriMeters"
+ },
+ "geometryType": "esriGeometryPolyline",
+ "spatialReference": {
+  "wkid": 4326,
+  "latestWkid": 4326
+ },
+ "fields": [
+  {
+   "name": "VOLTAGE",
+   "type": "esriFieldTypeInteger",
+   "alias": "VOLTAGE",
+   "sqlType": "sqlTypeInteger",
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "VOLT_CLASS",
+   "type": "esriFieldTypeString",
+   "alias": "VOLT_CLASS",
+   "sqlType": "sqlTypeNVarchar",
+   "length": 80,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "OWNER",
+   "type": "esriFieldTypeString",
+   "alias": "OWNER",
+   "sqlType": "sqlTypeNVarchar",
+   "length": 80,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "INFERRED",
+   "type": "esriFieldTypeString",
+   "alias": "INFERRED",
+   "sqlType": "sqlTypeNVarchar",
+   "length": 80,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "SOURCE",
+   "type": "esriFieldTypeString",
+   "alias": "SOURCE",
+   "sqlType": "sqlTypeNVarchar",
+   "length": 237,
+   "domain": null,
+   "defaultValue": null
+  }
+ ],
+ "features": [
+  {
+   "attributes": {
+    "VOLTAGE": 345,
+    "VOLT_CLASS": "345",
+    "OWNER": "SHARYLAND UTILITIES LP",
+    "INFERRED": "N",
+    "SOURCE": "IMAGERY"
+   },
+   "geometry": {
+    "paths": [
+     [
+      [
+       -101.452334488961,
+       32.1003023637763
+      ],
+      [
+       -101.452233379982,
+       32.1004905197048
+      ],
+      [
+       -101.449513530135,
+       32.101650060156
+      ],
+      [
+       -101.446619060374,
+       32.1028442102822
+      ],
+      [
+       -101.443714819637,
+       32.1040300002281
+      ],
+      [
+       -101.440715880299,
+       32.1052381501891
+      ],
+      [
+       -101.437801469734,
+       32.1064296198229
+      ],
+      [
+       -101.43487751996,
+       32.1076347803449
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "attributes": {
+    "VOLTAGE": 345,
+    "VOLT_CLASS": "345",
+    "OWNER": "SHARYLAND UTILITIES LP",
+    "INFERRED": "N",
+    "SOURCE": "IMAGERY, OpenStreetMap"
+   },
+   "geometry": {
+    "paths": [
+     [
+      [
+       -101.422895346034,
+       32.2751401253603
+      ],
+      [
+       -101.422968880327,
+       32.2744810898927
+      ],
+      [
+       -101.422925939958,
+       32.2743280499642
+      ],
+      [
+       -101.422736175346,
+       32.2742938879693
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "attributes": {
+    "VOLTAGE": 138,
+    "VOLT_CLASS": "100-161",
+    "OWNER": "CONCHO VALLEY ELEC COOP INC",
+    "INFERRED": "N",
+    "SOURCE": "IMAGERY, OpenStreetMap"
+   },
+   "geometry": {
+    "paths": [
+     [
+      [
+       -100.898623389847,
+       31.9024158881663
+      ],
+      [
+       -100.898660239638,
+       31.9033546600738
+      ],
+      [
+       -100.900554609604,
+       31.9038287797859
+      ],
+      [
+       -100.902392920205,
+       31.9043147899359
+      ],
+      [
+       -100.904326639974,
+       31.9048055302425
+      ],
+      [
+       -100.906153719837,
+       31.9052749898547
+      ],
+      [
+       -100.908165949666,
+       31.9057729697075
+      ],
+      [
+       -100.910430870196,
+       31.9063590902897
+      ]
+     ]
+    ]
+   }
+  }
+ ]
+}
