@@ -206,8 +206,11 @@ const round = (hz: number): number => Number(hz.toFixed(3));
  */
 export const FREQ_TRACES = new Map<number, number[]>(
   CASCADE.islands
-    .filter((i) => i.state !== "stable")
-    .map((i) => [i.id, trace(i.nadir.value, i.state !== "collapsed")]),
+    // An island with no machine attached has no nadir to trace — absent, not
+    // zero. Filtered rather than defaulted, because trace(0) would draw a
+    // collapse to 0 Hz that the run never reported.
+    .filter((i) => i.state !== "stable" && i.nadir !== undefined)
+    .map((i) => [i.id, trace(i.nadir!.value, i.state !== "collapsed")]),
 );
 
 /* ── the inspected element ────────────────────────────────────────── */

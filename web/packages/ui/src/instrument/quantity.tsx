@@ -17,8 +17,20 @@ import {
 } from "@blackstart/schema";
 import { cn } from "../cn";
 
+/**
+ * What a missing measurement looks like.
+ *
+ * An em dash rather than a zero, and that is the whole point. The cascade
+ * schema makes frequency, nadir and the customer counters optional because an
+ * island with no machine attached has no frequency to report — absent, not
+ * zero. Rendering a 0 would state a measurement nobody made, and "0.0 Hz" on
+ * an island reads as a total collapse rather than as silence.
+ */
+const ABSENT = "\u2014";
+
 export interface QuantityProps<U extends Unit> extends FormatOptions {
-  readonly q: Quantity<U>;
+  /** Undefined where the source had nothing to report. See ABSENT. */
+  readonly q: Quantity<U> | undefined;
   /** Hide the unit where a column header already carries it. */
   readonly unitless?: boolean;
   readonly className?: string;
@@ -32,6 +44,15 @@ export function QuantityValue<U extends Unit>({
   unitClassName,
   ...format
 }: QuantityProps<U>): ReactElement {
+  if (q === undefined) {
+    return (
+      <span className={cn("font-mono tabular text-fg-3", className)}>
+        {ABSENT}
+        <span className="sr-only">not reported</span>
+      </span>
+    );
+  }
+
   const f = formatQuantity(q, format);
   return (
     <span className={cn("font-mono tabular", className)}>
@@ -52,7 +73,8 @@ export function QuantityValue<U extends Unit>({
  */
 export interface QuantityBlockProps<U extends Unit> {
   readonly label: string;
-  readonly q: Quantity<U>;
+  /** Undefined where the source had nothing to report. See ABSENT. */
+  readonly q: Quantity<U> | undefined;
   readonly note?: string;
   readonly decimals?: number;
   readonly className?: string;
@@ -65,7 +87,10 @@ export function QuantityBlock<U extends Unit>({
   decimals,
   className,
 }: QuantityBlockProps<U>): ReactElement {
-  const f = formatQuantity(q, decimals === undefined ? {} : { decimals });
+  const f =
+    q === undefined
+      ? { value: ABSENT, unit: "" }
+      : formatQuantity(q, decimals === undefined ? {} : { decimals });
   return (
     <div className={cn("px-5 py-3", className)}>
       <div className="font-mono text-[9px] uppercase tracking-[0.13em] text-fg-3">

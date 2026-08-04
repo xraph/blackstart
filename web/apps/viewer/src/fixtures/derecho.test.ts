@@ -38,6 +38,14 @@ describe("derecho fixture", () => {
   it("carries a frequency trace for every island that is not stable", () => {
     for (const island of CASCADE.islands) {
       if (island.state === "stable") continue;
+
+      // No nadir means no trace, and that pairing is the invariant: a traced
+      // island must have the number the trace bottoms out at.
+      if (island.nadir === undefined) {
+        expect(FREQ_TRACES.has(island.id), `island ${island.id} traced without a nadir`).toBe(false);
+        continue;
+      }
+
       const t = FREQ_TRACES.get(island.id);
       expect(t, `island ${island.id} has no trace`).toBeDefined();
       expect(Math.min(...(t ?? []))).toBeCloseTo(island.nadir.value, 1);
