@@ -40,7 +40,7 @@ const (
 	Surveyed Provenance = "surveyed"
 
 	// Routed geometry follows a real right-of-way whose structures are not
-	// known. The path came from a source that digitised where the line runs —
+	// known. The path came from a source that digitized where the line runs —
 	// EIA's republication of the HIFLD transmission layer, a state ArcGIS
 	// mirror — and the structures along it were interpolated at a nominal span.
 	//
@@ -78,7 +78,7 @@ func (p Provenance) StructuresAreReal() bool {
 	return p == Surveyed
 }
 
-// PathIsReal reports whether the route follows a digitised right-of-way.
+// PathIsReal reports whether the route follows a digitized right-of-way.
 //
 // True for both Surveyed and Routed. Weather sampled along the path is honest
 // in both cases even where the structure positions are not, which is why this
@@ -138,7 +138,7 @@ func (r Route) Validate() error {
 				"nothing is not part of the network", bserr.ErrInvalid, r.ID)
 	}
 
-	// The prefix is the discriminator, so an unrecognised one is not a
+	// The prefix is the discriminator, so an unrecognized one is not a
 	// harmless extra case: it is a route whose carrier nothing can resolve,
 	// and it would store, render and read back as complete.
 	if !CarriesElectrically(r.CarrierID) && r.CarrierID.Prefix() != gid.Circuit {

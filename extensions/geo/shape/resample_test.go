@@ -7,7 +7,7 @@ import (
 	"github.com/xraph/blackstart/extensions/geo/shape"
 )
 
-// A digitised right-of-way with a deliberate corner: south-west across the
+// A digitized right-of-way with a deliberate corner: south-west across the
 // South Plains, then a turn to the west. A resampler that straightens this has
 // moved the conductor off the ridge it really crosses.
 func cornered() shape.Line {
@@ -18,7 +18,7 @@ func cornered() shape.Line {
 	}
 }
 
-func TestResampleKeepsEveryDigitisedVertex(t *testing.T) {
+func TestResampleKeepsEveryDigitizedVertex(t *testing.T) {
 	out, err := shape.Resample(cornered(), 5000)
 	if err != nil {
 		t.Fatalf("Resample: %v", err)

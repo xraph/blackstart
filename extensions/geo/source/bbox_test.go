@@ -10,7 +10,7 @@ import (
 // assertion is compile-time; the test exists so removing the interface breaks
 // here rather than at the call site.
 func TestBothSourcesAreFetchers(t *testing.T) {
-	var fetchers = []source.Fetcher{
+	fetchers := []source.Fetcher{
 		source.Overpass{},
 		source.ArcGISLayer{URL: "https://example.invalid/0"},
 	}

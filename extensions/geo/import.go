@@ -12,7 +12,7 @@ import (
 	"github.com/xraph/blackstart/pkg/id"
 )
 
-// ImportRequest carries a path somebody already digitised.
+// ImportRequest carries a path somebody already digitized.
 //
 // The counterpart to TraceRequest. Trace is given two endpoints and invents
 // everything between them; Import is given the path and invents only what the
@@ -28,14 +28,14 @@ type ImportRequest struct {
 	// design, §2.
 	CarrierID id.ID
 
-	// Path is the digitised right-of-way, in order.
+	// Path is the digitized right-of-way, in order.
 	Path shape.Line
 
 	// Structures are the recorded structure positions along Path, in order.
 	//
 	// Empty when the source publishes lines but not structures, which is the
 	// usual case: the transmission layers republished from HIFLD are polylines
-	// whose vertices are digitising points, not towers. Supplying them is what
+	// whose vertices are digitizing points, not towers. Supplying them is what
 	// makes the result Surveyed rather than Routed.
 	Structures shape.Line
 
@@ -111,7 +111,7 @@ func (e *Engine) resolveGeometry(in ImportRequest) (shape.Line, asset.Provenance
 		}
 
 		// The path is real and the structures are not, which is what Routed
-		// says. Resample keeps the digitised corners rather than straightening
+		// says. Resample keeps the digitized corners rather than straightening
 		// them onto a great circle.
 		path, err := shape.Resample(in.Path, spanM)
 		if err != nil {

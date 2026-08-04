@@ -20,7 +20,7 @@ import (
 // HIFLD's: OWNER, VOLTAGE, VOLT_CLASS, INFERRED, SUB_1, SUB_2, SOURCE.
 //
 // What this layer is and is not was measured rather than assumed. Its vertices
-// are digitising points: the median gap is near a real span but the maximum is
+// are digitizing points: the median gap is near a real span but the maximum is
 // over 40 km, which no conductor crosses unsupported. It therefore yields
 // Routed geometry — a real right-of-way with interpolated structures — and
 // never Surveyed. See the phase-3 data survey, §1.4.1.
@@ -84,6 +84,10 @@ func (a ArcGISLayer) Fetch(ctx context.Context, box BoundingBox, limit int) ([]L
 		return nil, fmt.Errorf("source: building the arcgis request: %w", err)
 	}
 
+	// G704 as in overpass.go: the layer URL is supplied by the operator running
+	// the import, because HIFLD's own portal is gone and which mirror to trust
+	// is their call rather than this code's. See the phase-3 data survey, §1.4.
+	//nolint:gosec // fetching a caller-named public endpoint is the feature
 	response, err := client.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("source: fetching %s: %w", a.URL, err)

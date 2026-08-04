@@ -23,7 +23,7 @@ import (
 // rather than a join — see the phase-3 data survey, §1.3.
 //
 // Structures measured around Austin run to a median span of about 207 m, which
-// is what makes these real rather than digitising artefacts: a layer whose
+// is what makes these real rather than digitizing artifacts: a layer whose
 // vertices are cartographic has no such bound, and the transmission line layers
 // republished from HIFLD reach 40 km between vertices.
 //
@@ -41,6 +41,10 @@ type Overpass struct {
 }
 
 const (
+	// G101 reads any const near a URL as a possible credential. This is the
+	// public Overpass instance's address and nothing else; the API takes no
+	// key, which is part of why it is the source this project can use.
+	//nolint:gosec // a public endpoint, not a secret
 	defaultOverpass = "https://overpass-api.de/api/interpreter"
 
 	userAgent = "blackstart/0.1 (weather-driven grid outage research; " +
@@ -104,6 +108,12 @@ out skel qt;`, box.MinLat, box.MinLon, box.MaxLat, box.MaxLon)
 	// operator seeing this in their logs can find out what it is.
 	request.Header.Set("User-Agent", userAgent)
 
+	// G704 flags the URL as attacker-controlled, and it is caller-controlled by
+	// design: --endpoint exists so an operator can point at their own Overpass
+	// instance rather than loading the volunteers' one. The caller is the
+	// operator running the import, and the response is parsed as Overpass JSON
+	// and discarded if it is not.
+	//nolint:gosec // fetching a caller-named public endpoint is the feature
 	response, err := client.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("source: fetching overpass: %w", err)

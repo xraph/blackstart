@@ -10,14 +10,14 @@ import (
 //
 // The difference from SyntheticRoute is what is being invented. SyntheticRoute
 // invents the path as well as the structures: it draws a great circle between
-// two endpoints and divides it. Resample keeps a digitised right-of-way exactly
+// two endpoints and divides it. Resample keeps a digitized right-of-way exactly
 // as surveyed and only invents where the structures stand along it — so a line
 // that turns at an angle point still turns, and a line that crosses a ridge
 // still crosses it.
 //
 // That matters because the path is what weather is sampled along. A great
 // circle between two substations can miss the exposed ridge the real conductor
-// runs over by tens of kilometres, and a gust sampled at the wrong place is a
+// runs over by tens of kilometers, and a gust sampled at the wrong place is a
 // wrong answer no amount of per-span resolution fixes.
 //
 // The vertices of the input are preserved rather than resampled away. They are
@@ -51,7 +51,7 @@ func Resample(path Line, nominalSpanM float64) (Line, error) {
 
 		segment := from.DistanceTo(to)
 		if segment <= 0 {
-			// A repeated vertex. Digitised data has them, and a zero-length
+			// A repeated vertex. Digitized data has them, and a zero-length
 			// span is not a thing that can fail, so it is dropped rather than
 			// stored as a degenerate span with no bearing.
 			continue

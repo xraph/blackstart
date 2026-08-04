@@ -10,7 +10,7 @@ import (
 	"github.com/xraph/blackstart/pkg/id"
 )
 
-// A digitised right-of-way with a real corner in it.
+// A digitized right-of-way with a real corner in it.
 func rightOfWay() shape.Line {
 	return shape.Line{
 		{Lon: -101.76, Lat: 34.54},
@@ -91,7 +91,7 @@ func TestImportDoesNotResampleRecordedStructures(t *testing.T) {
 }
 
 // The routed path must keep its corner rather than being flattened.
-func TestImportKeepsTheDigitisedCorner(t *testing.T) {
+func TestImportKeepsTheDigitizedCorner(t *testing.T) {
 	e := engine(t)
 
 	route, err := e.Import(t.Context(), geo.ImportRequest{

@@ -54,7 +54,7 @@ func TestRoutedIsNotSurveyed(t *testing.T) {
 }
 
 // A route carries a branch or a circuit and nothing else. The prefix is the
-// only discriminator, so an unrecognised one has to be refused at the door:
+// only discriminator, so an unrecognized one has to be refused at the door:
 // stored, it would read back as a complete route whose carrier nothing can
 // resolve — the invisible failure the real-circuit-identity design, §2, rejects
 // manufacturing branches to avoid.

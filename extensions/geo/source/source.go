@@ -2,7 +2,7 @@
 //
 // Two shapes of source, and the difference decides what the imported route may
 // claim. A line layer — EIA's republication of the HIFLD transmission data, a
-// state ArcGIS mirror — publishes polylines whose vertices are digitising
+// state ArcGIS mirror — publishes polylines whose vertices are digitizing
 // points; the right-of-way is real and the structures are not. OpenStreetMap
 // publishes ways whose nodes are the towers themselves.
 //
@@ -13,6 +13,7 @@ package source
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/xraph/blackstart/extensions/geo/shape"
@@ -42,7 +43,7 @@ type Line struct {
 	// Source names where it came from, for the provenance record.
 	Source string
 
-	// Path is the digitised right-of-way, in order.
+	// Path is the digitized right-of-way, in order.
 	Path shape.Line
 
 	// Structures are recorded structure positions, in order, when the source
@@ -62,7 +63,7 @@ type Line struct {
 // Validate reports whether a parsed line can be imported.
 func (l Line) Validate() error {
 	if l.ExternalID == "" {
-		return fmt.Errorf(
+		return errors.New(
 			"source: a line with no external identifier cannot be traced back " +
 				"to what it was derived from")
 	}
