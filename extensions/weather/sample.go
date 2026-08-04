@@ -83,8 +83,8 @@ func (e *Engine) SampleCycle(
 	points := make([]solver.GridPoint, 0, len(spans))
 
 	for _, span := range spans {
-		centre := midpoint(span.Geometry)
-		points = append(points, solver.GridPoint{Lon: centre.Lon, Lat: centre.Lat})
+		center := midpoint(span.Geometry)
+		points = append(points, solver.GridPoint{Lon: center.Lon, Lat: center.Lat})
 	}
 
 	grids, err := e.store.Grids().ForCycle(ctx, cycleID)
@@ -226,7 +226,7 @@ func (e *Engine) spansFor(
 
 // midpoint is where along a span the weather is sampled.
 //
-// A span is a few hundred metres and a HRRR cell is three kilometres, so which
+// A span is a few hundred meters and a HRRR cell is three kilometers, so which
 // point of the span is used matters far less than that it lands in the right
 // cell. The midpoint is the least arbitrary choice available and is stable
 // across re-samples, which matters more: a sample point that moved between
@@ -242,7 +242,7 @@ func midpoint(line shape.Line) shape.Point {
 	}
 
 	// An even number of points has no middle one, so the two nearest are
-	// averaged. Linear interpolation over a few hundred metres is well inside
+	// averaged. Linear interpolation over a few hundred meters is well inside
 	// the error the grid resolution already imposes.
 	low, high := line[len(line)/2-1], line[len(line)/2]
 
