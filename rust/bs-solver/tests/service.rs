@@ -715,3 +715,121 @@ async fn an_out_of_range_initiating_branch_is_refused() {
     assert_eq!(status.code(), Code::InvalidArgument);
     assert!(status.message().contains("99"), "{status}");
 }
+
+/// A cascade where UFLS actually fires: `shed_w` comes back non-zero and in
+/// WATTS, and `nadir_hz` comes back populated, on the island that shed.
+///
+/// Reuses `collapsing_model` with the same three-stage scheme verified in
+/// `collapsing_model`'s own doc comment to recover `{gen, mid}` back inside
+/// its survival band — a single plausible stage is already enough there, so
+/// three gives comfortable margin for this test to observe more than one
+/// `Shed` event without depending on the exact number that fire.
+///
+/// What would make this fail: `to_island_state` mapping `report.shed`
+/// straight through without `to_watts`, leaving a per-unit magnitude — this
+/// fixture sheds multiple MW per stage on a 100 MVA base, so a per-unit
+/// value would be roughly `0.05`-`0.2`, nowhere near the `> 1e6` this test
+/// checks for; or `bs_cascade::simulate`'s per-bus attribution never
+/// reaching `IslandReport::shed`/`nadir_hz` at all, leaving them `0.0`/`None`
+/// regardless of units.
+#[tokio::test]
+async fn ufls_shed_and_nadir_come_back_on_the_wire() {
+    let (solver, hash) = cached_solver_that_collapses().await;
+
+    let response = solver
+        .simulate_cascade(Request::new(proto::SimulateCascadeRequest {
+            content_hash: hash,
+            initiating: vec![0],
+            ufls: Some(proto::UflsScheme {
+                stages: vec![
+                    proto::UflsStage {
+                        at_hz: 59.5,
+                        shed_fraction: 0.1,
+                        delay_s: 0.1,
+                    },
+                    proto::UflsStage {
+                        at_hz: 59.3,
+                        shed_fraction: 0.1,
+                        delay_s: 0.1,
+                    },
+                    proto::UflsStage {
+                        at_hz: 58.9,
+                        shed_fraction: 0.1,
+                        delay_s: 0.1,
+                    },
+                ],
+                floor_hz: 57.0,
+                ceiling_hz: 61.8,
+            }),
+            ..Default::default()
+        }))
+        .await
+        .expect("simulates")
+        .into_inner();
+
+    assert!(
+        response
+            .events
+            .iter()
+            .any(|e| e.kind == proto::CascadeEventKind::Shed as i32),
+        "expected at least one Shed event on this fixture"
+    );
+
+    // "gen" is bus 0 in `collapsing_model`; its island is `{gen, mid}`.
+    let shedding = response
+        .islands
+        .iter()
+        .find(|island| island.buses.contains(&0))
+        .expect("the gen island is reported");
+
+    assert!(
+        shedding.shed_w > 1e6,
+        "shed_w {} looks like per unit, not watts",
+        shedding.shed_w
+    );
+
+    let nadir = shedding
+        .nadir_hz
+        .expect("a shedding island reaches a nadir");
+    assert!(
+        nadir > 0.0 && nadir < 60.0,
+        "nadir {nadir} Hz is not a plausible dip below nominal"
+    );
+}
+
+/// An island with no machine data anywhere reports its three frequency
+/// fields ABSENT, never a fabricated zero.
+///
+/// Reuses `collapsing_model`'s "tail" island — isolated with no machine data
+/// from the very first instant of the run, per `collapsing_model`'s own
+/// fixture, never transiently sharing an island with "gen".
+///
+/// What would make this fail: mapping `None` to `Some(0.0)` anywhere along
+/// the chain — in `bs_cascade::simulate`'s per-bus attribution or in
+/// `to_island_state`'s field-by-field copy — or a per-bus attribution bug
+/// that lets "tail" pick up a stale value left over from a different
+/// island's history.
+#[tokio::test]
+async fn a_machineless_islands_frequency_fields_are_absent_on_the_wire() {
+    let (solver, hash) = cached_solver_that_collapses().await;
+
+    let response = solver
+        .simulate_cascade(Request::new(proto::SimulateCascadeRequest {
+            content_hash: hash,
+            initiating: vec![0],
+            ..Default::default()
+        }))
+        .await
+        .expect("simulates")
+        .into_inner();
+
+    let dead = response
+        .islands
+        .iter()
+        .find(|island| island.buses == vec![2])
+        .expect("the tail island, bus 2 alone, is reported");
+
+    assert_eq!(dead.frequency_hz, None);
+    assert_eq!(dead.nadir_hz, None);
+    assert_eq!(dead.rocof_hz_s, None);
+}

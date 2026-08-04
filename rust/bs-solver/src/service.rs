@@ -490,20 +490,31 @@ fn to_island_state(
         condition: to_condition(report.condition) as i32,
         verdict: to_verdict(&report.verdict) as i32,
         balance_w: to_watts(report.balance, model),
-        // `IslandReport` carries only the peak frequency CONDITION a run
-        // observed, not the numeric trajectory — nadir, rate of change, final
-        // deviation — that produced it. There is no source for these three
-        // without extending `bs-cascade` itself, out of this contract's
-        // scope, so they are reported absent rather than a number invented
-        // to fill the field.
-        frequency_hz: None,
-        nadir_hz: None,
-        rocof_hz_s: None,
-        // Likewise, `Cascade::load_lost` is one running total across the
-        // whole cascade, not broken out per island. Honestly zero here
-        // rather than a guess; `load_lost_w` on the response is the number
-        // that is actually accurate.
-        shed_w: 0.0,
+        // Frequencies stay in HERTZ on both sides of this boundary — never
+        // divided by a power base, the same rule every other frequency
+        // field in this contract follows. `IslandReport::settling_hz` is the
+        // wire's `frequency_hz`: both mean "where this island's frequency
+        // was at the last instant it was observed", just named differently
+        // on each side of the crate boundary. `None` means what it means on
+        // the `IslandReport` side: no step ever observed a machine on this
+        // island, not a frequency of zero.
+        frequency_hz: report.settling_hz,
+        // The LOWEST frequency reached anywhere in the run — most severe
+        // wins, matching how `condition` is already a peak rather than a
+        // last-instant snapshot, and the reason the wire carries a nadir
+        // field at all: it is what decides whether the island survives.
+        nadir_hz: report.nadir_hz,
+        // The LARGEST-MAGNITUDE rate of change observed anywhere in the
+        // run, signed — deliberately not the algebraic maximum. A rate of
+        // change is negative for a shortfall, so the more severe swing is
+        // the one furthest from zero in either direction; comparing signed
+        // values with a plain "greater than" would let a mild recovery
+        // swing (positive) beat a severe collapse swing (very negative).
+        rocof_hz_s: report.rocof_hz_s,
+        // Per unit inside, watts on the wire — the same conversion rule
+        // `load_lost_w` above follows, applied per island rather than
+        // summed across the whole cascade.
+        shed_w: to_watts(report.shed, model),
     }
 }
 
