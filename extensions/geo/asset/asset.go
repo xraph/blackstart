@@ -37,15 +37,52 @@ const (
 	// actually are.
 	Surveyed Provenance = "surveyed"
 
+	// Routed geometry follows a real right-of-way whose structures are not
+	// known. The path came from a source that digitised where the line runs —
+	// EIA's republication of the HIFLD transmission layer, a state ArcGIS
+	// mirror — and the structures along it were interpolated at a nominal span.
+	//
+	// A third value rather than a shade of the other two, because it is a
+	// different claim from either. Calling it Surveyed asserts structures
+	// nobody recorded; calling it Interpolated discards a real right-of-way and
+	// implies a great circle that ignores the ridge the line actually crosses.
+	//
+	// The distinction is measured, not assumed. Vertex spacing in that layer
+	// has a median near a real span but a maximum over 40 km, which no
+	// conductor crosses unsupported — see the phase-3 data survey, §1.4.1. The
+	// path is real; the structures are not.
+	Routed Provenance = "routed"
+
 	// Interpolated geometry is a straight great-circle path between two known
 	// endpoints, broken at a nominal span length. The structures are imaginary
-	// and evenly spaced.
+	// and evenly spaced, and so is the path.
 	Interpolated Provenance = "interpolated"
 )
 
 // Valid reports whether this is a provenance the model knows.
 func (p Provenance) Valid() bool {
-	return p == Surveyed || p == Interpolated
+	return p == Surveyed || p == Routed || p == Interpolated
+}
+
+// StructuresAreReal reports whether the structures along this route were
+// recorded rather than invented.
+//
+// The question a per-span hazard needs answered. A span between two real
+// structures is a physical object with a length and a bearing; a span between
+// two interpolated ones is a bookkeeping device, and a failure probability
+// conditioned on it means something weaker. Callers that must not conflate the
+// two ask here rather than comparing against a literal.
+func (p Provenance) StructuresAreReal() bool {
+	return p == Surveyed
+}
+
+// PathIsReal reports whether the route follows a digitised right-of-way.
+//
+// True for both Surveyed and Routed. Weather sampled along the path is honest
+// in both cases even where the structure positions are not, which is why this
+// is a separate question from StructuresAreReal.
+func (p Provenance) PathIsReal() bool {
+	return p == Surveyed || p == Routed
 }
 
 // Route is a branch's path over the ground.
