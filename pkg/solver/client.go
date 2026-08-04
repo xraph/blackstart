@@ -108,7 +108,17 @@ func (c *Client) Upload(ctx context.Context, model *solverv1.NetworkModel) (stri
 			Payload: &solverv1.PutNetworkModelRequest_Chunk{Chunk: body[start:end]},
 		}
 
-		if err := stream.Send(chunk); err != nil {
+		err := stream.Send(chunk)
+
+		// A Send that returns io.EOF means the server has already responded and
+		// closed its side — which it does, deliberately, when it already holds
+		// this payload. The real outcome is on CloseAndRecv; io.EOF here is not
+		// the error and must not be reported as one.
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		if err != nil {
 			return "", fmt.Errorf("solver: sending model bytes: %w", err)
 		}
 	}
