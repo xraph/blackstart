@@ -87,7 +87,7 @@ results are reproducible by people who do not work at a utility.
 | NERC TADS / DADS | Transmission and distribution outage statistics, aggregate reports only |
 | [EIA U.S. Energy Atlas](https://atlas.eia.gov) | Transmission line geospatial layer, 69–765 kV |
 | [PNNL-33587](https://www.pnnl.gov/main/publications/external/technical_reports/PNNL-33587.pdf) and the open-access fragility literature it catalogues | Published wind and ice fragility functions per structure class |
-| OpenStreetMap power layer | Supplementary network geometry |
+| [OpenStreetMap power layer](https://overpass-api.de) | Per-structure geometry — the only public source of structure positions (ODbL 1.0, share-alike) |
 | USGS 3DEP | Terrain elevation |
 | NLCD / LANDFIRE | Land cover and vegetation fuel |
 | ENTSO-E CGMES conformity models | CIM/CGMES parser test data |
