@@ -14,18 +14,18 @@ import (
 
 // --- Request DTOs ---
 
-type getRunRequest struct {
+type getCascadeRunRequest struct {
 	ID string `path:"id" description:"Run identifier (casc_…)"`
 }
 
-type listRunsRequest struct {
+type listCascadeRunsRequest struct {
 	Hash  string `query:"modelHash" description:"Content hash of the network model"`
 	Limit int    `query:"limit"     description:"Maximum results, most recent first" optional:"true"`
 }
 
 // --- Response DTOs ---
 
-type runsResponse struct {
+type cascadeRunsResponse struct {
 	Runs []run.Run `json:"runs"`
 }
 
@@ -87,8 +87,8 @@ func (c *Controller) Routes(router forge.Router) error {
 		forge.WithDescription(
 			"Every recorded cascade simulation of one network model, most recent first."),
 		forge.WithTags("Cascade"),
-		forge.WithRequestSchema(listRunsRequest{}),
-		forge.WithResponseSchema(http.StatusOK, "Runs", runsResponse{}),
+		forge.WithRequestSchema(listCascadeRunsRequest{}),
+		forge.WithResponseSchema(http.StatusOK, "Runs", cascadeRunsResponse{}),
 		forge.WithResponseSchema(http.StatusBadRequest, "No model hash given", nil),
 	))
 
@@ -99,7 +99,7 @@ func (c *Controller) Routes(router forge.Router) error {
 			"One recorded simulation, with every event in the order it happened "+
 				"in simulated time."),
 		forge.WithTags("Cascade"),
-		forge.WithRequestSchema(getRunRequest{}),
+		forge.WithRequestSchema(getCascadeRunRequest{}),
 		forge.WithResponseSchema(http.StatusOK, "Run", run.Run{}),
 		forge.WithResponseSchema(http.StatusNotFound, "No such run", nil),
 	))
@@ -112,7 +112,7 @@ func (c *Controller) Routes(router forge.Router) error {
 				"into, with each island's worst condition over the run and its "+
 				"final AC verdict."),
 		forge.WithTags("Cascade"),
-		forge.WithRequestSchema(getRunRequest{}),
+		forge.WithRequestSchema(getCascadeRunRequest{}),
 		forge.WithResponseSchema(http.StatusOK, "Islands", islandsResponse{}),
 		forge.WithResponseSchema(http.StatusNotFound, "No such run", nil),
 	))
@@ -122,7 +122,7 @@ func (c *Controller) Routes(router forge.Router) error {
 
 // ListRuns returns every recorded cascade of one network.
 func (c *Controller) ListRuns(ctx forge.Context) error {
-	var req listRunsRequest
+	var req listCascadeRunsRequest
 	if err := ctx.BindRequest(&req); err != nil {
 		return forge.BadRequest(err.Error())
 	}
@@ -138,12 +138,12 @@ func (c *Controller) ListRuns(ctx forge.Context) error {
 		return httperr.From(err)
 	}
 
-	return ctx.JSON(http.StatusOK, runsResponse{Runs: found})
+	return ctx.JSON(http.StatusOK, cascadeRunsResponse{Runs: found})
 }
 
 // GetRun returns one recorded cascade, events in simulated-time order.
 func (c *Controller) GetRun(ctx forge.Context) error {
-	var req getRunRequest
+	var req getCascadeRunRequest
 	if err := ctx.BindRequest(&req); err != nil {
 		return forge.BadRequest(err.Error())
 	}
@@ -163,7 +163,7 @@ func (c *Controller) GetRun(ctx forge.Context) error {
 
 // GetIslands returns a run's final islanded state.
 func (c *Controller) GetIslands(ctx forge.Context) error {
-	var req getRunRequest
+	var req getCascadeRunRequest
 	if err := ctx.BindRequest(&req); err != nil {
 		return forge.BadRequest(err.Error())
 	}
