@@ -548,6 +548,37 @@ fn accumulate_bus_history(
             0.0
         };
 
+        // The same `bound` truncation `history.trace.extend` applies below,
+        // computed once here rather than per bus since every bus in this
+        // island shares the one `response`. `response.nadir_hz` is this
+        // step's minimum over its OWN full local horizon — unbounded by
+        // `bound` — so on a non-terminal step it can name a frequency past
+        // the instant a later cascade event supersedes this island's
+        // contribution to `trace`: exactly the violation
+        // `bs_frequency::ufls::respond` was fixed for, one level up. Folding
+        // over the same truncated slice `trace` takes keeps the two in
+        // agreement by construction. `response.trace` is already absolute
+        // hertz (unlike `response.nadir_hz`, a deviation), so — unlike the
+        // `nominal +` a few lines below — no conversion is needed here.
+        //
+        // `None` when the truncated slice is empty (a quiet island whose
+        // real contribution this step is nothing at all, e.g. `bound` is
+        // `Some(0.0)` because some OTHER island's event ends the step at
+        // `t = 0`): the `if let` below then leaves `history.nadir_hz`
+        // exactly as it was, rather than manufacturing a value from samples
+        // this step never actually contributed.
+        let step_min_hz = response
+            .trace
+            .iter()
+            .take_while(|s| bound.is_none_or(|limit| s.at < limit))
+            .map(|s| s.hz)
+            .fold(f64::INFINITY, f64::min);
+        let step_nadir = if step_min_hz.is_finite() {
+            Some(step_min_hz)
+        } else {
+            None
+        };
+
         for &bus in members {
             let history = &mut bus_history[bus];
 
@@ -557,14 +588,12 @@ fn accumulate_bus_history(
                 _ => candidate,
             });
 
-            // Absolute Hz: `Response`'s own fields are deviations from
-            // nominal, and the wire contract (and this field) wants the
-            // frequency itself — 59.7, not -0.3.
-            let nadir = nominal + response.nadir_hz;
-            history.nadir_hz = Some(match history.nadir_hz {
-                Some(existing) if existing <= nadir => existing,
-                _ => nadir,
-            });
+            if let Some(nadir) = step_nadir {
+                history.nadir_hz = Some(match history.nadir_hz {
+                    Some(existing) if existing <= nadir => existing,
+                    _ => nadir,
+                });
+            }
 
             let rocof = response.rocof_hz_s;
             history.rocof_hz_s = Some(match history.rocof_hz_s {

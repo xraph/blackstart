@@ -963,3 +963,146 @@ fn a_machineless_islands_frequency_fields_stay_absent() {
         .expect("g0 and l0 stay together the whole run");
     assert!(alive.condition.is_some());
 }
+
+/// `g0` (slack, `H = 4.0`, `R = 0.05`, `p_max = 3.0`) feeds `l0` (`-4.0` pu)
+/// over the ONLY path, branch `"a"` (`r = 0.01`, `x = 0.1`, rated `1.0`).
+///
+/// Sized so the branch's overcurrent element trips on its INSTANTANEOUS
+/// element, not the inverse-time curve, closing the numbers exactly with no
+/// relay-curve algebra needed: `"a"` carries the network's whole `4.0` pu
+/// load (the only path from `g0` to `l0`), a loading of `4.0` against a
+/// `1.0` pu rating — past the default instantaneous multiple of `2.5` — so
+/// it trips at exactly the default breaker time, `0.05` s, deterministically.
+/// (Distance protection stays out of it: at `x = 0.1`, even zone 3's reach
+/// of `1.5` requires a flow past `1 / (1.5 x 0.1) ~= 6.67` pu to see it, well
+/// above the `4.0` pu actually flowing.)
+fn quiet_split_case() -> Case {
+    let base = Base::new(100e6, 345e3).expect("a valid base");
+    let buses = vec![
+        Bus::slack("g0", 1.0)
+            .with_real_limits(0.0, 3.0)
+            .with_machine(4.0, 0.05),
+        Bus::load("l0", -4.0, 0.0),
+    ];
+    let branches = vec![Branch::new("a", 0, 1, 0.01, 0.1).with_rating(1.0)];
+
+    Case::new("quiet-split", base, buses, branches)
+}
+
+/// THE TEST THIS TASK EXISTS FOR, one level up from
+/// `bs-frequency`'s own `nadir_hz_is_the_minimum_of_the_trace`.
+///
+/// That fix made `bs_frequency::ufls::respond` derive `Response::nadir_hz`
+/// from its OWN assembled `trace` rather than a raw trajectory's whole
+/// (possibly counterfactual) integration horizon. But `bs_cascade`'s
+/// `accumulate_bus_history` has a second, independent truncation on top of
+/// that one: `bound`, which cuts `history.trace` off at `out.at` — the
+/// EARLIEST event anywhere in the whole cascade this step, not anything
+/// specific to this particular island. Before this fix, `history.nadir_hz`
+/// was folded in from `nominal + response.nadir_hz` — the WHOLE step's own
+/// minimum, ignoring `bound` entirely — so it could name a frequency past
+/// the instant `bound` says this island's contribution to `trace` stops.
+///
+/// This fixture exercises exactly that gap. `quiet_split_case` is ONE island
+/// (both buses) for its first and only step, and `l0` never sheds and never
+/// trips anything itself — it is the passive party. What ends the step is
+/// `"a"`'s OWN overcurrent element, at `t = 0.05` s (see the fixture's own
+/// doc for why that number is exact rather than measured). `out.at = 0.05`
+/// for the whole step, so `bound = Some(0.05)` truncates BOTH buses'
+/// contribution to `history.trace` there — well before `g0`+`l0`'s combined
+/// swing (residual `= 4.0 - 3.0 = 1.0` pu after dispatch, the same
+/// `heavy_deficit_case`-style arithmetic used throughout this file) reaches
+/// its own true nadir. That true nadir is a real, physically legitimate
+/// point on the UNTRUNCATED trajectory — this is not a shed-crossing
+/// counterfactual, the thing `bs-frequency`'s own fix addressed — it is
+/// simply LATER than the instant this island's real, lived history stops:
+/// at `t = 0.05` s the case is re-partitioned into `{g0}` alone (no load,
+/// flat at nominal from then on) and `{l0}` alone, which has no PV or slack
+/// member at all, so `Aggregate::of` returns `None` and `l0` never gets
+/// another frequency response for the rest of the run. Its bus's history is
+/// therefore fixed forever at whatever this ONE step contributed — the
+/// clean test for whether that contribution was bound-truncated correctly,
+/// with nothing later to paper over getting it wrong.
+///
+/// Confirmed against this fixture's own instrumented output (measured, not
+/// hand-solved — the swing here has governor reheat dynamics, so the exact
+/// transient nadir has no closed form, the same reasoning already used
+/// elsewhere in this file for a transient nadir/relay time):
+/// - The raw, UNBOUNDED `response.nadir_hz` for this one step's combined
+///   island is a deviation of `-6.256373831582707` Hz (`53.74362616841729`
+///   Hz absolute) — the counterfactual "if the split had never happened"
+///   figure the pre-fix code reported for BOTH resulting buses.
+/// - The bound-truncated slice — `t < 0.05` s, 5 samples at the `0.01` s
+///   integration step — bottoms out at `59.70520645730025` Hz absolute, the
+///   real, lived value. `l0`'s report's `trace` has exactly 5 points (under
+///   `TRACE_BUCKETS`, so `decimate` returns it unchanged — see
+///   `decimate.rs::a_trace_shorter_than_the_budget_is_unchanged` — so
+///   asserting against the WIRE-shaped `trace` here is already exact, not
+///   merely "sound after decimation" as it would be for a longer curve).
+#[test]
+fn nadir_hz_is_the_minimum_of_the_trace_across_a_split() {
+    let got = simulate(
+        &quiet_split_case(),
+        &[],
+        &Protection::new(Settings::default(), Vec::new()),
+        &Scheme::none(),
+        &Options::default(),
+        &Limits::default(),
+        &Verification::default(),
+    )
+    .expect("solvable");
+
+    // Topologically, not thermally, collapsed: `l0` ends up on a
+    // load-bearing island with no machine at all. `is_collapsed`'s own doc
+    // treats that the same as a frequency collapse — expected here, and not
+    // what this test is about.
+    assert_eq!(got.outcome, CascadeOutcome::Collapsed);
+    assert_eq!(got.reports.len(), 2);
+
+    let dead = got
+        .reports
+        .iter()
+        .find(|r| r.members == vec![1])
+        .expect("l0 ends up alone, machine-less, after the split");
+
+    assert!(
+        !dead.trace.is_empty(),
+        "the dead island must still carry the one real segment it lived \
+         through before losing its machine"
+    );
+
+    let trace_min_hz = dead
+        .trace
+        .iter()
+        .map(|sample| sample.hz)
+        .fold(f64::INFINITY, f64::min);
+    let nadir = dead
+        .nadir_hz
+        .expect("l0 had a real machine-bearing island for one whole step");
+
+    // Bit-for-bit: both are folds over the very same samples, so a correct
+    // implementation reproduces the identical `f64` — the same standard
+    // `bs-frequency`'s own `nadir_hz_is_the_minimum_of_the_trace` already
+    // holds `respond` to, one level up.
+    assert_eq!(
+        nadir.to_bits(),
+        trace_min_hz.to_bits(),
+        "nadir_hz ({nadir}) must equal the reported trace's own minimum \
+         ({trace_min_hz} Hz) — a curve that disagreed with the number \
+         printed beside it would be worse than a coarse one"
+    );
+
+    // And pin the actual number, not merely the equality: an implementation
+    // that made both sides consistently wrong (e.g. by deriving BOTH from
+    // the unbounded trajectory) would still pass the check above. `59.0`
+    // sits strictly between the real, bound-truncated value (~59.71 Hz) and
+    // the counterfactual, unbounded one (~53.74 Hz) this fixture's own
+    // measured output puts on either side of it.
+    assert!(
+        nadir > 59.0,
+        "nadir {nadir} Hz should be the mild, real dip this fixture's \
+         0.05 s truncation actually allows (~59.71 Hz measured), not the \
+         deep, counterfactual figure the whole 60 s horizon would show if \
+         the split had never happened (~53.74 Hz measured)"
+    );
+}
