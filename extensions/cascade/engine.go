@@ -191,10 +191,13 @@ func fromWire(response *solverv1.SimulateCascadeResponse, model *solverv1.Networ
 		ModelHash:     response.GetModelHash(),
 		SolverVersion: response.GetSolverVersion(),
 		Outcome:       run.Outcome(outcomeTable[response.GetOutcome()]),
-		Events:        events,
-		Islands:       islands,
-		LoadLost:      divide(response.GetLoadLostW(), sBase),
-		Steps:         response.GetSteps(),
+		// Branch identifiers, not a power-system quantity — crosses untouched,
+		// the same reason Elapsed below does.
+		Initiating: response.GetInitiating(),
+		Events:     events,
+		Islands:    islands,
+		LoadLost:   divide(response.GetLoadLostW(), sBase),
+		Steps:      response.GetSteps(),
 		// Wall-clock seconds, not a power-system quantity. Dividing this by
 		// sBase would be the same class of error as dividing a frequency by
 		// it — a plausible-looking number on the wrong axis entirely.
@@ -251,6 +254,18 @@ func islandFromWire(wire *solverv1.IslandState, sBase float64) run.Island {
 	if wire.RocofHzS != nil {
 		rocof := wire.GetRocofHzS()
 		island.Rocof = &rocof
+	}
+
+	// Seconds and hertz both cross untouched. The only conversion this
+	// extension performs is division by a power base, and neither of these
+	// is a power. No trace means no machine ever reported on this island —
+	// an absent curve, not one point sitting at zero.
+	if trace := wire.GetTrace(); len(trace) > 0 {
+		samples := make([]run.Sample, len(trace))
+		for i, point := range trace {
+			samples[i] = run.Sample{At: point.GetAtS(), Hz: point.GetHz()}
+		}
+		island.Trace = samples
 	}
 
 	return island

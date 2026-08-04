@@ -249,3 +249,79 @@ func TestAnUnspecifiedEventKindIsNotReadAsOverload(t *testing.T) {
 		t.Errorf("an unset event kind came back as %q, want empty", got)
 	}
 }
+
+// A frequency curve crosses in hertz and seconds, divided by nothing.
+//
+// Dividing either by the model's power base is the error the SI-on-the-wire
+// rule exists to prevent: 59.4 Hz against a 100 MVA base becomes 5.94e-7,
+// which is a plausible-looking number and completely wrong.
+//
+// The brief's test calls islandFromWire directly, but every test in this
+// file lives in package cascade_test — a black-box package that cannot see
+// an unexported function in package cascade. Routed through Simulate
+// instead, the same as every other island assertion here; the model's
+// SBaseVa is 100e6, matching the base the brief's direct call used.
+func TestATraceIsNotDividedByTheBase(t *testing.T) {
+	t.Parallel()
+
+	island := islandWire(nil, nil, nil)
+	island.Trace = []*solverv1.FrequencySample{
+		{AtS: 0, Hz: 60.0},
+		{AtS: 1.5, Hz: 59.4},
+	}
+
+	simulator := &fakeSimulator{response: withResponseIsland(island)}
+
+	result, err := engine(t, simulator, nil).Simulate(t.Context(), cascade.Request{Model: model()})
+	if err != nil {
+		t.Fatalf("Simulate: %v", err)
+	}
+
+	got := result.Islands[0]
+
+	if len(got.Trace) != 2 {
+		t.Fatalf("got %d points, want 2", len(got.Trace))
+	}
+	if got.Trace[1].Hz != 59.4 {
+		t.Errorf("hz = %v, want 59.4 — it has been divided", got.Trace[1].Hz)
+	}
+	if got.Trace[1].At != 1.5 {
+		t.Errorf("at = %v, want 1.5 — it has been divided", got.Trace[1].At)
+	}
+}
+
+// An island with no curve carries no curve, not a curve of one zero point.
+func TestAnAbsentTraceStaysEmpty(t *testing.T) {
+	t.Parallel()
+
+	simulator := &fakeSimulator{response: withResponseIsland(islandWire(nil, nil, nil))}
+
+	result, err := engine(t, simulator, nil).Simulate(t.Context(), cascade.Request{Model: model()})
+	if err != nil {
+		t.Fatalf("Simulate: %v", err)
+	}
+
+	if len(result.Islands[0].Trace) != 0 {
+		t.Errorf("got %d points, want none", len(result.Islands[0].Trace))
+	}
+}
+
+// The initiating outage is a branch identifier, a string, and crosses
+// untouched — no arithmetic applies to a name.
+func TestInitiatingCrossesAsBranchNames(t *testing.T) {
+	t.Parallel()
+
+	response := settledResponse()
+	response.Initiating = []string{"ln TULIA-PLAINVIEW 345"}
+
+	simulator := &fakeSimulator{response: response}
+
+	result, err := engine(t, simulator, nil).Simulate(t.Context(), cascade.Request{Model: model()})
+	if err != nil {
+		t.Fatalf("Simulate: %v", err)
+	}
+
+	if len(result.Initiating) != 1 || result.Initiating[0] != "ln TULIA-PLAINVIEW 345" {
+		t.Errorf("initiating = %v, want [ln TULIA-PLAINVIEW 345]", result.Initiating)
+	}
+}

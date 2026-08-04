@@ -96,6 +96,17 @@ type Event struct {
 	Island *uint32 `json:"island,omitempty"`
 }
 
+// Sample is one point on an island's frequency curve.
+type Sample struct {
+	// At is seconds from the start of the cascade, on the same clock as an
+	// event's time — so a scrubber can put the curve and the log on one axis.
+	At float64 `json:"at"`
+
+	// Hz is absolute frequency, hertz. Carried across the wire undivided:
+	// a frequency is not a power and has no per-unit base.
+	Hz float64 `json:"hz"`
+}
+
 // Island is one island's state at the end of the run.
 type Island struct {
 	// Buses are the indices, into the model's bus list, that ended up on
@@ -135,6 +146,11 @@ type Island struct {
 
 	// Shed is load shed on this island over the whole run, per unit.
 	Shed float64 `json:"shed"`
+
+	// Trace is the island's frequency curve over the run, in time order,
+	// already decimated by the solver. Empty when no step observed a machine
+	// on this island — an absent curve, not a flat line at zero.
+	Trace []Sample `json:"trace,omitempty"`
 }
 
 // Run is one execution of a cascade simulation.
@@ -154,6 +170,10 @@ type Run struct {
 
 	// Outcome is how the cascade ended.
 	Outcome Outcome `json:"outcome"`
+
+	// Initiating names the outages that started the cascade, as branch
+	// identifiers. An operator names lines, not indices.
+	Initiating []string `json:"initiating"`
 
 	// Events are every logged occurrence, in simulated-time order, as the
 	// solver produced them. Reordering, if a client wants newest-first, is a
