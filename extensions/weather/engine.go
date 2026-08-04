@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/xraph/blackstart/extensions/provenance"
 	"github.com/xraph/blackstart/extensions/weather/field"
 	"github.com/xraph/blackstart/extensions/weather/forecast"
 	"github.com/xraph/blackstart/extensions/weather/observation"
@@ -33,17 +34,61 @@ import (
 type Engine struct {
 	store store.Store
 	bus   *hooks.Bus
+
+	// The ingest half. All optional: a read-only deployment, and every test
+	// of the read paths, needs none of them — and an engine that demanded a
+	// fetcher to answer a query would make the read API depend on the network.
+	feeds    Feeds
+	fetcher  Fetcher
+	recorder provenance.Recorder
+
+	// now is injectable so a test can pin the retrieval times a provenance
+	// record carries rather than comparing against a moving target.
+	now func() time.Time
+}
+
+// EngineOption configures the engine.
+//
+// Named for the engine because the extension already has an Option, and two
+// types called the same thing in one package would make every call site ask
+// which one it meant.
+type EngineOption func(*Engine)
+
+// WithIngest supplies what retrieval needs.
+//
+// Separate from the constructor because reading and ingesting are different
+// deployments of the same extension: `bsctl weather show` needs a store, and
+// nothing else.
+func WithIngest(feeds Feeds, fetcher Fetcher, recorder provenance.Recorder) EngineOption {
+	return func(e *Engine) {
+		e.feeds, e.fetcher, e.recorder = feeds, fetcher, recorder
+	}
+}
+
+// WithClock replaces the time source. Tests use it; production does not.
+func WithClock(now func() time.Time) EngineOption {
+	return func(e *Engine) {
+		if now != nil {
+			e.now = now
+		}
+	}
 }
 
 // NewEngine builds the engine.
 //
 // The bus may be nil — a CLI invocation has no interest in domain events.
-func NewEngine(s store.Store, bus *hooks.Bus) (*Engine, error) {
+func NewEngine(s store.Store, bus *hooks.Bus, opts ...EngineOption) (*Engine, error) {
 	if s == nil {
 		return nil, errors.New("weather: engine needs a store")
 	}
 
-	return &Engine{store: s, bus: bus}, nil
+	e := &Engine{store: s, bus: bus, now: time.Now}
+
+	for _, opt := range opts {
+		opt(e)
+	}
+
+	return e, nil
 }
 
 // Cycle reads one model run.
