@@ -227,3 +227,25 @@ func TestAnEventsIslandZeroIsNotConfusedWithAbsent(t *testing.T) {
 		t.Errorf("event kind is %q, want shed", event.Kind)
 	}
 }
+
+// Same defense as the outcome, condition and verdict tables: an event whose
+// kind was never set must not silently read as the first named kind,
+// overload — that would report an overload nobody logged.
+func TestAnUnspecifiedEventKindIsNotReadAsOverload(t *testing.T) {
+	response := settledResponse()
+	response.Events = []*solverv1.CascadeEvent{{
+		AtS: 1,
+		// Kind deliberately left unset.
+	}}
+
+	simulator := &fakeSimulator{response: response}
+
+	result, err := engine(t, simulator, nil).Simulate(t.Context(), cascade.Request{Model: model()})
+	if err != nil {
+		t.Fatalf("Simulate: %v", err)
+	}
+
+	if got := result.Events[0].Kind; got != "" {
+		t.Errorf("an unset event kind came back as %q, want empty", got)
+	}
+}

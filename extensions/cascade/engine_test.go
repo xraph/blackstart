@@ -173,3 +173,24 @@ func TestARunRecordsWhatProducedIt(t *testing.T) {
 		t.Error("the run is not bounded in time")
 	}
 }
+
+// Proto3 cannot distinguish an unset enum from a deliberate zero. Reading
+// CASCADE_OUTCOME_UNSPECIFIED as OutcomeSettled would report a cascade
+// nobody categorized as one that finished cleanly — of the four tables in
+// engine.go, this is the direction that matters most: it hides a run whose
+// ending was never determined behind the calmest label available.
+func TestAnUnspecifiedOutcomeIsNotReadAsSettled(t *testing.T) {
+	response := settledResponse()
+	response.Outcome = solverv1.CascadeOutcome_CASCADE_OUTCOME_UNSPECIFIED
+
+	simulator := &fakeSimulator{response: response}
+
+	result, err := engine(t, simulator, nil).Simulate(t.Context(), cascade.Request{Model: model()})
+	if err != nil {
+		t.Fatalf("Simulate: %v", err)
+	}
+
+	if result.Outcome != "" {
+		t.Errorf("an unset outcome came back as %q, want empty", result.Outcome)
+	}
+}
