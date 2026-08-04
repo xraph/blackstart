@@ -107,28 +107,34 @@ func (p *Poller) SetClock(now func() time.Time) {
 	}
 }
 
-// Tick runs one pass: retrieve, then sample what has been retrieved.
+// Tick runs one pass: sample what is already here, then retrieve what is not.
 //
-// Retrieval takes the newest cycle first, then walks backwards to the horizon.
-// Newest first because operational correctness is the more urgent of the two
-// goals — a current forecast matters now, and a six-hour-old one does not.
+// Sampling goes first, and the order is not arbitrary. Sampling is bounded,
+// local, and works on bytes already paid for; retrieval is unbounded network
+// work that can run for many minutes against a full backfill horizon. Putting
+// the bounded step first means a process that has just started produces usable
+// output from what it already holds before it spends anything on new fetches —
+// measured at eleven minutes to the first rating with the order reversed.
+//
+// Retrieval then takes the newest cycle first and walks backwards to the
+// horizon. Newest first because operational correctness is the more urgent
+// goal: a current forecast matters now and a six-hour-old one does not.
 // Backwards afterwards because a missed cycle is unrecoverable once the
 // archive rolls past it.
 //
-// Sampling is a separate sweep over whatever is in the fetched state rather
-// than something chained onto each retrieval, and the difference matters when
-// the grid service is down: retrieval still succeeds, the bytes are safe, and
-// the next tick samples them once the solver is back. Chaining would lose the
-// cycle to a transient outage in a component retrieval does not need.
+// The two halves are separate sweeps rather than a chain, which is what makes a
+// grid-service outage survivable: retrieval still succeeds, the bytes are safe,
+// and the next tick samples them once the solver is back. Chaining would lose
+// the cycle to a failure in a component retrieval does not need.
 //
 // Idempotent throughout, which is what makes this safe on every restart: a
 // cycle already recorded costs one lookup and reports as skipped.
 func (p *Poller) Tick(ctx context.Context) error {
-	if err := p.retrieve(ctx); err != nil {
+	if err := p.sample(ctx); err != nil {
 		return err
 	}
 
-	return p.sample(ctx)
+	return p.retrieve(ctx)
 }
 
 // retrieve is the ingest half of a tick.
