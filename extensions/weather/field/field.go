@@ -91,6 +91,13 @@ const (
 	PrecipSnow         Field = "precip_snow"
 
 	// PercentFrozen is the percentage of precipitation falling frozen.
+	//
+	// Carries -50 when no precipitation is falling — NCEP's sentinel, not a
+	// percentage. Observed uniformly across a real August CONUS cycle, which
+	// is what a dry domain looks like. Stored as reported rather than
+	// translated, following this package's rule that a stored number matches
+	// the bytes its provenance chain leads to; a consumer averaging this
+	// field without filtering the sentinel would get nonsense.
 	PercentFrozen Field = "percent_frozen"
 
 	// FreezingRain is accumulated freezing rain — the direct driver of the ice
