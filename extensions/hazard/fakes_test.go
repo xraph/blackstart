@@ -163,7 +163,7 @@ func newWorld(t *testing.T) *world {
 	}
 
 	w.geometry = &fakeGeometry{
-		routes: []geoasset.Route{{ID: w.route, BranchID: w.branch}},
+		routes: []geoasset.Route{{ID: w.route, CarrierID: w.branch}},
 		spans: map[id.ID][]geoasset.Span{
 			w.route: {{
 				ID: w.span, RouteID: w.route, Sequence: 0,

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	geoasset "github.com/xraph/blackstart/extensions/geo/asset"
+	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/hazard/conductor"
 	hid "github.com/xraph/blackstart/extensions/hazard/id"
 	"github.com/xraph/blackstart/extensions/hazard/store"
@@ -285,11 +286,15 @@ func (e *Engine) computeSpan(
 	return out, outcome, nil
 }
 
-// conductorFor resolves span → route → branch → assignment → conductor.
+// conductorFor resolves span → route → carrier → assignment → conductor.
 //
-// Reports false, with no error, when the branch has no assignment. That is the
-// unrated case and it is deliberately not an error, because it is a gap in the
-// asset record rather than a fault.
+// Reports false, with no error, in two cases that are not the same thing. A
+// branch with no assignment is a gap in the asset record. A route carrying a
+// *circuit* has no assignment to gap: a circuit is a line somebody built, it
+// carries no electrical parameters by design, and nothing is missing when it
+// has no conductor. Both come back unrated because that is what an unrated
+// span is — a span this pass cannot rate — but only the first is worth
+// anybody going and fixing.
 //
 // A missing route is an error, and the distinction is the point: both surface
 // as bserr.ErrNotFound from their stores, and collapsing them would let a
@@ -303,7 +308,16 @@ func (e *Engine) conductorFor(
 			"hazard: reading route %s for span %s: %w", span.RouteID, span.ID, err)
 	}
 
-	assignment, err := e.store.Assignments().ForBranch(ctx, route.BranchID)
+	// Asked before the lookup rather than after it misses. ForBranch given a
+	// circuit identifier would return not-found, which the branch below reads
+	// as "nobody assigned a conductor yet" — a category error wearing the
+	// costume of a gap in the record, and indistinguishable from one in every
+	// count and report downstream.
+	if gid.IsCircuit(route.CarrierID) {
+		return conductor.Conductor{}, false, nil
+	}
+
+	assignment, err := e.store.Assignments().ForBranch(ctx, route.CarrierID)
 	if err != nil {
 		if errors.Is(err, bserr.ErrNotFound) {
 			return conductor.Conductor{}, false, nil
@@ -316,7 +330,7 @@ func (e *Engine) conductorFor(
 	if err != nil {
 		return conductor.Conductor{}, false, fmt.Errorf(
 			"hazard: assignment %s on branch %s: %w",
-			assignment.ID, route.BranchID, err)
+			assignment.ID, route.CarrierID, err)
 	}
 
 	return which, true, nil

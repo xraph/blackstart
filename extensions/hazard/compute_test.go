@@ -5,8 +5,11 @@ import (
 	"testing"
 	"time"
 
+	geoasset "github.com/xraph/blackstart/extensions/geo/asset"
 	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/hazard"
+	"github.com/xraph/blackstart/extensions/hazard/conductor"
+	hid "github.com/xraph/blackstart/extensions/hazard/id"
 	hzstore "github.com/xraph/blackstart/extensions/hazard/store"
 	"github.com/xraph/blackstart/extensions/hazard/store/memory"
 	"github.com/xraph/blackstart/extensions/weather/field"
@@ -82,6 +85,54 @@ func TestAnUnassignedSpanIsCountedUnrated(t *testing.T) {
 
 	if got.Values != 0 {
 		t.Errorf("an unassigned span produced %d values", got.Values)
+	}
+}
+
+// A route may carry a branch in a network model or a real circuit, and a
+// circuit has no electrical parameters by design — so it has no conductor
+// assignment and no rating, and nothing is missing when it does not.
+//
+// Worth a test of its own rather than folding into the unassigned case,
+// because in ordinary data the two are indistinguishable: asking ForBranch for
+// a circuit identifier misses, and a miss is reported unrated too. Identical
+// output, different reason. So this test builds the one arrangement where the
+// reason shows — an assignment the lookup *would* find — and asserts the span
+// is still unrated. Delete that setup and the test passes with no guard at
+// all, which is how it was first written.
+func TestASpanOnACircuitIsCountedUnrated(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t).withWeather(icyWeather())
+
+	circuit := id.MustNew(gid.Circuit)
+	w.geometry.routes = []geoasset.Route{{ID: w.route, CarrierID: circuit}}
+
+	// An assignment stored against the circuit's own identifier, so the
+	// lookup would *succeed* if it happened. Without this the test passes
+	// either way — a missing guard reaches ForBranch, misses, and reports the
+	// same unrated span for the wrong reason. This is what makes the guard
+	// observable: reachable, and it must still not be reached.
+	if err := w.store.Assignments().Put(t.Context(), conductor.Assignment{
+		ID:            hid.NewAssignment(),
+		BranchID:      circuit,
+		ConductorCode: "drake",
+		Basis:         conductor.Surveyed,
+	}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	got, err := w.engine(t).Compute(
+		t.Context(), hazard.ComputeRequest{CycleID: w.weather.cycle.ID})
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+
+	if got.Unrated != 1 || got.Spans != 0 {
+		t.Errorf("counted %d unrated and %d rated, want 1 and 0", got.Unrated, got.Spans)
+	}
+
+	if got.Values != 0 {
+		t.Errorf("a span on a circuit produced %d values", got.Values)
 	}
 }
 
