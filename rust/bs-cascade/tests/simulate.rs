@@ -367,6 +367,215 @@ fn ufls_shedding_is_counted_in_load_lost() {
     );
 }
 
+/// The same two-stage cascade as `ufls_shedding_is_counted_in_load_lost`
+/// above, but under a REALISTIC survival band (57.0/61.8 Hz) instead of that
+/// test's deliberately generous 40.0/70.0 — every other test in this file
+/// uses the wide band, which is exactly the shape of gap that let a healthy
+/// network's `ceiling_hz` default to `0.0` and read as `Collapsed` upstream,
+/// in `bs-solver`, go unnoticed for as long as it did: nothing at the
+/// cascade layer ever pushed a settling frequency close enough to a REAL
+/// ceiling or floor to notice the band's actual value mattering.
+///
+/// The two stages, the shed amounts, and the eventual self-correction to a
+/// near-nominal settling frequency are all already hand-derived in
+/// `ufls_shedding_is_counted_in_load_lost`'s own doc comment — nothing
+/// about the physics changes with a narrower band, only whether the FINAL
+/// settling frequency happens to land inside it. Since that final settling
+/// point is near nominal (60 Hz) once dispatch self-corrects, it is well
+/// inside 57.0-61.8 too, so this must reach the same `Settled` outcome and
+/// the same 7.5 pu `load_lost` the wide-band version does.
+///
+/// What would make this fail: any code path that special-cased or hard-coded
+/// the wide 40.0/70.0 band seen everywhere else in this file rather than
+/// reading `Scheme::floor_hz`/`ceiling_hz` from the scheme actually passed
+/// in.
+#[test]
+fn a_realistic_survival_band_reaches_the_same_outcome() {
+    let scheme = Scheme {
+        stages: vec![
+            Stage {
+                at_hz: 59.99,
+                shed_fraction: 0.5,
+                delay: 0.0,
+            },
+            Stage {
+                at_hz: 59.98,
+                shed_fraction: 0.5,
+                delay: 0.0,
+            },
+        ],
+        floor_hz: 57.0,
+        ceiling_hz: 61.8,
+    };
+
+    let got = simulate(
+        &heavy_deficit_case(),
+        &[],
+        &Protection::new(Settings::default(), Vec::new()),
+        &scheme,
+        &Options::default(),
+        &Limits::default(),
+        &Verification::default(),
+    )
+    .expect("solvable");
+
+    assert_eq!(got.outcome, CascadeOutcome::Settled);
+    assert!(
+        (got.load_lost - 7.5).abs() < 1e-6,
+        "load_lost {}, want 7.5 pu — unchanged by narrowing the band",
+        got.load_lost
+    );
+}
+
+/// Every relay disabled: an infinite overcurrent pickup and no distance
+/// zones at all.
+///
+/// The two `load_lost` tests below need the island to stay whole — generator
+/// and load together — for the ENTIRE run, so that a frequency collapse is
+/// the only way anything gets lost. `heavy_deficit_case`'s sustained heavy
+/// loading, left unshed for long enough, is itself enough to pick up a zone-2
+/// distance trip around t = 0.35s (found while writing these tests, by
+/// printing `Cascade::events` for exactly this fixture and scheme) — which
+/// would split the load onto its own de-energized island and let the
+/// PRE-FIX `dead_load` (counting only `Subcase::extract(..).is_none()`
+/// islands) get the right answer for the wrong reason, making the test
+/// unable to fail against the bug it exists to catch. Disabling protection
+/// here keeps the one thing under test — the frequency-collapse path —
+/// isolated from a second, unrelated way this fixture can lose its load.
+fn disabled_protection() -> Protection {
+    Protection::new(
+        Settings {
+            overcurrent: bs_protection::Overcurrent {
+                pickup: f64::INFINITY,
+                instantaneous: None,
+                ..bs_protection::Overcurrent::default()
+            },
+            distance: bs_protection::Distance {
+                zones: Vec::new(),
+                breaker_time: 0.05,
+            },
+        },
+        Vec::new(),
+    )
+}
+
+/// An island that ends `Collapsed` loses ALL of its load, even though it
+/// never de-energizes — its slack bus keeps its machine the whole run.
+///
+/// Reuses `heavy_deficit_case` with NO shedding scheme at all
+/// (`Scheme::none()`), so `Model::settling`'s closed form gives the exact
+/// number directly, with no stage arithmetic in the way, and with
+/// `disabled_protection` (see its own doc) so nothing trips the branch and
+/// splits the load off before the frequency model ever gets a say. Dispatch
+/// closes 3.0 pu of the 10.0 pu deficit (bus0's `p_max`), leaving a 7.0 pu
+/// residual for the frequency model — the same figure
+/// `ufls_shedding_is_counted_in_load_lost` above hand-derives. With no
+/// governor response beyond `g0`'s own explicit R = 0.05
+/// (`inverse_droop` = 3.0/0.05 / 3.0 = 20.0 pu) and load damping D = 1.0,
+/// `Δf = -imbalance / (D + 1/R) = -7.0 / 21.0 = -0.3333...` pu, ×60 Hz
+/// nominal = -20.0 Hz: the island settles at 40.0 Hz, below `Scheme::none()`'s
+/// 57.0 Hz floor — `Collapsed`, on the very first step, with the slack bus
+/// still attached and still producing 3.0 pu.
+///
+/// `load_lost` must therefore be the island's WHOLE served load, 10.0 pu —
+/// not the 0.0 the pre-fix code reported, because `Subcase::extract` still
+/// succeeds for an island that kept its slack bus, and the old `dead_load`
+/// loop only ever counted islands where extraction failed.
+///
+/// What would make this fail: `dead_load` (in `bs-cascade/src/simulate.rs`)
+/// reverting to counting only `Subcase::extract(..).is_none()` islands,
+/// which would bring `load_lost` back to 0.0 on this fixture even though the
+/// outcome is `Collapsed`.
+#[test]
+fn a_collapsed_island_that_keeps_its_generator_loses_its_full_load() {
+    let got = simulate(
+        &heavy_deficit_case(),
+        &[],
+        &disabled_protection(),
+        &Scheme::none(),
+        &Options::default(),
+        &Limits::default(),
+        &Verification::default(),
+    )
+    .expect("solvable");
+
+    assert_eq!(got.outcome, CascadeOutcome::Collapsed);
+    assert_eq!(got.islands.count(), 1);
+    assert!(
+        got.islands.members[0].contains(&0),
+        "the slack bus must still be energized — this is a frequency \
+         collapse, not a de-energized island"
+    );
+    assert!(
+        (got.load_lost - 10.0).abs() < 1e-6,
+        "load_lost {}, want 10.0 pu — the island's entire served load",
+        got.load_lost
+    );
+}
+
+/// The compounding half of the same bug: the step that BOTH sheds AND
+/// collapses must still land its shed in `load_lost`, even though `simulate`
+/// breaks out of its loop on that exact step, before the "normal" path that
+/// records a step's effects would otherwise run.
+///
+/// One stage, threshold 59.99 Hz with no hold delay — the same threshold
+/// `ufls_shedding_is_counted_in_load_lost` above already establishes fires
+/// within this fixture's first step, given the same 7.0 pu residual. It
+/// sheds 10% of the 10.0 pu served load: 1.0 pu, leaving a 9.0 pu load and
+/// reducing the residual imbalance to 7.0 - 1.0 = 6.0 pu. Re-settling against
+/// that: `Δf = -6.0 / 21.0 x 60 = -17.1428...` Hz, settling at
+/// 60 - 17.1428... ≈ 42.857 Hz — below this test's own 50.0 Hz floor, so the
+/// SAME step that sheds is also the step that collapses.
+///
+/// `load_lost` must be the full original 10.0 pu: 9.0 pu remaining
+/// (post-shed, still sitting on the case, read back by `dead_load`) plus the
+/// 1.0 pu this step shed. Losing the shed half — the exact bug the loop
+/// re-ordering in `simulate` fixes — would report 9.0 pu instead.
+///
+/// What would make this fail: reverting the `simulate` loop so `record_step`
+/// runs only in the non-collapsing path, once again dropping the collapse-
+/// triggering step's own shed from `shed_total` — `load_lost` would come
+/// back 9.0 instead of 10.0.
+#[test]
+fn a_shed_on_the_collapsing_step_itself_is_not_dropped() {
+    let scheme = Scheme {
+        stages: vec![Stage {
+            at_hz: 59.99,
+            shed_fraction: 0.1,
+            delay: 0.0,
+        }],
+        floor_hz: 50.0,
+        ceiling_hz: 61.8,
+    };
+
+    let got = simulate(
+        &heavy_deficit_case(),
+        &[],
+        &disabled_protection(),
+        &scheme,
+        &Options::default(),
+        &Limits::default(),
+        &Verification::default(),
+    )
+    .expect("solvable");
+
+    assert_eq!(got.outcome, CascadeOutcome::Collapsed);
+
+    let sheds: Vec<&Event> = got
+        .events
+        .iter()
+        .filter(|e| e.kind == EventKind::Shed)
+        .collect();
+    assert_eq!(sheds.len(), 1, "the one stage must have fired: {sheds:?}");
+
+    assert!(
+        (got.load_lost - 10.0).abs() < 1e-6,
+        "load_lost {}, want 10.0 pu (9.0 remaining + 1.0 shed on the \
+         collapsing step)",
+        got.load_lost
+    );
+}
+
 /// The island's UFLS outcome reaches `Cascade::reports` as its PEAK
 /// severity, not merely its condition at the final instant — and not
 /// merely `is_some()`, which would pass even if the wrong variant leaked

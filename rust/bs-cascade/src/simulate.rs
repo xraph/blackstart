@@ -316,53 +316,20 @@ pub fn simulate(
         // an event, and `bus_history` is where that real amount is kept
         // either way. See `IslandReport::shed`'s own doc for why that can
         // make it disagree with the event log.
-        for (index, (members, response)) in
-            out.islands.members.iter().zip(&out.responses).enumerate()
-        {
-            let Some(response) = response else { continue };
+        accumulate_bus_history(&mut bus_history, &out, &served_before, nominal);
 
-            // Mirrors `record_step`'s own shed arithmetic exactly — the same
-            // `shed_fraction * served_before[index]` — rather than a second,
-            // independently-written computation that could drift from it.
-            let shed = if response.shed_fraction > 0.0 {
-                response.shed_fraction * served_before[index]
-            } else {
-                0.0
-            };
-
-            for &bus in members {
-                let history = &mut bus_history[bus];
-
-                let candidate = response.condition;
-                history.condition = Some(match history.condition {
-                    Some(existing) if severity(existing) >= severity(candidate) => existing,
-                    _ => candidate,
-                });
-
-                // Absolute Hz: `Response`'s own fields are deviations from
-                // nominal, and the wire contract (and this field) wants the
-                // frequency itself — 59.7, not -0.3.
-                let nadir = nominal + response.nadir_hz;
-                history.nadir_hz = Some(match history.nadir_hz {
-                    Some(existing) if existing <= nadir => existing,
-                    _ => nadir,
-                });
-
-                let rocof = response.rocof_hz_s;
-                history.rocof_hz_s = Some(match history.rocof_hz_s {
-                    Some(existing) if existing.abs() >= rocof.abs() => existing,
-                    _ => rocof,
-                });
-
-                // Last-write-wins, not a severity maximum — see
-                // `IslandReport::settling_hz` for why this one field is
-                // deliberately a final-instant quantity rather than an
-                // extremum accumulated across the run.
-                history.settling_hz = Some(nominal + response.settling_hz);
-
-                history.shed += shed;
-            }
-        }
+        // `record_step` is computed here, before either exit check, because
+        // both `Collapsed` and `Settled` can be reached by the SAME step
+        // whose own trips and shed already happened to `case` — see the
+        // bus_history loop above. Computing it unconditionally means neither
+        // exit path can drop a step's real effects on the floor; the two
+        // checks below decide only whether the step also *counts* as a step
+        // and whether the run keeps going, not whether its effects get
+        // recorded.
+        let at = elapsed + out.at;
+        let no_trips = out.fired.is_empty();
+        let no_sheds = out.responses.iter().flatten().all(|r| r.sheds.is_empty());
+        let effects = record_step(&case, &out, at, &served_before, island_count);
 
         // Checked before "nothing fired": a step can find nothing left to
         // trip or shed and still be the step that reveals every remaining
@@ -371,19 +338,28 @@ pub fn simulate(
         // reporting it `Settled` would call a fully de-energized network a
         // steady state.
         if is_collapsed(&out.islands, &case.buses, &out.responses) {
+            // This is the step the loop is about to end on, and it is not
+            // exempt from the same rule as every other step: whatever it
+            // fired or shed already changed `case`, and dropping it here —
+            // by breaking before reaching the accumulation below, the way
+            // this used to — would leave that shed in neither the event log
+            // nor `shed_total`, and so out of `load_lost` too. `elapsed`
+            // gets this step's own `at` for the same reason: it happened, in
+            // simulated time, whether or not the run goes on to another one.
+            events.extend(effects.events);
+            shed_total += effects.shed;
+            if !(no_trips && no_sheds) {
+                steps += 1;
+            }
+            elapsed = at;
             break CascadeOutcome::Collapsed;
         }
 
-        let no_trips = out.fired.is_empty();
-        let no_sheds = out.responses.iter().flatten().all(|r| r.sheds.is_empty());
         if no_trips && no_sheds {
             break CascadeOutcome::Settled;
         }
 
         steps += 1;
-        let at = elapsed + out.at;
-
-        let effects = record_step(&case, &out, at, &served_before, island_count);
         events.extend(effects.events);
         shed_total += effects.shed;
         island_count = effects.island_count;
@@ -398,13 +374,7 @@ pub fn simulate(
     // places is how the two come to disagree. One addition, at the end, is
     // the only version of this number there is.
     let final_islands = Islands::of(&case);
-    let mut dead_load = 0.0;
-    for members in &final_islands.members {
-        if Subcase::extract(&case, members).is_none() {
-            dead_load += Balance::of(&case.buses, members).load;
-        }
-    }
-    let load_lost = dead_load + shed_total;
+    let load_lost = dead_load(&case, &final_islands, &bus_history) + shed_total;
 
     // Once, here, against the final partition — never per step. Every
     // intermediate island the loop passed through was a transient state on
@@ -503,6 +473,99 @@ fn open_initiating(case: &mut Case, initiating: &[usize]) -> (Vec<Event>, usize)
     }
 
     (events, opened.count())
+}
+
+/// Folds one step's responses into the running per-bus history — see the
+/// call site in [`simulate`] for why this has to be unconditional, keyed by
+/// bus, and run before either of the loop's own exit checks.
+fn accumulate_bus_history(
+    bus_history: &mut [BusHistory],
+    out: &Outcome,
+    served_before: &[f64],
+    nominal: f64,
+) {
+    for (index, (members, response)) in out.islands.members.iter().zip(&out.responses).enumerate() {
+        let Some(response) = response else { continue };
+
+        // Mirrors `record_step`'s own shed arithmetic exactly — the same
+        // `shed_fraction * served_before[index]` — rather than a second,
+        // independently-written computation that could drift from it.
+        let shed = if response.shed_fraction > 0.0 {
+            response.shed_fraction * served_before[index]
+        } else {
+            0.0
+        };
+
+        for &bus in members {
+            let history = &mut bus_history[bus];
+
+            let candidate = response.condition;
+            history.condition = Some(match history.condition {
+                Some(existing) if severity(existing) >= severity(candidate) => existing,
+                _ => candidate,
+            });
+
+            // Absolute Hz: `Response`'s own fields are deviations from
+            // nominal, and the wire contract (and this field) wants the
+            // frequency itself — 59.7, not -0.3.
+            let nadir = nominal + response.nadir_hz;
+            history.nadir_hz = Some(match history.nadir_hz {
+                Some(existing) if existing <= nadir => existing,
+                _ => nadir,
+            });
+
+            let rocof = response.rocof_hz_s;
+            history.rocof_hz_s = Some(match history.rocof_hz_s {
+                Some(existing) if existing.abs() >= rocof.abs() => existing,
+                _ => rocof,
+            });
+
+            // Last-write-wins, not a severity maximum — see
+            // `IslandReport::settling_hz` for why this one field is
+            // deliberately a final-instant quantity rather than an extremum
+            // accumulated across the run.
+            history.settling_hz = Some(nominal + response.settling_hz);
+
+            history.shed += shed;
+        }
+    }
+}
+
+/// Every full-case unit of load sitting in an island that ended this run
+/// dead — either genuinely de-energized (no machine left to hold a
+/// reference angle) or frequency-collapsed while KEEPING its generator.
+///
+/// An island is fully lost either because [`Subcase::extract`] returns
+/// `None` (de-energized load with nothing driving it) or because its
+/// frequency collapsed while keeping its generator: [`is_collapsed`] only
+/// ends the run once every loaded island is one or the other, and the
+/// honesty rule — a collapsed island loses all its load — applies to the
+/// second case exactly as much as the first. `bus_history`'s condition is
+/// the same sticky peak-severity value `simulate`'s own `reports` loop
+/// reads, matched by the same lowest-member convention, so an island that
+/// ever reached `Collapsed` stays counted as lost even if downstream code
+/// went on to observe it under a different partition.
+///
+/// [`Balance::of`] reads the CURRENT load still sitting on the island's
+/// buses — already reduced by every UFLS stage that fired against it, since
+/// a stage scales `p_injection` in place. Summing it here does not double
+/// count those earlier sheds: they left the case when they happened, and
+/// [`simulate`] counts them separately, once, in its own `shed_total`.
+fn dead_load(case: &Case, islands: &Islands, bus_history: &[BusHistory]) -> f64 {
+    let mut total = 0.0;
+
+    for members in &islands.members {
+        let no_machine = Subcase::extract(case, members).is_none();
+        let collapsed = members.first().is_some_and(|&lowest| {
+            bus_history[lowest].condition == Some(IslandCondition::Collapsed)
+        });
+
+        if no_machine || collapsed {
+            total += Balance::of(&case.buses, members).load;
+        }
+    }
+
+    total
 }
 
 /// What one step of the cascade contributed to the log: `Trip` events for
