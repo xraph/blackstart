@@ -2664,6 +2664,66 @@ func (x *CascadeEvent) GetIsland() uint32 {
 	return 0
 }
 
+// One point on an island's frequency curve.
+type FrequencySample struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Seconds since the initiating outage, on the SAME clock as
+	// CascadeEvent.at_s — so a scrubber can put the curve and the event log on
+	// one axis without rescaling either.
+	AtS float64 `protobuf:"fixed64,1,opt,name=at_s,json=atS,proto3" json:"at_s,omitempty"`
+	// Absolute frequency, HERTZ, the same convention as every other frequency
+	// field on this wire — not a deviation from nominal. A curve of deviations
+	// would sit near zero on an axis calibrated to the survival band and read
+	// as a collapsed island when it is not.
+	Hz            float64 `protobuf:"fixed64,2,opt,name=hz,proto3" json:"hz,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FrequencySample) Reset() {
+	*x = FrequencySample{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FrequencySample) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FrequencySample) ProtoMessage() {}
+
+func (x *FrequencySample) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FrequencySample.ProtoReflect.Descriptor instead.
+func (*FrequencySample) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *FrequencySample) GetAtS() float64 {
+	if x != nil {
+		return x.AtS
+	}
+	return 0
+}
+
+func (x *FrequencySample) GetHz() float64 {
+	if x != nil {
+		return x.Hz
+	}
+	return 0
+}
+
 type IslandState struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Indices into the model's bus list.
@@ -2710,14 +2770,27 @@ type IslandState struct {
 	// Load shed on this island over the whole run, WATTS — accumulated across
 	// every UFLS stage that fired for it, not merely the fraction shed at
 	// whichever instant the island is being reported for.
-	ShedW         float64 `protobuf:"fixed64,8,opt,name=shed_w,json=shedW,proto3" json:"shed_w,omitempty"`
+	ShedW float64 `protobuf:"fixed64,8,opt,name=shed_w,json=shedW,proto3" json:"shed_w,omitempty"`
+	// The island's frequency curve over the run, in time order.
+	//
+	// Decimated server-side to a couple of hundred points — the integration
+	// produces thousands, which is far more than a scrubber resolves. The
+	// reduction keeps each bucket's extrema rather than sampling at a stride,
+	// so the nadir reported in `nadir_hz` above is guaranteed to appear on the
+	// curve too. A curve that disagreed with the number printed beside it
+	// would be worse than a coarse one.
+	//
+	// Empty, not a flat line at zero, when no step ever observed a machine on
+	// this island — the same "absent, not zero" rule `frequency_hz`,
+	// `nadir_hz`, and `rocof_hz_s` above already follow.
+	Trace         []*FrequencySample `protobuf:"bytes,9,rep,name=trace,proto3" json:"trace,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *IslandState) Reset() {
 	*x = IslandState{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[28]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2729,7 +2802,7 @@ func (x *IslandState) String() string {
 func (*IslandState) ProtoMessage() {}
 
 func (x *IslandState) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[28]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2742,7 +2815,7 @@ func (x *IslandState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IslandState.ProtoReflect.Descriptor instead.
 func (*IslandState) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{28}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *IslandState) GetBuses() []uint32 {
@@ -2801,6 +2874,13 @@ func (x *IslandState) GetShedW() float64 {
 	return 0
 }
 
+func (x *IslandState) GetTrace() []*FrequencySample {
+	if x != nil {
+		return x.Trace
+	}
+	return nil
+}
+
 type SimulateCascadeResponse struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Outcome CascadeOutcome         `protobuf:"varint,1,opt,name=outcome,proto3,enum=blackstart.solver.v1.CascadeOutcome" json:"outcome,omitempty"`
@@ -2821,13 +2901,22 @@ type SimulateCascadeResponse struct {
 	// The versions this result came from, so it can be reproduced.
 	SolverVersion string `protobuf:"bytes,7,opt,name=solver_version,json=solverVersion,proto3" json:"solver_version,omitempty"`
 	ModelHash     string `protobuf:"bytes,8,opt,name=model_hash,json=modelHash,proto3" json:"model_hash,omitempty"`
+	// The outages that started this cascade, as branch IDENTIFIERS rather than
+	// the indices SimulateCascadeRequest.initiating carries — an operator
+	// names lines, and the event log above already reports ids for that
+	// reason.
+	//
+	// Resolved against the model server-side and echoed back here so a client
+	// can caption its own result without holding the index space the request
+	// used to name them.
+	Initiating    []string `protobuf:"bytes,9,rep,name=initiating,proto3" json:"initiating,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SimulateCascadeResponse) Reset() {
 	*x = SimulateCascadeResponse{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[29]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2839,7 +2928,7 @@ func (x *SimulateCascadeResponse) String() string {
 func (*SimulateCascadeResponse) ProtoMessage() {}
 
 func (x *SimulateCascadeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[29]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2852,7 +2941,7 @@ func (x *SimulateCascadeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SimulateCascadeResponse.ProtoReflect.Descriptor instead.
 func (*SimulateCascadeResponse) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{29}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *SimulateCascadeResponse) GetOutcome() CascadeOutcome {
@@ -2909,6 +2998,13 @@ func (x *SimulateCascadeResponse) GetModelHash() string {
 		return x.ModelHash
 	}
 	return ""
+}
+
+func (x *SimulateCascadeResponse) GetInitiating() []string {
+	if x != nil {
+		return x.Initiating
+	}
+	return nil
 }
 
 var File_blackstart_solver_v1_solver_proto protoreflect.FileDescriptor
@@ -3087,7 +3183,10 @@ const file_blackstart_solver_v1_solver_proto_rawDesc = "" +
 	"\aelement\x18\x03 \x01(\tR\aelement\x12\x16\n" +
 	"\x06detail\x18\x04 \x01(\tR\x06detail\x12\x1b\n" +
 	"\x06island\x18\x05 \x01(\rH\x00R\x06island\x88\x01\x01B\t\n" +
-	"\a_island\"\xef\x02\n" +
+	"\a_island\"4\n" +
+	"\x0fFrequencySample\x12\x11\n" +
+	"\x04at_s\x18\x01 \x01(\x01R\x03atS\x12\x0e\n" +
+	"\x02hz\x18\x02 \x01(\x01R\x02hz\"\xac\x03\n" +
 	"\vIslandState\x12\x14\n" +
 	"\x05buses\x18\x01 \x03(\rR\x05buses\x12C\n" +
 	"\tcondition\x18\x02 \x01(\x0e2%.blackstart.solver.v1.IslandConditionR\tcondition\x129\n" +
@@ -3097,10 +3196,11 @@ const file_blackstart_solver_v1_solver_proto_rawDesc = "" +
 	"\bnadir_hz\x18\x06 \x01(\x01H\x01R\anadirHz\x88\x01\x01\x12!\n" +
 	"\n" +
 	"rocof_hz_s\x18\a \x01(\x01H\x02R\brocofHzS\x88\x01\x01\x12\x15\n" +
-	"\x06shed_w\x18\b \x01(\x01R\x05shedWB\x0f\n" +
+	"\x06shed_w\x18\b \x01(\x01R\x05shedW\x12;\n" +
+	"\x05trace\x18\t \x03(\v2%.blackstart.solver.v1.FrequencySampleR\x05traceB\x0f\n" +
 	"\r_frequency_hzB\v\n" +
 	"\t_nadir_hzB\r\n" +
-	"\v_rocof_hz_s\"\xeb\x02\n" +
+	"\v_rocof_hz_s\"\x8b\x03\n" +
 	"\x17SimulateCascadeResponse\x12>\n" +
 	"\aoutcome\x18\x01 \x01(\x0e2$.blackstart.solver.v1.CascadeOutcomeR\aoutcome\x12:\n" +
 	"\x06events\x18\x02 \x03(\v2\".blackstart.solver.v1.CascadeEventR\x06events\x12;\n" +
@@ -3110,7 +3210,10 @@ const file_blackstart_solver_v1_solver_proto_rawDesc = "" +
 	"\telapsed_s\x18\x06 \x01(\x01R\belapsedS\x12%\n" +
 	"\x0esolver_version\x18\a \x01(\tR\rsolverVersion\x12\x1d\n" +
 	"\n" +
-	"model_hash\x18\b \x01(\tR\tmodelHash*Y\n" +
+	"model_hash\x18\b \x01(\tR\tmodelHash\x12\x1e\n" +
+	"\n" +
+	"initiating\x18\t \x03(\tR\n" +
+	"initiating*Y\n" +
 	"\aBusKind\x12\x18\n" +
 	"\x14BUS_KIND_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vBUS_KIND_PQ\x10\x01\x12\x0f\n" +
@@ -3174,7 +3277,7 @@ func file_blackstart_solver_v1_solver_proto_rawDescGZIP() []byte {
 }
 
 var file_blackstart_solver_v1_solver_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_blackstart_solver_v1_solver_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_blackstart_solver_v1_solver_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_blackstart_solver_v1_solver_proto_goTypes = []any{
 	(BusKind)(0),                        // 0: blackstart.solver.v1.BusKind
 	(Method)(0),                         // 1: blackstart.solver.v1.Method
@@ -3212,8 +3315,9 @@ var file_blackstart_solver_v1_solver_proto_goTypes = []any{
 	(*BranchProtection)(nil),            // 33: blackstart.solver.v1.BranchProtection
 	(*SimulateCascadeRequest)(nil),      // 34: blackstart.solver.v1.SimulateCascadeRequest
 	(*CascadeEvent)(nil),                // 35: blackstart.solver.v1.CascadeEvent
-	(*IslandState)(nil),                 // 36: blackstart.solver.v1.IslandState
-	(*SimulateCascadeResponse)(nil),     // 37: blackstart.solver.v1.SimulateCascadeResponse
+	(*FrequencySample)(nil),             // 36: blackstart.solver.v1.FrequencySample
+	(*IslandState)(nil),                 // 37: blackstart.solver.v1.IslandState
+	(*SimulateCascadeResponse)(nil),     // 38: blackstart.solver.v1.SimulateCascadeResponse
 }
 var file_blackstart_solver_v1_solver_proto_depIdxs = []int32{
 	0,  // 0: blackstart.solver.v1.Bus.kind:type_name -> blackstart.solver.v1.BusKind
@@ -3244,24 +3348,25 @@ var file_blackstart_solver_v1_solver_proto_depIdxs = []int32{
 	4,  // 25: blackstart.solver.v1.CascadeEvent.kind:type_name -> blackstart.solver.v1.CascadeEventKind
 	5,  // 26: blackstart.solver.v1.IslandState.condition:type_name -> blackstart.solver.v1.IslandCondition
 	6,  // 27: blackstart.solver.v1.IslandState.verdict:type_name -> blackstart.solver.v1.AcVerdict
-	7,  // 28: blackstart.solver.v1.SimulateCascadeResponse.outcome:type_name -> blackstart.solver.v1.CascadeOutcome
-	35, // 29: blackstart.solver.v1.SimulateCascadeResponse.events:type_name -> blackstart.solver.v1.CascadeEvent
-	36, // 30: blackstart.solver.v1.SimulateCascadeResponse.islands:type_name -> blackstart.solver.v1.IslandState
-	11, // 31: blackstart.solver.v1.SolverService.PutNetworkModel:input_type -> blackstart.solver.v1.PutNetworkModelRequest
-	14, // 32: blackstart.solver.v1.SolverService.HasNetworkModel:input_type -> blackstart.solver.v1.HasNetworkModelRequest
-	19, // 33: blackstart.solver.v1.SolverService.SolvePowerFlow:input_type -> blackstart.solver.v1.SolvePowerFlowRequest
-	24, // 34: blackstart.solver.v1.SolverService.ScreenContingencies:input_type -> blackstart.solver.v1.ScreenContingenciesRequest
-	34, // 35: blackstart.solver.v1.SolverService.SimulateCascade:input_type -> blackstart.solver.v1.SimulateCascadeRequest
-	13, // 36: blackstart.solver.v1.SolverService.PutNetworkModel:output_type -> blackstart.solver.v1.PutNetworkModelResponse
-	15, // 37: blackstart.solver.v1.SolverService.HasNetworkModel:output_type -> blackstart.solver.v1.HasNetworkModelResponse
-	22, // 38: blackstart.solver.v1.SolverService.SolvePowerFlow:output_type -> blackstart.solver.v1.SolvePowerFlowResponse
-	26, // 39: blackstart.solver.v1.SolverService.ScreenContingencies:output_type -> blackstart.solver.v1.ScreenContingenciesResponse
-	37, // 40: blackstart.solver.v1.SolverService.SimulateCascade:output_type -> blackstart.solver.v1.SimulateCascadeResponse
-	36, // [36:41] is the sub-list for method output_type
-	31, // [31:36] is the sub-list for method input_type
-	31, // [31:31] is the sub-list for extension type_name
-	31, // [31:31] is the sub-list for extension extendee
-	0,  // [0:31] is the sub-list for field type_name
+	36, // 28: blackstart.solver.v1.IslandState.trace:type_name -> blackstart.solver.v1.FrequencySample
+	7,  // 29: blackstart.solver.v1.SimulateCascadeResponse.outcome:type_name -> blackstart.solver.v1.CascadeOutcome
+	35, // 30: blackstart.solver.v1.SimulateCascadeResponse.events:type_name -> blackstart.solver.v1.CascadeEvent
+	37, // 31: blackstart.solver.v1.SimulateCascadeResponse.islands:type_name -> blackstart.solver.v1.IslandState
+	11, // 32: blackstart.solver.v1.SolverService.PutNetworkModel:input_type -> blackstart.solver.v1.PutNetworkModelRequest
+	14, // 33: blackstart.solver.v1.SolverService.HasNetworkModel:input_type -> blackstart.solver.v1.HasNetworkModelRequest
+	19, // 34: blackstart.solver.v1.SolverService.SolvePowerFlow:input_type -> blackstart.solver.v1.SolvePowerFlowRequest
+	24, // 35: blackstart.solver.v1.SolverService.ScreenContingencies:input_type -> blackstart.solver.v1.ScreenContingenciesRequest
+	34, // 36: blackstart.solver.v1.SolverService.SimulateCascade:input_type -> blackstart.solver.v1.SimulateCascadeRequest
+	13, // 37: blackstart.solver.v1.SolverService.PutNetworkModel:output_type -> blackstart.solver.v1.PutNetworkModelResponse
+	15, // 38: blackstart.solver.v1.SolverService.HasNetworkModel:output_type -> blackstart.solver.v1.HasNetworkModelResponse
+	22, // 39: blackstart.solver.v1.SolverService.SolvePowerFlow:output_type -> blackstart.solver.v1.SolvePowerFlowResponse
+	26, // 40: blackstart.solver.v1.SolverService.ScreenContingencies:output_type -> blackstart.solver.v1.ScreenContingenciesResponse
+	38, // 41: blackstart.solver.v1.SolverService.SimulateCascade:output_type -> blackstart.solver.v1.SimulateCascadeResponse
+	37, // [37:42] is the sub-list for method output_type
+	32, // [32:37] is the sub-list for method input_type
+	32, // [32:32] is the sub-list for extension type_name
+	32, // [32:32] is the sub-list for extension extendee
+	0,  // [0:32] is the sub-list for field type_name
 }
 
 func init() { file_blackstart_solver_v1_solver_proto_init() }
@@ -3281,14 +3386,14 @@ func file_blackstart_solver_v1_solver_proto_init() {
 	file_blackstart_solver_v1_solver_proto_msgTypes[18].OneofWrappers = []any{}
 	file_blackstart_solver_v1_solver_proto_msgTypes[21].OneofWrappers = []any{}
 	file_blackstart_solver_v1_solver_proto_msgTypes[27].OneofWrappers = []any{}
-	file_blackstart_solver_v1_solver_proto_msgTypes[28].OneofWrappers = []any{}
+	file_blackstart_solver_v1_solver_proto_msgTypes[29].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_blackstart_solver_v1_solver_proto_rawDesc), len(file_blackstart_solver_v1_solver_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   30,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

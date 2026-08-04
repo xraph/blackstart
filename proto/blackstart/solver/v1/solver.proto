@@ -621,6 +621,20 @@ enum AcVerdict {
   AC_VERDICT_INSOLVABLE = 3;
 }
 
+// One point on an island's frequency curve.
+message FrequencySample {
+  // Seconds since the initiating outage, on the SAME clock as
+  // CascadeEvent.at_s — so a scrubber can put the curve and the event log on
+  // one axis without rescaling either.
+  double at_s = 1;
+
+  // Absolute frequency, HERTZ, the same convention as every other frequency
+  // field on this wire — not a deviation from nominal. A curve of deviations
+  // would sit near zero on an axis calibrated to the survival band and read
+  // as a collapsed island when it is not.
+  double hz = 2;
+}
+
 message IslandState {
   // Indices into the model's bus list.
   repeated uint32 buses = 1;
@@ -672,6 +686,20 @@ message IslandState {
   // every UFLS stage that fired for it, not merely the fraction shed at
   // whichever instant the island is being reported for.
   double shed_w = 8;
+
+  // The island's frequency curve over the run, in time order.
+  //
+  // Decimated server-side to a couple of hundred points — the integration
+  // produces thousands, which is far more than a scrubber resolves. The
+  // reduction keeps each bucket's extrema rather than sampling at a stride,
+  // so the nadir reported in `nadir_hz` above is guaranteed to appear on the
+  // curve too. A curve that disagreed with the number printed beside it
+  // would be worse than a coarse one.
+  //
+  // Empty, not a flat line at zero, when no step ever observed a machine on
+  // this island — the same "absent, not zero" rule `frequency_hz`,
+  // `nadir_hz`, and `rocof_hz_s` above already follow.
+  repeated FrequencySample trace = 9;
 }
 
 // How the cascade ended.
@@ -713,4 +741,14 @@ message SimulateCascadeResponse {
   // The versions this result came from, so it can be reproduced.
   string solver_version = 7;
   string model_hash = 8;
+
+  // The outages that started this cascade, as branch IDENTIFIERS rather than
+  // the indices SimulateCascadeRequest.initiating carries — an operator
+  // names lines, and the event log above already reports ids for that
+  // reason.
+  //
+  // Resolved against the model server-side and echoed back here so a client
+  // can caption its own result without holding the index space the request
+  // used to name them.
+  repeated string initiating = 9;
 }

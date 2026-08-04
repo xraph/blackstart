@@ -375,6 +375,16 @@ impl proto::solver_service_server::SolverService for Solver {
             }
         }
 
+        // Resolved against the case the solver actually simulated, so a
+        // client never has to hold the index space to caption its own
+        // result. An index outside the model is a request the solver
+        // already rejected above, so this cannot silently name the wrong
+        // line.
+        let initiating_ids: Vec<String> = initiating
+            .iter()
+            .filter_map(|&i| case.branches.get(i).map(|b| b.id.clone()))
+            .collect();
+
         let protection = to_protection(request.protection.as_ref(), &request.branch_protection);
         let scheme = to_scheme(request.ufls.as_ref());
 
@@ -430,6 +440,7 @@ impl proto::solver_service_server::SolverService for Solver {
             &cascade,
             &entry.model,
             request.content_hash,
+            initiating_ids,
         )))
     }
 }
@@ -438,6 +449,7 @@ fn to_cascade_response(
     cascade: &bs_cascade::Cascade,
     model: &proto::NetworkModel,
     model_hash: String,
+    initiating: Vec<String>,
 ) -> proto::SimulateCascadeResponse {
     let outcome = match cascade.outcome {
         bs_cascade::CascadeOutcome::Settled => proto::CascadeOutcome::Settled,
@@ -462,6 +474,11 @@ fn to_cascade_response(
         elapsed_s: cascade.elapsed,
         solver_version: SOLVER_VERSION.to_owned(),
         model_hash,
+        // Branch IDENTIFIERS, not the indices the request carried — an
+        // operator names lines, and the event log above already reports ids
+        // for that reason. Resolved server-side and echoed back so a client
+        // never has to hold the index space to caption its own result.
+        initiating,
     }
 }
 
@@ -519,6 +536,17 @@ fn to_island_state(
         // `load_lost_w` above follows, applied per island rather than
         // summed across the whole cascade.
         shed_w: to_watts(report.shed, model),
+        // HERTZ on both sides, seconds on both sides — nothing here
+        // converts. The only reason this is a map rather than a clone is
+        // that the wire type is generated and the domain type is not.
+        trace: report
+            .trace
+            .iter()
+            .map(|s| proto::FrequencySample {
+                at_s: s.at,
+                hz: s.hz,
+            })
+            .collect(),
     }
 }
 

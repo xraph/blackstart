@@ -216,6 +216,46 @@ async fn cached_solver_that_collapses() -> (Solver, String) {
     (solver, hash)
 }
 
+/// A solver with [`collapsing_model`] already cached, and that model's hash.
+///
+/// Same model as [`cached_solver_that_collapses`] — `collapsing_model`'s
+/// `{gen, mid}` island already IS a generator well short of its load (an
+/// 8 MW shortfall against 42 MW of capacity, per that fixture's own doc
+/// comment), which is exactly the shape the trace tests below need: a
+/// machine present, and a real deficit for it to respond to. A second,
+/// differently-shaped fixture would only duplicate that arithmetic.
+async fn cached_solver_that_sheds() -> (Solver, String) {
+    let solver = Solver::new();
+    let hash = upload(&solver, &collapsing_model()).await;
+    (solver, hash)
+}
+
+/// A two-stage UFLS scheme, shedding half the island's load at each stage.
+/// Deliberately more aggressive than the single plausible stage
+/// `collapsing_model`'s doc comment calibrates against — the trace tests
+/// below only need frequency response to have run long enough to produce a
+/// multi-point curve, not a specific recovered frequency, so there is no
+/// reason to thread the scheme through the same tight margin the shedding
+/// arithmetic elsewhere in this file depends on.
+fn two_stage_scheme() -> proto::UflsScheme {
+    proto::UflsScheme {
+        stages: vec![
+            proto::UflsStage {
+                at_hz: 59.3,
+                shed_fraction: 0.5,
+                delay_s: 0.1,
+            },
+            proto::UflsStage {
+                at_hz: 58.9,
+                shed_fraction: 0.5,
+                delay_s: 0.1,
+            },
+        ],
+        floor_hz: 57.0,
+        ceiling_hz: 61.8,
+    }
+}
+
 /// Wraps messages in the Streaming type tonic hands a server method.
 fn stream(
     messages: Vec<Result<proto::PutNetworkModelRequest, tonic::Status>>,
@@ -878,4 +918,111 @@ async fn a_machineless_islands_frequency_fields_are_absent_on_the_wire() {
     assert_eq!(dead.frequency_hz, None);
     assert_eq!(dead.nadir_hz, None);
     assert_eq!(dead.rocof_hz_s, None);
+}
+
+/// The curve crosses in HERTZ. A frequency divided by a power base is the
+/// exact error the SI-on-the-wire rule exists to prevent, and it would look
+/// entirely plausible: a 60 Hz trace on a 100 MVA base becomes 6e-7.
+///
+/// What would make this fail: `to_island_state` mapping `s.hz` through
+/// `to_watts` or any other per-unit conversion instead of copying it
+/// straight through — every point would land near 6e-7, far outside this
+/// test's 50-70 Hz band, not merely off by a plausible-looking amount.
+#[tokio::test]
+async fn the_frequency_trace_crosses_in_hertz() {
+    let (solver, hash) = cached_solver_that_sheds().await;
+
+    let response = solver
+        .simulate_cascade(Request::new(proto::SimulateCascadeRequest {
+            content_hash: hash,
+            initiating: vec![0],
+            ufls: Some(two_stage_scheme()),
+            ..Default::default()
+        }))
+        .await
+        .expect("simulates")
+        .into_inner();
+
+    let traced = response
+        .islands
+        .iter()
+        .find(|i| !i.trace.is_empty())
+        .expect("an island with a machine has a curve");
+
+    for point in &traced.trace {
+        assert!(
+            point.hz > 50.0 && point.hz < 70.0,
+            "{} Hz is not a frequency — it has been divided by something",
+            point.hz
+        );
+    }
+}
+
+/// The curve and the event log share one clock.
+///
+/// What would make this fail: dropping the step offset when the trace is
+/// accumulated across steps in `bs_cascade::simulate` (the defect
+/// `bs-cascade/tests/trace.rs::the_trace_is_on_the_run_clock_and_never_goes_backwards`
+/// guards on the domain side), or `to_island_state` reordering points while
+/// mapping them onto the wire type.
+#[tokio::test]
+async fn the_trace_is_on_the_same_clock_as_the_events() {
+    let (solver, hash) = cached_solver_that_sheds().await;
+
+    let response = solver
+        .simulate_cascade(Request::new(proto::SimulateCascadeRequest {
+            content_hash: hash,
+            initiating: vec![0],
+            ufls: Some(two_stage_scheme()),
+            ..Default::default()
+        }))
+        .await
+        .expect("simulates")
+        .into_inner();
+
+    let traced = response
+        .islands
+        .iter()
+        .find(|i| !i.trace.is_empty())
+        .expect("a curve");
+
+    for pair in traced.trace.windows(2) {
+        assert!(
+            pair[1].at_s >= pair[0].at_s,
+            "the curve went backwards on the wire"
+        );
+    }
+}
+
+/// The initiating outage comes back as a branch id, not an index.
+///
+/// What would make this fail: assigning `request.initiating` (the raw
+/// `Vec<u32>`, rendered to strings) to the response field instead of
+/// resolving each index against `case.branches` — the parse-as-u32 check
+/// below exists specifically to catch that substitution, since a
+/// stringified index would otherwise look like a plausible, non-empty name.
+#[tokio::test]
+async fn the_initiating_outage_is_named() {
+    let (solver, hash) = cached_solver().await;
+
+    let response = solver
+        .simulate_cascade(Request::new(proto::SimulateCascadeRequest {
+            content_hash: hash,
+            initiating: vec![0],
+            ..Default::default()
+        }))
+        .await
+        .expect("simulates")
+        .into_inner();
+
+    assert_eq!(response.initiating.len(), 1);
+    assert!(
+        !response.initiating[0].is_empty(),
+        "an empty name is no better than an index"
+    );
+    assert!(
+        response.initiating[0].parse::<u32>().is_err(),
+        "got {:?}, which is an index rendered as a string, not a branch id",
+        response.initiating[0]
+    );
 }
