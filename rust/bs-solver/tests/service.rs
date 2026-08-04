@@ -689,6 +689,52 @@ async fn an_absent_ufls_scheme_sheds_nothing() {
     );
 }
 
+/// A scheme with stages but an UNSET survival band must not make a healthy
+/// network report `Collapsed`.
+///
+/// `cascade_model` settles `Stable` with no scheme at all — see
+/// `a_cascade_on_a_healthy_model_settles`. This request supplies a `UflsScheme`
+/// with one stage but leaves `floor_hz`/`ceiling_hz` at proto3's zero-value
+/// default, exactly what a client that forgot to set the band sends on the
+/// wire. `to_scheme` must read that as "the caller didn't set a band" and
+/// substitute `Scheme::none()`'s 57.0/61.8, not pass `0.0` through: a settling
+/// frequency of 60.0 Hz is always above a `ceiling_hz` of `0.0`, and
+/// `bs_frequency::ufls::classify` reports anything above the ceiling
+/// `Collapsed` — so a zero band would turn this perfectly healthy network into
+/// a total collapse on the very first step.
+///
+/// What would make this fail: reverting `to_scheme` to copy `floor_hz`/
+/// `ceiling_hz` verbatim from the wire, which would leave `ceiling_hz` at
+/// `0.0` and flip `response.outcome` to `Collapsed`.
+#[tokio::test]
+async fn a_scheme_with_stages_and_an_unset_band_does_not_collapse_a_healthy_network() {
+    let (solver, hash) = cached_solver().await;
+
+    let response = solver
+        .simulate_cascade(Request::new(proto::SimulateCascadeRequest {
+            content_hash: hash,
+            ufls: Some(proto::UflsScheme {
+                stages: vec![proto::UflsStage {
+                    at_hz: 59.5,
+                    shed_fraction: 0.1,
+                    delay_s: 0.1,
+                }],
+                floor_hz: 0.0,
+                ceiling_hz: 0.0,
+            }),
+            ..Default::default()
+        }))
+        .await
+        .expect("a cached model simulates")
+        .into_inner();
+
+    assert_eq!(
+        response.outcome,
+        proto::CascadeOutcome::Settled as i32,
+        "a healthy network with an unset survival band must settle, not collapse"
+    );
+}
+
 /// An unknown branch named in `initiating` is refused rather than handed to
 /// `bs_cascade::simulate`, which panics on one. A malformed request from one
 /// client must not be able to take the whole solver process down for every

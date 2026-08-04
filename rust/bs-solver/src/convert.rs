@@ -296,10 +296,36 @@ pub fn to_protection(
 /// utility's policy choice, not a physical convention this server has
 /// standing to assert on a caller's behalf. See the wire message's own
 /// comment on `SimulateCascadeRequest.ufls`.
+///
+/// The survival band (`floor_hz`/`ceiling_hz`) is a DIFFERENT question from
+/// the stages above, even though both live on the same wire message. The
+/// band is physics — where an island is considered to have collapsed — not
+/// utility policy, so it gets the same server-side default `Scheme::none()`
+/// uses whether or not the caller supplied any shedding stages. proto3 gives
+/// a `double` field left unset the same wire representation as an explicit
+/// `0.0`; a zero (or non-finite) band is never a real survival band, so it
+/// is treated as "the caller didn't set this" and substituted. Without this,
+/// a client that sends stages but forgets the band gets `ceiling_hz = 0.0`,
+/// every settling frequency reads above it, and a perfectly healthy network
+/// is reported `Collapsed`. This does NOT touch `stages`: an empty stage
+/// list is left empty, because inventing a shedding stage nobody asked for
+/// would be exactly the policy overreach the paragraph above forbids.
 #[must_use]
 pub fn to_scheme(wire: Option<&proto::UflsScheme>) -> Scheme {
     let Some(wire) = wire else {
         return Scheme::none();
+    };
+
+    let defaults = Scheme::none();
+    let floor_hz = if wire.floor_hz.is_finite() && wire.floor_hz != 0.0 {
+        wire.floor_hz
+    } else {
+        defaults.floor_hz
+    };
+    let ceiling_hz = if wire.ceiling_hz.is_finite() && wire.ceiling_hz != 0.0 {
+        wire.ceiling_hz
+    } else {
+        defaults.ceiling_hz
     };
 
     Scheme {
@@ -312,8 +338,8 @@ pub fn to_scheme(wire: Option<&proto::UflsScheme>) -> Scheme {
                 delay: stage.delay_s,
             })
             .collect(),
-        floor_hz: wire.floor_hz,
-        ceiling_hz: wire.ceiling_hz,
+        floor_hz,
+        ceiling_hz,
     }
 }
 
@@ -489,5 +515,38 @@ mod tests {
         assert_eq!(scheme.stages[0].at_hz, 59.3);
         assert_eq!(scheme.stages[0].shed_fraction, 0.1);
         assert_eq!(scheme.stages[0].delay, 0.3);
+    }
+
+    /// A present scheme with stages but an unset survival band gets the same
+    /// default band `Scheme::none()` uses — proto3 gives an unset `double`
+    /// the same wire form as an explicit `0.0`, and a `ceiling_hz` of `0.0`
+    /// would classify every settling frequency as `Collapsed` (see
+    /// `bs_frequency::ufls::classify`). The stages themselves are left
+    /// exactly as given, empty or not: this substitution is about the band
+    /// alone, never about inventing a shedding stage.
+    ///
+    /// What would make this fail: `to_scheme` copying `wire.floor_hz`/
+    /// `wire.ceiling_hz` straight through, the way it did before this fix.
+    #[test]
+    fn a_present_scheme_with_an_unset_band_gets_the_default_band() {
+        let wire = proto::UflsScheme {
+            stages: vec![proto::UflsStage {
+                at_hz: 59.5,
+                shed_fraction: 0.1,
+                delay_s: 0.1,
+            }],
+            floor_hz: 0.0,
+            ceiling_hz: 0.0,
+        };
+
+        let scheme = to_scheme(Some(&wire));
+
+        assert_eq!(scheme.floor_hz, bs_frequency::Scheme::none().floor_hz);
+        assert_eq!(scheme.ceiling_hz, bs_frequency::Scheme::none().ceiling_hz);
+        assert_eq!(
+            scheme.stages.len(),
+            1,
+            "the band substitution must not touch the stages"
+        );
     }
 }
