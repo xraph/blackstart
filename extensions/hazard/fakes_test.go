@@ -16,8 +16,10 @@ import (
 	"github.com/xraph/blackstart/extensions/provenance/record"
 	"github.com/xraph/blackstart/extensions/weather/field"
 	"github.com/xraph/blackstart/extensions/weather/forecast"
+	wxstore "github.com/xraph/blackstart/extensions/weather/store"
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
+	pkgstore "github.com/xraph/blackstart/pkg/store"
 )
 
 func issuance() time.Time { return time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC) }
@@ -36,6 +38,18 @@ func (w *fakeWeather) Cycle(context.Context, id.ID) (forecast.Cycle, error) {
 
 func (w *fakeWeather) Grids(context.Context, id.ID) ([]forecast.Grid, error) {
 	return w.grids, nil
+}
+
+// Cycles answers with the one cycle when its status matches the filter, which
+// is all the recompute worker asks of it.
+func (w *fakeWeather) Cycles(
+	_ context.Context, f wxstore.CycleFilter, _ pkgstore.Page,
+) ([]forecast.Cycle, error) {
+	if f.Status != "" && f.Status != w.cycle.Status {
+		return nil, nil
+	}
+
+	return []forecast.Cycle{w.cycle}, nil
 }
 
 func (w *fakeWeather) SpanForecast(
