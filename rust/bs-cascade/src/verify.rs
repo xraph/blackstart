@@ -73,6 +73,56 @@ pub struct IslandReport {
     /// response (as [`crate::simulate::simulate`] does, one step at a time)
     /// knows more than this function does and may set it.
     pub condition: Option<IslandCondition>,
+    /// The lowest frequency reached anywhere in the run, HERTZ (an absolute
+    /// frequency, not a deviation from nominal) — what decides whether the
+    /// island survives.
+    ///
+    /// Always `None` coming out of [`verify_islands`], for the same reason
+    /// [`Self::condition`] is: no frequency response was ever run here. Where
+    /// a caller does set it, this is a MAXIMUM-SEVERITY accumulation across
+    /// the whole run — the lowest nadir any step ever observed for this
+    /// island — matching how [`Self::condition`] is peak severity rather than
+    /// a snapshot of the last step. `None` after a caller has populated the
+    /// others means what it means there too: no step ever ran, or every
+    /// observation of this island was itself machine-less.
+    pub nadir_hz: Option<f64>,
+    /// The largest-magnitude rate of change of frequency observed anywhere
+    /// in the run, HERTZ PER SECOND, signed.
+    ///
+    /// Also a maximum-severity accumulation, like [`Self::nadir_hz`] — but
+    /// "largest magnitude" is deliberately not "maximum": a rate of change is
+    /// negative for a shortfall, and the more severe swing is the one
+    /// furthest from zero in either direction, not the algebraically
+    /// greatest. Comparing signed values with `>` would let a mild recovery
+    /// swing (positive) beat a severe collapse swing (very negative).
+    pub rocof_hz_s: Option<f64>,
+    /// Frequency, HERTZ (absolute, not a deviation), at the LAST instant this
+    /// island had a machine to evaluate.
+    ///
+    /// Deliberately NOT a maximum-severity accumulation, unlike every other
+    /// field here: a settling frequency answers "where did it end up", which
+    /// is a final-instant question, not a "how bad did it get" one. Where an
+    /// island's frequency response was observed right up to the run's own
+    /// end, this is that final value; where it stopped being observed
+    /// earlier — its last machine left the island, say — this is the last
+    /// value seen, which is the only honest answer available.
+    pub settling_hz: Option<f64>,
+    /// Load shed on this island over the whole run, per unit.
+    ///
+    /// Not optional, unlike the frequency fields above: zero is a genuine,
+    /// distinct answer here ("this island never shed") rather than "unknown"
+    /// — the wire contract this type feeds treats it the same way. Summed
+    /// across every stage that fired against any partition this island's
+    /// buses were ever part of, attributed the same way [`Self::condition`]
+    /// is: by bus, not by island identity, so a mid-run split does not lose
+    /// a shed that happened before it. A caller may accumulate this from
+    /// every step observed, including one whose own step the caller goes on
+    /// to treat as a collapse before logging it as an event — see
+    /// [`crate::simulate::simulate`]'s own docs on why its collapse check
+    /// runs ahead of its event log. This field exists to answer "how much
+    /// did this island shed", not "how much made it into the log", so it is
+    /// allowed to disagree with the event log in that one case.
+    pub shed: f64,
     /// What the AC solve found.
     pub verdict: AcVerdict,
     /// The island's real-power mismatch before this solve: load minus
@@ -128,6 +178,10 @@ fn verify_one(
         return IslandReport {
             members: members.to_vec(),
             condition: None,
+            nadir_hz: None,
+            rocof_hz_s: None,
+            settling_hz: None,
+            shed: 0.0,
             verdict: AcVerdict::Insolvable,
             balance,
             bus_count,
@@ -149,6 +203,10 @@ fn verify_one(
     IslandReport {
         members: members.to_vec(),
         condition: None,
+        nadir_hz: None,
+        rocof_hz_s: None,
+        settling_hz: None,
+        shed: 0.0,
         verdict,
         balance,
         bus_count,

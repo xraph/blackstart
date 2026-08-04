@@ -562,3 +562,168 @@ fn condition_attribution_survives_a_real_split() {
     assert_eq!(got.reports[0].condition, Some(IslandCondition::Shedding));
     assert_eq!(got.reports[1].condition, Some(IslandCondition::Stable));
 }
+
+/// The numeric frequency figures — nadir, rate of change, settling
+/// frequency, and shed — reach the report the same way `condition` already
+/// does, not merely `condition` on its own.
+///
+/// Reuses `heavy_deficit_case` and the exact two-stage scheme
+/// `ufls_shedding_is_counted_in_load_lost` already hand-derives: that test
+/// establishes `load_lost == 7.5` pu and that the island never splits and
+/// never loses its slack, so every bit of `load_lost` is this one island's
+/// own shed — which means `reports[0].shed` must equal that same 7.5 exactly,
+/// not merely be nonzero, or a bug that shed the right total amount but
+/// attributed some of it to the wrong (nonexistent, here) island would pass.
+///
+/// Fails if: `shed` stays `0.0` (the field never wired up at all — the
+/// original defect this test exists to close); `shed` is nonzero but not
+/// 7.5 (attribution or double-counting bug); `nadir_hz` is `None` or `>=
+/// 60.0` (nominal) — a real deficit that never dipped below nominal is not
+/// what this fixture produces; `rocof_hz_s` is `None` or `0.0` — the initial
+/// rate of change for a real step imbalance is never exactly zero; or
+/// `settling_hz` is `None`.
+#[test]
+fn reports_frequency_numbers_are_populated_when_ufls_fires() {
+    let scheme = Scheme {
+        stages: vec![
+            Stage {
+                at_hz: 59.99,
+                shed_fraction: 0.5,
+                delay: 0.0,
+            },
+            Stage {
+                at_hz: 59.98,
+                shed_fraction: 0.5,
+                delay: 0.0,
+            },
+        ],
+        floor_hz: 40.0,
+        ceiling_hz: 70.0,
+    };
+
+    let got = simulate(
+        &heavy_deficit_case(),
+        &[],
+        &Protection::new(Settings::default(), Vec::new()),
+        &scheme,
+        &Options::default(),
+        &Limits::default(),
+        &Verification::default(),
+    )
+    .expect("solvable");
+
+    assert_eq!(got.reports.len(), 1);
+    let report = &got.reports[0];
+
+    assert!(
+        (report.shed - 7.5).abs() < 1e-6,
+        "shed {} pu, expected 7.5 pu — the whole cascade's load_lost, since \
+         this island never splits and never loses its slack",
+        report.shed
+    );
+
+    let nadir = report.nadir_hz.expect("a real deficit reaches a nadir");
+    assert!(nadir < 60.0, "nadir {nadir} Hz never dipped below nominal");
+
+    let rocof = report
+        .rocof_hz_s
+        .expect("a real deficit has an initial rate of change");
+    assert!(
+        rocof.abs() > 1e-9,
+        "rocof came back approximately zero: {rocof}"
+    );
+
+    assert!(report.settling_hz.is_some());
+}
+
+/// `g0` (slack, machine) feeds `l0` over branch `"a"`, which stays in
+/// service throughout; `l1` hangs off `l0` over branch `"tie"` alone, which
+/// is the initiating outage in every test that uses this fixture.
+///
+/// `"tie"` opens as the initiating outage, before `step` is ever called for
+/// the first time — so unlike `three_line_case`'s parallel branches, which
+/// stay connected for at least one step before tripping, `l1` is severed
+/// from every machine in the case from the very first `step` call onward,
+/// never transiently sharing an island with `g0`. That distinction is the
+/// entire point of this fixture: a bus that was *ever* briefly part of a
+/// machine's island, even for one step before a later split, sticks with
+/// whatever condition that step observed — the same "peak severity, not
+/// last instant" rule `IslandReport::condition` documents — so asserting
+/// `None` against a bus that only became machine-less partway through a run
+/// would not test what "never observed with a machine" means; it would test
+/// "the running severity happened to still be `None`" purely by chance.
+/// `l1` here never has that chance.
+fn stranded_load_case() -> Case {
+    let base = Base::new(100e6, 345e3).expect("a valid base");
+    let buses = vec![
+        Bus::slack("g0", 1.0)
+            .with_real_limits(0.0, 3.0)
+            .with_machine(4.0, 0.05),
+        Bus::load("l0", -0.5, 0.0),
+        Bus::load("l1", -0.3, 0.0),
+    ];
+    let branches = vec![
+        Branch::new("a", 0, 1, 0.01, 0.1).with_rating(2.0),
+        Branch::new("tie", 1, 2, 0.01, 0.1).with_rating(2.0),
+    ];
+
+    Case::new("stranded", base, buses, branches)
+}
+
+/// A machine-less island's frequency fields stay ABSENT, not zero — the same
+/// distinction `condition` already draws, and for the same reason: an
+/// island nobody supplied inertia data for has no frequency to report, which
+/// is not the same claim as "its frequency is zero". `shed` alone among the
+/// four is a plain `0.0` on this island, which is correct — it really did
+/// shed nothing, `Option` or not, since a machine-less island cannot run
+/// UFLS at all.
+///
+/// Fails if a machine-less island's `nadir_hz`/`rocof_hz_s`/`settling_hz`
+/// ever comes back `Some(0.0)` instead of `None` — the exact shape of bug
+/// `condition` already had to be guarded against before this task, now
+/// repeated across three more fields that could each independently regress
+/// the same way.
+///
+/// `dead.shed`'s `0.0` is compared exactly rather than with an epsilon: it
+/// is `BusHistory::default()`'s own untouched value on a bus this run never
+/// once attributes a shed to, not the result of any arithmetic — the same
+/// verbatim-passthrough reasoning `bs-case`'s own constructor tests document
+/// for `#![allow(clippy::float_cmp)]`.
+#[test]
+#[allow(clippy::float_cmp)]
+fn a_machineless_islands_frequency_fields_stay_absent() {
+    let got = simulate(
+        &stranded_load_case(),
+        &[1], // "tie"
+        &Protection::new(Settings::default(), Vec::new()),
+        &Scheme::none(),
+        &Options::default(),
+        &Limits::default(),
+        &Verification::default(),
+    )
+    .expect("solvable");
+
+    assert_eq!(got.outcome, CascadeOutcome::Settled);
+    assert_eq!(got.reports.len(), 2);
+
+    let dead = got
+        .reports
+        .iter()
+        .find(|r| r.members == vec![2])
+        .expect("bus 2, l1, ends up alone in its own island");
+
+    assert_eq!(dead.condition, None);
+    assert_eq!(dead.nadir_hz, None);
+    assert_eq!(dead.rocof_hz_s, None);
+    assert_eq!(dead.settling_hz, None);
+    assert_eq!(dead.shed, 0.0);
+
+    // And the surviving island, which DOES keep a machine throughout,
+    // reports the opposite: a real condition, not absence.
+    let alive = got
+        .reports
+        .iter()
+        .find(|r| r.members == vec![0, 1])
+        .expect("g0 and l0 stay together the whole run");
+    assert!(alive.condition.is_some());
+}

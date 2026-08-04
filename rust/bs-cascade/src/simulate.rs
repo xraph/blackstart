@@ -196,6 +196,36 @@ pub struct Cascade {
     pub reports: Vec<IslandReport>,
 }
 
+/// One bus's frequency history across a whole cascade, reduced from
+/// however many `step` calls observed it down to the single set of numbers
+/// [`IslandReport`] wants.
+///
+/// Every field but `settling_hz` is a maximum-severity accumulation across
+/// the run, matching how `condition` already worked before this struct
+/// existed: `respond` (in `bs-frequency`) starts each call fresh from rest,
+/// so nothing inside a single `step` call has the whole run's history to
+/// draw on, and accumulating it is this caller's job. `settling_hz` is the
+/// one deliberate exception — see its own field doc.
+#[derive(Debug, Clone, Copy, Default)]
+struct BusHistory {
+    /// Peak severity — see `severity` below.
+    condition: Option<IslandCondition>,
+    /// Lowest absolute frequency (hertz, not a deviation) reached across
+    /// every step this bus's island was observed in.
+    nadir_hz: Option<f64>,
+    /// Largest-magnitude signed rate of change (hertz per second) observed
+    /// across every step.
+    rocof_hz_s: Option<f64>,
+    /// The absolute frequency (hertz) at the LAST step this bus's island had
+    /// a response — overwritten every observation, not compared against the
+    /// existing value, because a settling frequency is a final-instant
+    /// quantity, not an extremum.
+    settling_hz: Option<f64>,
+    /// Per-unit load shed, summed across every step this bus's island shed
+    /// anything.
+    shed: f64,
+}
+
 /// Runs a cascade from an initiating outage to a settled, truncated, or
 /// collapsed end state.
 ///
@@ -234,11 +264,19 @@ pub fn simulate(
     let mut steps = 0;
     let mut shed_total = 0.0;
 
-    // The most severe condition any step ever observed for each bus — see
-    // `severity` below for why this is a maximum accumulated across the
-    // whole run rather than a snapshot of the last call. `None` until some
-    // step observes a machine on that bus's island.
-    let mut bus_condition: Vec<Option<IslandCondition>> = vec![None; case.n_bus()];
+    // Nominal frequency does not change mid-run — `options` is the same
+    // `&Options` handed to every `step` call below — so it is hoisted here
+    // rather than re-read from `options.defaults.nominal_hz` at every
+    // observation.
+    let nominal = options.defaults.nominal_hz;
+
+    // Every frequency figure any step ever observed for each bus, reduced to
+    // the single number `IslandReport` wants for each — see `BusHistory` for
+    // which of the four is a peak-severity maximum and which (settling) is
+    // deliberately a last-write instead. `Default` gives every bus `None`
+    // condition/nadir/rocof/settling and a `0.0` shed until some step
+    // observes a machine on that bus's island.
+    let mut bus_history: Vec<BusHistory> = vec![BusHistory::default(); case.n_bus()];
 
     let outcome = loop {
         if steps >= limits.max_steps || elapsed >= limits.horizon {
@@ -268,14 +306,61 @@ pub fn simulate(
         // here, by the caller, instead: nothing inside a single `step` call
         // has the whole run's history to draw on. Keyed by bus, not island
         // identity — see the end-of-run comment below for why.
-        for (members, response) in out.islands.members.iter().zip(&out.responses) {
+        //
+        // Unconditional — every step that produced a response updates
+        // `bus_history`, including one whose own `is_collapsed` check
+        // (below) is about to end the loop before `record_step` ever runs.
+        // That is deliberate for `shed` in particular: a step's shed already
+        // happened to `case` — `step` scaled the island's PQ injections
+        // before returning — whether or not this loop goes on to log it as
+        // an event, and `bus_history` is where that real amount is kept
+        // either way. See `IslandReport::shed`'s own doc for why that can
+        // make it disagree with the event log.
+        for (index, (members, response)) in
+            out.islands.members.iter().zip(&out.responses).enumerate()
+        {
             let Some(response) = response else { continue };
+
+            // Mirrors `record_step`'s own shed arithmetic exactly — the same
+            // `shed_fraction * served_before[index]` — rather than a second,
+            // independently-written computation that could drift from it.
+            let shed = if response.shed_fraction > 0.0 {
+                response.shed_fraction * served_before[index]
+            } else {
+                0.0
+            };
+
             for &bus in members {
+                let history = &mut bus_history[bus];
+
                 let candidate = response.condition;
-                bus_condition[bus] = Some(match bus_condition[bus] {
+                history.condition = Some(match history.condition {
                     Some(existing) if severity(existing) >= severity(candidate) => existing,
                     _ => candidate,
                 });
+
+                // Absolute Hz: `Response`'s own fields are deviations from
+                // nominal, and the wire contract (and this field) wants the
+                // frequency itself — 59.7, not -0.3.
+                let nadir = nominal + response.nadir_hz;
+                history.nadir_hz = Some(match history.nadir_hz {
+                    Some(existing) if existing <= nadir => existing,
+                    _ => nadir,
+                });
+
+                let rocof = response.rocof_hz_s;
+                history.rocof_hz_s = Some(match history.rocof_hz_s {
+                    Some(existing) if existing.abs() >= rocof.abs() => existing,
+                    _ => rocof,
+                });
+
+                // Last-write-wins, not a severity maximum — see
+                // `IslandReport::settling_hz` for why this one field is
+                // deliberately a final-instant quantity rather than an
+                // extremum accumulated across the run.
+                history.settling_hz = Some(nominal + response.settling_hz);
+
+                history.shed += shed;
             }
         }
 
@@ -333,8 +418,10 @@ pub fn simulate(
     );
 
     // `verify_islands` never sees a frequency `Response` — see its own doc
-    // comment — so every report comes back with `condition: None`. This is
-    // where that gap gets closed, from `bus_condition`, the peak severity
+    // comment — so every report comes back with `condition: None` and the
+    // three frequency fields `None`/`shed: 0.0`. This is where that gap gets
+    // closed, from `bus_history`, the peak severity (or, for `settling_hz`
+    // and `shed`, the last-write / running-sum — see their own doc comments)
     // the loop above accumulated.
     //
     // A final island can differ from the partition any one `step` call
@@ -343,7 +430,7 @@ pub fn simulate(
     // against the topology as it stood at the *start* of that call. So a
     // final island is matched back by its lowest-index member, not by
     // island identity: bus indices never move under re-partitioning, which
-    // is what makes `bus_condition` keyable by bus at all, and "lowest
+    // is what makes `bus_history` keyable by bus at all, and "lowest
     // member stands for the island" is the same convention `representative`
     // uses elsewhere in this module. `None` results exactly when either no
     // step ever ran (an immediately truncated cascade) or every observation
@@ -354,13 +441,18 @@ pub fn simulate(
     // `islands`/`responses` from that same call — see above — so if that
     // call's firing is what both collapses the network and newly splits it,
     // the newly-split piece's very first moment as its own island is never
-    // separately observed. Its buses still carry whatever `bus_condition`
+    // separately observed. Its buses still carry whatever `bus_history`
     // already held from being part of a larger island a moment earlier,
     // which is the same staleness `is_collapsed` above already tolerates,
     // for the same reason — there is no further call to refine it with.
     for report in &mut reports {
         if let Some(&lowest) = report.members.first() {
-            report.condition = bus_condition[lowest];
+            let history = bus_history[lowest];
+            report.condition = history.condition;
+            report.nadir_hz = history.nadir_hz;
+            report.rocof_hz_s = history.rocof_hz_s;
+            report.settling_hz = history.settling_hz;
+            report.shed = history.shed;
         }
     }
 
