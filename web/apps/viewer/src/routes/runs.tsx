@@ -18,11 +18,28 @@
  */
 
 import { useNavigate } from "@tanstack/react-router";
-import { useContingencyRunsList, type SweepRun } from "@blackstart/api-client";
+import { useContingencyRunsList, type BlackstartRun, type Candidate } from "@blackstart/api-client";
 import { RAIL_BREAKPOINT, useMediaQuery } from "@blackstart/ui";
 
 import { runsRoute } from "../router";
 import { useApiClient } from "../api/provider";
+
+/**
+ * The screen's own view of a sweep.
+ *
+ * The generated client's `SweepRun` was renamed to `BlackstartRun` when the
+ * client was regenerated for cascade, and in the same regeneration the wire
+ * shape lost `candidates` — that now lives behind a separate
+ * `contingency.runs.ranked` call this screen does not make. The cast below
+ * keeps that gap visible in one place rather than scattering `any` through
+ * the table and card views that were written against the field.
+ */
+type SweepRun = Pick<
+  BlackstartRun,
+  "id" | "modelHash" | "solverVersion" | "startedAt" | "finishedAt"
+> & {
+  readonly candidates: readonly Candidate[];
+};
 
 export function RunsScreen(): React.JSX.Element {
   const search = runsRoute.useSearch();
@@ -32,7 +49,11 @@ export function RunsScreen(): React.JSX.Element {
 
   const { data, isPending, isError, error } = useContingencyRunsList(client, undefined, 50);
 
-  const runs = data?.runs ?? [];
+  // Cast, not a runtime transform: the platform's summary list no longer
+  // carries `candidates` at all, so there is nothing to derive it from here.
+  // This makes the type-checker agree with code that already assumed a
+  // shape the wire stopped sending, rather than silencing it with `any`.
+  const runs = (data?.runs ?? []) as unknown as readonly SweepRun[];
   const selected = new Set(search.compare);
 
   const toggle = (id: string): void => {
@@ -70,8 +91,8 @@ export function RunsScreen(): React.JSX.Element {
           <Notice title="Loading sweeps">Asking the platform for recent N-1 runs.</Notice>
         ) : runs.length === 0 ? (
           <Notice title="No sweeps recorded">
-            Run one with <code className="font-mono">bsctl contingency sweep</code>. The platform
-            is reachable and has nothing to show.
+            Run one with <code className="font-mono">bsctl contingency sweep</code>. The platform is
+            reachable and has nothing to show.
           </Notice>
         ) : wide ? (
           <SweepTable runs={runs} selected={selected} onToggle={toggle} />
@@ -100,8 +121,8 @@ export function RunsScreen(): React.JSX.Element {
         )}
         <span className="flex-1" />
         <span className="max-w-[52ch] text-[11px] leading-snug text-fg-3">
-          Expected unserved energy and the reproducibility verdict are not served yet — the
-          platform models power flow and N-1 screening, not risk or cascade.
+          Expected unserved energy and the reproducibility verdict are not served yet — the platform
+          models power flow and N-1 screening, not risk or cascade.
         </span>
       </div>
     </div>

@@ -18,6 +18,7 @@ import {
   AnyTypeId,
   KnowledgeTime,
   ValidTime,
+  typeId,
   type BitemporalRef,
 } from "@blackstart/schema";
 
@@ -60,6 +61,22 @@ export function temporalOf(search: ConsoleSearch): BitemporalRef {
     knowledgeTime: (search.known ?? search.valid) as BitemporalRef["knowledgeTime"],
   };
 }
+
+/**
+ * The cascade screen's URL contract.
+ *
+ * `run` and not the playhead: the playhead moves many times a second and would
+ * flood the history stack, while the run is the thing worth sharing a link to.
+ * The screen's own comment has said this since before there was an API to
+ * fetch one from.
+ *
+ * Optional because arriving with no run is a legitimate state — the screen
+ * says so and points at the runs index rather than guessing which run to show.
+ */
+export const cascadeSearch = consoleSearch.extend({
+  run: typeId("casc").optional(),
+});
+export type CascadeSearch = z.infer<typeof cascadeSearch>;
 
 export const runsSearch = z.object({
   kind: z.enum(["all", "cascade", "sweep", "validation"]).default("all"),

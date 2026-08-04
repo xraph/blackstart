@@ -9,7 +9,7 @@
 import { createRoute, createRouter, redirect } from "@tanstack/react-router";
 import { ValidTime } from "@blackstart/schema";
 import { Route as rootRoute } from "./routes/root";
-import { consoleSearch, runsSearch } from "./search/params";
+import { cascadeSearch, consoleSearch, runsSearch } from "./search/params";
 import { ConsoleScreen } from "./routes/console";
 import { CascadeScreen } from "./routes/cascade";
 import { RunsScreen } from "./routes/runs";
@@ -45,7 +45,7 @@ const consoleRoute = createRoute({
 const cascadeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/cascade",
-  validateSearch: (search: Record<string, unknown>) => consoleSearch.parse(search),
+  validateSearch: (search: Record<string, unknown>) => cascadeSearch.parse(search),
   component: CascadeScreen,
 });
 
@@ -56,12 +56,7 @@ const runsRoute = createRoute({
   component: RunsScreen,
 });
 
-export const routeTree = rootRoute.addChildren([
-  indexRoute,
-  consoleRoute,
-  cascadeRoute,
-  runsRoute,
-]);
+export const routeTree = rootRoute.addChildren([indexRoute, consoleRoute, cascadeRoute, runsRoute]);
 
 export const router = createRouter({ routeTree });
 

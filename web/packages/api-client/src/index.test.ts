@@ -72,7 +72,10 @@ describe("api client", () => {
 describe("query hooks", () => {
   it("exposes a cache key builder per read endpoint", async () => {
     const { queryKeys } = await import("./index");
-    expect(Object.keys(queryKeys).length).toBe(25);
+    // Grown from 25 as cascade and weather endpoints were generated — this
+    // pins the count against silent removal, not against the platform
+    // growing, so it moves with the generator rather than fighting it.
+    expect(Object.keys(queryKeys).length).toBe(38);
   });
 
   it("carries both time axes in the key, not just valid time", async () => {
@@ -95,7 +98,11 @@ describe("query hooks", () => {
     const { queryKeys } = await import("./index");
 
     const live = queryKeys.datasourceFeedsGet("feed_1", "2026-08-02T22:00Z", undefined);
-    const asOfThen = queryKeys.datasourceFeedsGet("feed_1", "2026-08-02T22:00Z", "2019-05-18T00:00Z");
+    const asOfThen = queryKeys.datasourceFeedsGet(
+      "feed_1",
+      "2026-08-02T22:00Z",
+      "2019-05-18T00:00Z",
+    );
 
     expect(JSON.stringify(live)).not.toEqual(JSON.stringify(asOfThen));
   });

@@ -28,11 +28,27 @@ export function IslandLegend({ islands }: { readonly islands: readonly Island[] 
           key={i.id}
           className="flex h-[30px] items-center gap-2 border-b border-line-2 px-[9px] last:border-b-0"
         >
-          <i aria-hidden="true" className={cn("size-[9px] shrink-0 rounded-[2px]", islandBg(i.id))} />
+          <i
+            aria-hidden="true"
+            className={cn("size-[9px] shrink-0 rounded-[2px]", islandBg(i.id))}
+          />
           <span className="w-14 shrink-0 text-[11px] text-fg">Island {i.id}</span>
-          <QuantityValue q={i.balance} unitless className="w-[52px] shrink-0 text-[9.5px] text-fg-3" />
+          <QuantityValue
+            q={i.balance}
+            unitless
+            className="w-[52px] shrink-0 text-[9.5px] text-fg-3"
+          />
           <span className="flex-1 text-right font-mono text-[9.5px] tabular text-fg-3">
-            <QuantityValue q={i.frequency} unitless className="text-[9.5px]" /> Hz
+            {/* No " Hz" appended when absent — an island with no machine has
+             * no frequency, and trailing unit text beside "not computed"
+             * would read as a measurement anyway. */}
+            {i.frequency === undefined ? (
+              "not computed"
+            ) : (
+              <>
+                <QuantityValue q={i.frequency} unitless className="text-[9.5px]" /> Hz
+              </>
+            )}
           </span>
           <span className="sr-only">{STATE_NOTE[i.state]}</span>
         </div>
@@ -74,10 +90,19 @@ export function CascadeCounters({
           .map((i) => (
             <div key={i.id} className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 font-mono text-[9px] tabular text-fg-3">
-                <i aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-[1px]", islandBg(i.id))} />
+                <i
+                  aria-hidden="true"
+                  className={cn("size-1.5 shrink-0 rounded-[1px]", islandBg(i.id))}
+                />
                 Island {i.id}{" "}
                 <span className="text-fg-2">
-                  nadir <QuantityValue q={i.nadir} unitless className="text-[9px]" /> Hz
+                  {i.nadir === undefined ? (
+                    "nadir not computed"
+                  ) : (
+                    <>
+                      nadir <QuantityValue q={i.nadir} unitless className="text-[9px]" /> Hz
+                    </>
+                  )}
                 </span>
               </div>
               <FrequencyTrace points={traces.get(i.id) ?? []} colour={islandVar(i.id)} />

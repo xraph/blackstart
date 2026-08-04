@@ -207,7 +207,10 @@ const round = (hz: number): number => Number(hz.toFixed(3));
 export const FREQ_TRACES = new Map<number, number[]>(
   CASCADE.islands
     .filter((i) => i.state !== "stable")
-    .map((i) => [i.id, trace(i.nadir.value, i.state !== "collapsed")]),
+    // The schema admits an islanded run with no machine data and therefore no
+    // nadir, but every non-stable island in *this* fixture is written out
+    // with one above — the assertion says so, not this cast.
+    .map((i) => [i.id, trace(i.nadir!.value, i.state !== "collapsed")]),
 );
 
 /* ── the inspected element ────────────────────────────────────────── */
