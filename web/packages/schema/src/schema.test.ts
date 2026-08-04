@@ -268,12 +268,24 @@ describe("CascadeRun against engine output", () => {
 
     expect(() => ProvenanceChain.parse(provenance)).not.toThrow();
 
-    // No dataset link exists to cite — the solver never saw the dataset, only
-    // a content hash of the model built from it — so completeness must report
-    // the gap rather than the chain failing to parse at all.
+    // The network model is the input this result actually consumed: the solver
+    // never saw a dataset, only the case built from one. Completeness asks for
+    // at least one input rather than a dataset specifically, so citing the
+    // case satisfies it — a cascade reads a case and no weather, the same way
+    // a hazard score reads weather and no case.
+    //
+    // This assertion previously demanded "dataset" in missing, which was the
+    // rule before completeness learned that inputs come in kinds. It passed on
+    // its own branch and fails against the current rule; the rule is the part
+    // that was reconsidered against real traces, so the expectation moved.
     const completeness = chainCompleteness(provenance);
+    expect(completeness.missing).not.toContain("dataset");
+    expect(completeness.missing).toHaveLength(0);
+
+    // Still not complete, and for the honest reason: nothing in this chain has
+    // been verified. Recorded is not the same as checked.
     expect(completeness.complete).toBe(false);
-    expect(completeness.missing).toContain("dataset");
+    expect(completeness.unverified.length).toBeGreaterThan(0);
   });
 });
 
