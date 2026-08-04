@@ -69,10 +69,15 @@ pub struct Event {
     /// States the cause: a loading percentage and the protection element
     /// that saw it, a distance zone, or a shedding stage and fraction.
     pub detail: String,
-    /// Which island this event belongs to, where that is meaningful. `None`
-    /// for an event that is not about one particular island — an initiating
-    /// outage before islanding is known to have produced more than one
-    /// piece yet, or a split that by definition touches more than one.
+    /// Which island this event belongs to, where that is meaningful.
+    ///
+    /// `Trip` and `Shed` events always carry one — including an initiating
+    /// outage's own `Trip` events, which are resolved against the partition
+    /// left once every initiating branch is already open, not against a
+    /// partition computed before any of them opened. `None` only for an
+    /// `Island` event: a single step can split one island into more than
+    /// one new piece at once, and there is no cheap way to say the split
+    /// itself belongs to just one of them.
     pub island: Option<usize>,
 }
 
