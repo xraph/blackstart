@@ -3,11 +3,23 @@ import { Canvas } from "@react-three/fiber";
 import { Controls } from "./Controls";
 import { Globe } from "./Globe";
 import { Network, type Selection } from "./Network";
+import { Routes, type RoutePolyline } from "./Routes";
 import type { ViewerModel } from "./model";
 
 interface SceneProps {
   model: ViewerModel;
+
+  /**
+   * Surveyed conductor routes, drawn over the schematic branches.
+   *
+   * Optional because the scene is useful without them: a model exported with
+   * no geometry still has a topology worth looking at, and a viewer with no
+   * platform to ask still draws it.
+   */
+  routes?: readonly RoutePolyline[] | undefined;
+
   onSelect?: ((selection: Selection | null) => void) | undefined;
+  onSelectRoute?: ((route: RoutePolyline) => void) | undefined;
 }
 
 /**
@@ -19,7 +31,12 @@ interface SceneProps {
  * to. Leaving near at the default 0.1 would clip the surface away as soon as
  * the camera approached it.
  */
-export function Scene({ model, onSelect }: SceneProps): React.JSX.Element {
+export function Scene({
+  model,
+  routes,
+  onSelect,
+  onSelectRoute,
+}: SceneProps): React.JSX.Element {
   return (
     <Canvas
       camera={{ position: [-1.4, -2.2, 1.4], near: 0.001, far: 100, fov: 40 }}
@@ -35,6 +52,9 @@ export function Scene({ model, onSelect }: SceneProps): React.JSX.Element {
       <Controls />
       <Globe />
       <Network model={model} onSelect={onSelect} />
+      {routes !== undefined && routes.length > 0 && (
+        <Routes routes={routes} onSelect={onSelectRoute} />
+      )}
     </Canvas>
   );
 }
