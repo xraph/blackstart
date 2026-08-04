@@ -62,18 +62,18 @@ func (r *routes) Put(ctx context.Context, route asset.Route, spans []asset.Span)
 		return err
 	}
 
-	// A branch has one route, so a re-trace replaces rather than colliding
+	// A carrier has one route, so a re-trace replaces rather than colliding
 	// with the unique index. Re-tracing is a normal thing to do — correcting a
 	// span length, or replacing an interpolated path with a surveyed one — and
 	// making it an error would mean the only way to correct geometry is to
 	// delete it by hand first.
-	if err := r.forget(ctx, route.BranchID); err != nil {
+	if err := r.forget(ctx, route.CarrierID); err != nil {
 		return err
 	}
 
 	if err := r.base.Create(ctx, RouteEntity, route.ID, routeRow{
 		ID:         route.ID.String(),
-		BranchID:   route.BranchID.String(),
+		CarrierID:  route.CarrierID.String(),
 		Provenance: string(route.Provenance),
 		LengthM:    route.LengthM,
 	}); err != nil {
@@ -124,8 +124,8 @@ func (r *routes) Put(ctx context.Context, route asset.Route, spans []asset.Span)
 // an indexed geometry for a span that still exists, which the next write
 // replaces; the other order would leave geometry pointing at nothing, and
 // nothing would ever visit it again to clean it up.
-func (r *routes) forget(ctx context.Context, branch id.ID) error {
-	existing, err := r.ForBranch(ctx, branch)
+func (r *routes) forget(ctx context.Context, carrier id.ID) error {
+	existing, err := r.ForCarrier(ctx, carrier)
 	if errors.Is(err, bserr.ErrNotFound) {
 		return nil
 	}
@@ -163,21 +163,21 @@ func (r *routes) Get(ctx context.Context, want id.ID) (asset.Route, error) {
 	return row.toDomain()
 }
 
-// ForBranch finds the route carrying an electrical branch.
-func (r *routes) ForBranch(ctx context.Context, branch id.ID) (asset.Route, error) {
+// ForCarrier finds the route carrying a branch or a circuit.
+func (r *routes) ForCarrier(ctx context.Context, carrier id.ID) (asset.Route, error) {
 	var rows []routeRow
 
 	if err := r.base.Query(ctx, &rows,
 		`SELECT * FROM `+RouteTable+`
 		 WHERE tenant_id = current_setting('app.tenant_id', true)
-		   AND branch_id = $1
-		 LIMIT 1`, branch.String()); err != nil {
+		   AND carrier_id = $1
+		 LIMIT 1`, carrier.String()); err != nil {
 		return asset.Route{}, err
 	}
 
 	if len(rows) == 0 {
 		return asset.Route{}, fmt.Errorf(
-			"%w: no route carries branch %s", bserr.ErrNotFound, branch)
+			"%w: no route carries %s", bserr.ErrNotFound, carrier)
 	}
 
 	return rows[0].toDomain()
@@ -255,14 +255,14 @@ func (r routeRow) toDomain() (asset.Route, error) {
 		return asset.Route{}, fmt.Errorf("geo: stored route id %q: %w", r.ID, err)
 	}
 
-	branchID, err := id.Parse(r.BranchID)
+	carrierID, err := id.Parse(r.CarrierID)
 	if err != nil {
-		return asset.Route{}, fmt.Errorf("geo: stored branch id %q: %w", r.BranchID, err)
+		return asset.Route{}, fmt.Errorf("geo: stored carrier id %q: %w", r.CarrierID, err)
 	}
 
 	return asset.Route{
 		ID:         routeID,
-		BranchID:   branchID,
+		CarrierID:  carrierID,
 		Provenance: asset.Provenance(r.Provenance),
 		LengthM:    r.LengthM,
 	}, nil

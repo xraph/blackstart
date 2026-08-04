@@ -79,7 +79,7 @@ func geoTraceCommand() cli.Command {
 			}
 
 			ctx.Printf("traced %s\n", route.ID)
-			ctx.Printf("  branch      %s\n", route.BranchID)
+			ctx.Printf("  branch      %s\n", route.CarrierID)
 			ctx.Printf("  provenance  %s\n", route.Provenance)
 			ctx.Printf("  length      %.1f km in %d spans\n", route.LengthM/1000, len(spans))
 
@@ -134,7 +134,7 @@ func geoShowCommand() cli.Command {
 			}
 
 			ctx.Printf("id          %s\n", route.ID)
-			ctx.Printf("branch      %s\n", route.BranchID)
+			ctx.Printf("carrier     %s\n", route.CarrierID)
 			ctx.Printf("provenance  %s\n", route.Provenance)
 			ctx.Printf("length      %.1f km in %d spans\n", route.LengthM/1000, len(spans))
 

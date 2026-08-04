@@ -44,7 +44,7 @@ type routeRow struct {
 	TenantID string `grove:"tenant_id,notnull"`
 	Version  int64  `grove:"version,notnull"`
 
-	BranchID   string  `grove:"branch_id,notnull"`
+	CarrierID  string  `grove:"carrier_id,notnull"`
 	Provenance string  `grove:"provenance,notnull"`
 	LengthM    float64 `grove:"length_m,notnull"`
 }

@@ -22,9 +22,9 @@ func TestImportWithoutStructuresIsRoutedNotSurveyed(t *testing.T) {
 	e := engine(t)
 
 	route, err := e.Import(t.Context(), geo.ImportRequest{
-		BranchID: id.MustNew("nmdl"),
-		Path:     rightOfWay(),
-		SpanM:    400,
+		CarrierID: id.MustNew("circ"),
+		Path:      rightOfWay(),
+		SpanM:     400,
 	})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
@@ -49,7 +49,7 @@ func TestImportWithStructuresIsSurveyed(t *testing.T) {
 	e := engine(t)
 
 	route, err := e.Import(t.Context(), geo.ImportRequest{
-		BranchID:   id.MustNew("nmdl"),
+		CarrierID:  id.MustNew("circ"),
 		Path:       rightOfWay(),
 		Structures: rightOfWay(),
 	})
@@ -69,7 +69,7 @@ func TestImportDoesNotResampleRecordedStructures(t *testing.T) {
 	structures := rightOfWay()
 
 	route, err := e.Import(t.Context(), geo.ImportRequest{
-		BranchID:   id.MustNew("nmdl"),
+		CarrierID:  id.MustNew("circ"),
 		Path:       structures,
 		Structures: structures,
 		SpanM:      50, // would insert many points if it were applied
@@ -94,9 +94,9 @@ func TestImportKeepsTheDigitisedCorner(t *testing.T) {
 	e := engine(t)
 
 	route, err := e.Import(t.Context(), geo.ImportRequest{
-		BranchID: id.MustNew("nmdl"),
-		Path:     rightOfWay(),
-		SpanM:    400,
+		CarrierID: id.MustNew("circ"),
+		Path:      rightOfWay(),
+		SpanM:     400,
 	})
 	if err != nil {
 		t.Fatalf("Import: %v", err)

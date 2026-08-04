@@ -21,6 +21,7 @@ func Group() *migrate.Group {
 	g := migrate.NewGroup(GroupName, migrate.DependsOn(fabriqmigrations.GroupName))
 
 	g.MustRegister(migration0001Tables)
+	g.MustRegister(migration0002Carrier)
 
 	return g
 }
@@ -41,7 +42,7 @@ func up0001(ctx context.Context, exec migrate.Executor) error {
 			id          TEXT PRIMARY KEY,
 			tenant_id   TEXT NOT NULL,
 			version     BIGINT NOT NULL,
-			branch_id   TEXT NOT NULL,
+			carrier_id  TEXT NOT NULL,
 			provenance  TEXT NOT NULL,
 			length_m    DOUBLE PRECISION NOT NULL
 		)`,
@@ -49,12 +50,12 @@ func up0001(ctx context.Context, exec migrate.Executor) error {
 		`CREATE INDEX IF NOT EXISTS ` + RouteTable + `_tenant_idx
 			ON ` + RouteTable + ` (tenant_id)`,
 
-		// A branch has one route, and the question asked of this table is
-		// almost always "where does this branch run". Unique, because two
-		// routes for one branch is a contradiction rather than a duplicate:
-		// nothing could say which path the branch takes.
-		`CREATE UNIQUE INDEX IF NOT EXISTS ` + RouteTable + `_branch_idx
-			ON ` + RouteTable + ` (tenant_id, branch_id)`,
+		// A carrier has one route, and the question asked of this table is
+		// almost always "where does this thing run". Unique, because two
+		// routes for one carrier is a contradiction rather than a duplicate:
+		// nothing could say which path it takes.
+		`CREATE UNIQUE INDEX IF NOT EXISTS ` + RouteTable + `_carrier_idx
+			ON ` + RouteTable + ` (tenant_id, carrier_id)`,
 
 		// geom_wkt rather than a geometry column. The indexed geometry lives
 		// in fabriq_geometries, written through Fabriq's spatial port, which
@@ -118,4 +119,36 @@ func execAll(ctx context.Context, exec migrate.Executor, statements []string) er
 	}
 
 	return nil
+}
+
+// A route carries either a network model's branch or a real circuit, so the
+// column names what it carries rather than assuming a branch. Every existing
+// row carries a branch, and a branch identifier is a valid carrier identifier,
+// so this is a rename with no backfill.
+//
+// IF EXISTS on both statements: a database created after this migration was
+// written already has the new names from 0001, and a rename that fails there
+// would block a fresh install to fix an upgrade.
+var migration0002Carrier = &migrate.Migration{
+	Name:    "geo_route_carrier",
+	Version: "20260804000010",
+	Comment: "a route names its carrier, which may be a circuit",
+	Up:      up0002,
+	Down:    down0002,
+}
+
+func up0002(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`ALTER TABLE ` + RouteTable + ` RENAME COLUMN branch_id TO carrier_id`,
+		`ALTER INDEX IF EXISTS ` + RouteTable + `_branch_idx
+			RENAME TO ` + RouteTable + `_carrier_idx`,
+	})
+}
+
+func down0002(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`ALTER INDEX IF EXISTS ` + RouteTable + `_carrier_idx
+			RENAME TO ` + RouteTable + `_branch_idx`,
+		`ALTER TABLE ` + RouteTable + ` RENAME COLUMN carrier_id TO branch_id`,
+	})
 }

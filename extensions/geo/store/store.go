@@ -13,7 +13,7 @@ import (
 type Store interface {
 	store.Lifecycle
 
-	// Routes reads and writes branch geometry.
+	// Routes reads and writes carrier geometry.
 	Routes() RouteStore
 }
 
@@ -34,8 +34,8 @@ type RouteStore interface {
 	// Get reads one route.
 	Get(ctx context.Context, want id.ID) (asset.Route, error)
 
-	// ForBranch finds the route carrying an electrical branch.
-	ForBranch(ctx context.Context, branch id.ID) (asset.Route, error)
+	// ForCarrier finds the route carrying a branch or a circuit.
+	ForCarrier(ctx context.Context, carrier id.ID) (asset.Route, error)
 
 	// Spans reads a route's spans in order.
 	Spans(ctx context.Context, route id.ID) ([]asset.Span, error)

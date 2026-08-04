@@ -17,14 +17,15 @@ import (
 // everything between them; Import is given the path and invents only what the
 // source did not record.
 type ImportRequest struct {
-	// BranchID names the circuit this path carries.
+	// CarrierID names what this path carries — almost always a circuit.
 	//
 	// Required, exactly as for a traced route. Imported geometry describes a
-	// real circuit and an ACTIVSg branch is synthetic, so the two must not be
-	// conflated — a caller importing real geometry stands up its own circuits
-	// rather than attaching a Sharyland right-of-way to a synthetic branch.
-	// See the phase-3 data survey, §1.5.
-	BranchID id.ID
+	// line somebody built and an ACTIVSg branch is synthetic, so the two must
+	// not be conflated: a caller importing real geometry stands up its own
+	// circuits rather than attaching a Sharyland right-of-way to a synthetic
+	// branch. See the phase-3 data survey, §1.5, and the real-circuit-identity
+	// design, §2.
+	CarrierID id.ID
 
 	// Path is the digitised right-of-way, in order.
 	Path shape.Line
@@ -52,10 +53,10 @@ type ImportRequest struct {
 //
 // # Errors
 //
-// Returns an error when the branch is missing, the path is not a line, the
+// Returns an error when the carrier is missing, the path is not a line, the
 // supplied structures do not lie along it, or the route cannot be stored.
 func (e *Engine) Import(ctx context.Context, in ImportRequest) (asset.Route, error) {
-	if in.BranchID.IsZero() {
+	if in.CarrierID.IsZero() {
 		return asset.Route{}, errors.New(
 			"geo: an imported route needs the circuit it carries; a path over " +
 				"the ground that carries nothing is not part of the network")
@@ -63,12 +64,12 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (asset.Route, err
 
 	path, provenance, err := e.resolveGeometry(in)
 	if err != nil {
-		return asset.Route{}, fmt.Errorf("geo: importing branch %s: %w", in.BranchID, err)
+		return asset.Route{}, fmt.Errorf("geo: importing %s: %w", in.CarrierID, err)
 	}
 
 	route := asset.Route{
 		ID:         gid.NewRoute(),
-		BranchID:   in.BranchID,
+		CarrierID:  in.CarrierID,
 		Provenance: provenance,
 		LengthM:    path.LengthM(),
 	}
@@ -88,7 +89,7 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (asset.Route, err
 	}
 
 	if err := e.store.Routes().Put(ctx, route, spans); err != nil {
-		return asset.Route{}, fmt.Errorf("geo: storing the imported route for %s: %w", in.BranchID, err)
+		return asset.Route{}, fmt.Errorf("geo: storing the imported route for %s: %w", in.CarrierID, err)
 	}
 
 	e.emit(ctx, route, len(spans))

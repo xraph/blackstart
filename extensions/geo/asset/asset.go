@@ -17,7 +17,9 @@ package asset
 import (
 	"fmt"
 
+	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/geo/shape"
+	nmid "github.com/xraph/blackstart/extensions/networkmodel/id"
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
 )
@@ -85,7 +87,18 @@ func (p Provenance) PathIsReal() bool {
 	return p == Surveyed || p == Routed
 }
 
-// Route is a branch's path over the ground.
+// CarriesElectrically reports whether a carrier can be solved.
+//
+// A branch in a network model has an impedance and a rating; a circuit has
+// neither, by design — see the real-circuit-identity design, §3.1. Anything
+// that runs a power flow or a contingency asks this before it starts, so the
+// refusal names the reason rather than surfacing as a missing branch deep in a
+// solver.
+func CarriesElectrically(carrier id.ID) bool {
+	return carrier.Prefix() == nmid.Model
+}
+
+// Route is a path over the ground, and what it carries.
 //
 // The json tags matter beyond tidiness: these types cross the HTTP boundary,
 // and every other response in this platform is snake_case. A single camelCase
@@ -95,9 +108,12 @@ type Route struct {
 	// ID identifies this route.
 	ID id.ID `json:"id"`
 
-	// BranchID names the electrical branch it carries. A route belongs to one
-	// branch; a branch has one route.
-	BranchID id.ID `json:"branch_id"`
+	// CarrierID names what this path carries: a branch in a network model, or
+	// a real circuit. Exactly one of the two, and the identifier's own prefix
+	// says which — a second discriminator field could disagree with it.
+	//
+	// A route belongs to one carrier; a carrier has one route.
+	CarrierID id.ID `json:"carrier_id"`
 
 	// Provenance says whether the path was surveyed or interpolated.
 	Provenance Provenance `json:"provenance"`
@@ -116,10 +132,20 @@ func (r Route) Validate() error {
 		return fmt.Errorf("%w: a route needs an identifier", bserr.ErrInvalid)
 	}
 
-	if r.BranchID.IsZero() {
+	if r.CarrierID.IsZero() {
 		return fmt.Errorf(
-			"%w: route %s names no branch; a path over the ground that carries "+
+			"%w: route %s names no carrier; a path over the ground that carries "+
 				"nothing is not part of the network", bserr.ErrInvalid, r.ID)
+	}
+
+	// The prefix is the discriminator, so an unrecognised one is not a
+	// harmless extra case: it is a route whose carrier nothing can resolve,
+	// and it would store, render and read back as complete.
+	if !CarriesElectrically(r.CarrierID) && r.CarrierID.Prefix() != gid.Circuit {
+		return fmt.Errorf(
+			"%w: route %s carries %s, which is neither a branch in a network "+
+				"model nor a circuit; nothing could say what runs along it",
+			bserr.ErrInvalid, r.ID, r.CarrierID)
 	}
 
 	if !r.Provenance.Valid() {
@@ -181,6 +207,56 @@ type Structure struct {
 	// the vocabularies differ per source and forcing them into one enumeration
 	// would discard the distinction the source drew.
 	Kind string `json:"kind"`
+}
+
+// Circuit is a transmission line somebody actually built.
+//
+// Distinct from a network model's branch, and the distinction is the point. An
+// ACTIVSg branch is a number in a synthetic case that corresponds to no real
+// line anywhere; a circuit is a line that exists, imported from a source that
+// recorded where it runs. Geometry from OpenStreetMap or a transmission line
+// layer carries a circuit, and attaching it to a synthetic branch would claim
+// the two are the same conductor.
+//
+// A circuit carries no electrical parameters, deliberately. The moment it has
+// an impedance somebody will solve it, and the impedance will be a guess. A
+// real line whose electrical parameters are known is a branch in a network
+// model, which is a different import from a different source.
+type Circuit struct {
+	// ID identifies this circuit.
+	ID id.ID `json:"id"`
+
+	// ExternalID is the identifier the source used: an OSM way, a feature id.
+	ExternalID string `json:"external_id"`
+
+	// Source names where it came from — "openstreetmap", a feature service URL.
+	//
+	// Together with ExternalID this is the reconciliation key, which is what
+	// makes an import re-runnable: the same way seen twice updates one circuit
+	// rather than creating a second.
+	Source string `json:"source"`
+
+	// VoltageKV is the nominal voltage, zero when the source did not say.
+	VoltageKV float64 `json:"voltage_kv"`
+
+	// Operator is who runs it, empty when unknown.
+	Operator string `json:"operator"`
+}
+
+// Validate reports whether a circuit can be stored.
+func (c Circuit) Validate() error {
+	if c.ID.IsZero() {
+		return fmt.Errorf("%w: a circuit needs an identifier", bserr.ErrInvalid)
+	}
+
+	if c.ExternalID == "" || c.Source == "" {
+		return fmt.Errorf(
+			"%w: circuit %s has no external identifier and source; without them "+
+				"nothing can be traced back to what it was derived from, and a "+
+				"re-import cannot tell it from a new line", bserr.ErrInvalid, c.ID)
+	}
+
+	return nil
 }
 
 // Footprint is the area an entity occupies.

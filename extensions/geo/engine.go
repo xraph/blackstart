@@ -13,6 +13,7 @@ import (
 	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/geo/shape"
 	"github.com/xraph/blackstart/extensions/geo/store"
+	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/hooks"
 	"github.com/xraph/blackstart/pkg/id"
 )
@@ -90,7 +91,7 @@ func (e *Engine) Trace(ctx context.Context, in TraceRequest) (asset.Route, error
 
 	route := asset.Route{
 		ID:         gid.NewRoute(),
-		BranchID:   in.BranchID,
+		CarrierID:  in.BranchID,
 		Provenance: asset.Interpolated,
 		LengthM:    path.LengthM(),
 	}
@@ -128,7 +129,24 @@ func (e *Engine) Route(ctx context.Context, want id.ID) (asset.Route, error) {
 
 // RouteForBranch finds the route carrying an electrical branch.
 func (e *Engine) RouteForBranch(ctx context.Context, branch id.ID) (asset.Route, error) {
-	return e.store.Routes().ForBranch(ctx, branch)
+	return e.store.Routes().ForCarrier(ctx, branch)
+}
+
+// RouteForCircuit finds the route of a circuit somebody actually built.
+//
+// Separate from RouteForBranch rather than one call taking either, because the
+// two answer different questions and the answers support different things. A
+// branch's route can feed a contingency; a circuit's cannot, because a circuit
+// has no impedance to remove from a solve. Keeping them apart means a caller
+// picks which it wanted rather than discovering the difference later.
+func (e *Engine) RouteForCircuit(ctx context.Context, circuit id.ID) (asset.Route, error) {
+	if circuit.Prefix() != gid.Circuit {
+		return asset.Route{}, fmt.Errorf(
+			"%w: %s is not a circuit; RouteForBranch is what reads a branch's path",
+			bserr.ErrInvalid, circuit)
+	}
+
+	return e.store.Routes().ForCarrier(ctx, circuit)
 }
 
 // Spans reads a route's spans in order.

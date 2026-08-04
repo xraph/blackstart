@@ -87,18 +87,18 @@ func (s *routes) Get(_ context.Context, want id.ID) (asset.Route, error) {
 	return found, nil
 }
 
-func (s *routes) ForBranch(_ context.Context, branch id.ID) (asset.Route, error) {
+func (s *routes) ForCarrier(_ context.Context, carrier id.ID) (asset.Route, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	for _, route := range s.routes {
-		if route.BranchID == branch {
+		if route.CarrierID == carrier {
 			return route, nil
 		}
 	}
 
 	return asset.Route{}, fmt.Errorf(
-		"%w: no route carries branch %s", bserr.ErrNotFound, branch)
+		"%w: no route carries %s", bserr.ErrNotFound, carrier)
 }
 
 func (s *routes) Spans(_ context.Context, route id.ID) ([]asset.Span, error) {
