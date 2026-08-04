@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/xraph/fabriq"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/xraph/blackstart/extensions/fabric"
 	"github.com/xraph/blackstart/extensions/weather/store"
 	fabriqstore "github.com/xraph/blackstart/extensions/weather/store/fabriq"
+	"github.com/xraph/blackstart/pkg/apiauth"
 	"github.com/xraph/blackstart/pkg/hooks"
 )
 
@@ -25,6 +27,16 @@ type Extension struct {
 
 	store  store.Store
 	engine *Engine
+
+	// poll configures the ingest loop. Disabled by default: the server runs
+	// it and bsctl does not, which is a property of which binary is running
+	// rather than of this extension.
+	poll PollConfig
+
+	// Worker lifecycle, guarded by the same mutex.
+	mu     sync.Mutex
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 // Option configures the extension.
@@ -33,6 +45,11 @@ type Option func(*Extension)
 // WithStore supplies a store, overriding the Fabriq-backed default.
 func WithStore(s store.Store) Option {
 	return func(e *Extension) { e.store = s }
+}
+
+// WithPolling configures the ingest loop.
+func WithPolling(config PollConfig) Option {
+	return func(e *Extension) { e.poll = config }
 }
 
 // New builds the extension.
@@ -113,6 +130,18 @@ func (e *Extension) Start(context.Context) error {
 	}
 
 	e.engine = engine
+
+	// Registered here rather than in Register, because the controller needs
+	// the engine and the engine needs the store.
+	//
+	// Optional guard: an unauthenticated deployment provides none, and a nil
+	// guard declares no middleware. A configured one that cannot resolve its
+	// middleware refuses every request rather than serving it open.
+	guard, _ := forge.Inject[*apiauth.Guard](app.Container())
+
+	if err := app.RegisterController(NewController(engine, guard)); err != nil {
+		return fmt.Errorf("weather: registering the HTTP controller: %w", err)
+	}
 
 	return nil
 }
