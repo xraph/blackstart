@@ -776,21 +776,40 @@ fn condition_attribution_survives_a_real_split() {
 /// frequency, and shed — reach the report the same way `condition` already
 /// does, not merely `condition` on its own.
 ///
-/// Reuses `heavy_deficit_case` and the exact two-stage scheme
-/// `ufls_shedding_is_counted_in_load_lost` already hand-derives: that test
-/// establishes `load_lost == 7.5` pu and that the island never splits and
-/// never loses its slack, so every bit of `load_lost` is this one island's
-/// own shed — which means `reports[0].shed` must equal that same 7.5 exactly,
-/// not merely be nonzero, or a bug that shed the right total amount but
-/// attributed some of it to the wrong (nonexistent, here) island would pass.
+/// Reuses `heavy_deficit_case` and the same shed fractions
+/// `ufls_shedding_is_counted_in_load_lost` hand-derives — 50% then 50% of
+/// what is left, 7.5 pu total — but NOT that test's zero hold delay.
+/// `nadir_hz` is derived from the assembled `trace` (the truncated path the
+/// island actually lived, per `bs_frequency::ufls::respond`), not from
+/// either trajectory's own unbounded integration horizon. With a zero delay
+/// each stage's crossing fires on the very first post-`t=0` sample, and
+/// `push_segment` truncates a segment strictly BEFORE its own crossing
+/// sample — so the real, lived portion of segments 1 and 2 is only their
+/// shared `t = 0` point, still exactly at nominal. This fixture's leftover
+/// imbalance after both sheds turns out to be a mild SURPLUS, not a deficit
+/// (halving a 10 pu load twice against a slack capped at 3 pu overshoots
+/// past balance), so the one segment that does run a real span only ever
+/// rises. That is a real trace, but it never actually visits a frequency
+/// below nominal at all — the old, pre-fix number that looked like a nadir
+/// here was the counterfactual tail of the very first (unshed) trajectory,
+/// exactly the bug this test now exists to not paper over.
+///
+/// A 0.05 s hold delay (measured against this fixture's own output, not
+/// hand-solved from the swing equation — the same shortcut the zero-delay
+/// version already relied on to avoid that derivation) is enough: this
+/// island's initial `RoCoF` is steep enough that the deviation is already
+/// below both thresholds within the first 0.01 s step and keeps falling for
+/// the whole 0.05 s hold, so segment 1 alone carries a real, sub-nominal
+/// excursion down to ~57.43 Hz before the first shed actually fires, at
+/// t ≈ 0.06 s.
 ///
 /// Fails if: `shed` stays `0.0` (the field never wired up at all — the
 /// original defect this test exists to close); `shed` is nonzero but not
-/// 7.5 (attribution or double-counting bug); `nadir_hz` is `None` or `>=
-/// 60.0` (nominal) — a real deficit that never dipped below nominal is not
-/// what this fixture produces; `rocof_hz_s` is `None` or `0.0` — the initial
-/// rate of change for a real step imbalance is never exactly zero; or
-/// `settling_hz` is `None`.
+/// 7.5 (attribution or double-counting bug); `nadir_hz` is `None` or not
+/// comfortably below nominal — a real deficit that never dipped below
+/// nominal is not what this fixture produces; `rocof_hz_s` is `None` or
+/// `0.0` — the initial rate of change for a real step imbalance is never
+/// exactly zero; or `settling_hz` is `None`.
 #[test]
 fn reports_frequency_numbers_are_populated_when_ufls_fires() {
     let scheme = Scheme {
@@ -798,12 +817,12 @@ fn reports_frequency_numbers_are_populated_when_ufls_fires() {
             Stage {
                 at_hz: 59.99,
                 shed_fraction: 0.5,
-                delay: 0.0,
+                delay: 0.05,
             },
             Stage {
                 at_hz: 59.98,
                 shed_fraction: 0.5,
-                delay: 0.0,
+                delay: 0.05,
             },
         ],
         floor_hz: 40.0,
@@ -831,8 +850,16 @@ fn reports_frequency_numbers_are_populated_when_ufls_fires() {
         report.shed
     );
 
+    // ~57.43 Hz measured with this fixture's 0.05 s hold — see the doc
+    // comment above. 58.0 leaves margin without being so loose that a
+    // regression back to "never dips at all" (60.0, the pre-fix bug for this
+    // exact fixture) would slip through.
     let nadir = report.nadir_hz.expect("a real deficit reaches a nadir");
-    assert!(nadir < 60.0, "nadir {nadir} Hz never dipped below nominal");
+    assert!(
+        nadir < 58.0,
+        "nadir {nadir} Hz should be a real sub-nominal excursion, not merely \
+         a hair below nominal"
+    );
 
     let rocof = report
         .rocof_hz_s

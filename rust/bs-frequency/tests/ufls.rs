@@ -146,3 +146,76 @@ fn the_response_is_reproducible() {
     assert_eq!(first.sheds, second.sheds);
     assert_eq!(first.nadir_hz.to_bits(), second.nadir_hz.to_bits());
 }
+
+/// THE TEST THIS TASK EXISTS FOR.
+///
+/// `solver.proto` documents a guarantee on `Response.nadir_hz`'s wire
+/// counterpart: the decimation downstream keeps each bucket's extrema
+/// rather than sampling at a stride, "so the nadir reported ... is
+/// guaranteed to appear on the curve too." That guarantee is only as good
+/// as what `respond` hands the wire in the first place — and derived from
+/// the raw trajectories rather than the assembled `trace`, it could be
+/// false: every non-final trajectory keeps integrating past the crossing
+/// that supersedes it, all the way to the full horizon, and that
+/// counterfactual tail is exactly what `push_segment` truncates away when
+/// it assembles `trace`. A multi-stage shed is what exercises this: with
+/// two stages firing, TWO trajectories (everything but the last) carry a
+/// tail the island never actually lived through.
+///
+/// This model and scheme are shared with
+/// `trace.rs::the_trace_never_goes_backwards_across_a_shed`, which already
+/// establishes that this fixture sheds — reused rather than re-derived so a
+/// reader checking one test's fixture against the other does not have to
+/// wonder whether they were meant to agree.
+#[test]
+fn nadir_hz_is_the_minimum_of_the_trace() {
+    let scheme = Scheme {
+        stages: vec![
+            Stage {
+                at_hz: 59.3,
+                shed_fraction: 0.25,
+                delay: 0.1,
+            },
+            Stage {
+                at_hz: 58.9,
+                shed_fraction: 0.25,
+                delay: 0.1,
+            },
+        ],
+        floor_hz: 57.0,
+        ceiling_hz: 61.8,
+    };
+
+    let got = respond(&model(2.0, 15.0), 1.2, 4.0, &scheme, 30.0, 0.01);
+
+    assert_eq!(
+        got.sheds.len(),
+        2,
+        "the fixture must actually fire both stages, or this proves nothing \
+         about a MULTI-stage shed: {:?}",
+        got.sheds
+    );
+
+    let nominal = Defaults::default().nominal_hz;
+    let trace_min_hz = got
+        .trace
+        .iter()
+        .map(|sample| sample.hz)
+        .fold(f64::INFINITY, f64::min);
+
+    // Bit-for-bit, not an epsilon comparison: `nadir_hz` and `trace`'s own
+    // minimum are computed from the very same samples, so a correct
+    // implementation reproduces the identical `f64`, not merely a nearby
+    // one — the same standard `the_response_is_reproducible` above already
+    // holds `respond` to.
+    assert_eq!(
+        got.nadir_hz.to_bits(),
+        (trace_min_hz - nominal).to_bits(),
+        "nadir_hz ({}) must equal the trace's own minimum, {} Hz absolute \
+         (a deviation of {}) — a curve that disagreed with the number \
+         printed beside it would be worse than a coarse one",
+        got.nadir_hz,
+        trace_min_hz,
+        trace_min_hz - nominal
+    );
+}

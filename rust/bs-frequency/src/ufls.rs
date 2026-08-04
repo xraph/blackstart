@@ -140,7 +140,6 @@ pub fn respond(
 
     let mut trajectory = integrate(model, remaining, horizon, step);
     let rocof_hz_s = trajectory.rocof_hz_s;
-    let mut nadir_hz = trajectory.nadir_hz;
 
     // Each stage gets at most one chance, in order, and every crossing
     // restarts the trajectory from rest with the reduced imbalance. Carrying
@@ -172,10 +171,44 @@ pub fn respond(
         next_stage += 1;
 
         trajectory = integrate(model, remaining, horizon, step);
-        nadir_hz = nadir_hz.min(trajectory.nadir_hz);
     }
 
     push_segment(&mut trace, &trajectory, nominal, elapsed, None);
+
+    // The nadir reported here must be a point the assembled trace actually
+    // passes through — that is the guarantee `solver.proto` documents on the
+    // wire type's own `nadir_hz`. Pulling it from the raw trajectories (as
+    // this used to, via `Trajectory::nadir_hz`) reports the minimum over
+    // EVERY segment's full integration horizon, including the counterfactual
+    // tail past a shed crossing — the part `push_segment` truncates away
+    // below because the island was superseded there and never actually
+    // reached it. `trace` is exactly that truncated, actual path, so its
+    // minimum is the true nadir by construction, and it is already
+    // full-resolution (decimation happens later, in `bs-cascade`), so this is
+    // exact rather than an approximation.
+    //
+    // Sign convention: `trace` holds absolute hertz (see `Sample`), while
+    // `Response::nadir_hz` is a deviation (see below and `classify`, which
+    // adds `nominal` back on to compare against absolute stage thresholds) —
+    // so the nominal offset comes back out here, once, at the point of
+    // derivation.
+    //
+    // An island with no machine never reaches `respond` at all — `step.rs`
+    // skips straight to `None` for it — and every trajectory this function
+    // does integrate seeds `samples` with `(0.0, 0.0)` (see `integrate`), so
+    // `trace` is never actually empty here. The `is_finite` fallback exists
+    // only so a violation of that invariant reports "no dip observed" (`0.0`,
+    // the same convention `Trajectory::nadir_hz` uses for an all-flat
+    // trajectory) instead of the `f64::INFINITY` an empty fold would
+    // otherwise produce.
+    let min_hz = trace
+        .iter()
+        .fold(f64::INFINITY, |min, sample| min.min(sample.hz));
+    let nadir_hz = if min_hz.is_finite() {
+        min_hz - nominal
+    } else {
+        0.0
+    };
 
     let settling_hz = trajectory.settling_hz;
     let shed_fraction = if served_load > 0.0 {
