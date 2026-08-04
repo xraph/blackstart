@@ -40,6 +40,28 @@ type Store interface {
 
 	// Samples reads and writes the numbers.
 	Samples() SampleStore
+
+	// Blobs holds the GRIB2 bytes each grid was decoded from.
+	Blobs() BlobStore
+}
+
+// BlobStore holds retrieved GRIB2 messages.
+//
+// Separate from the Grid row because they have different shapes and different
+// lifetimes: the row is small and listed constantly, the message is megabytes
+// and read only when a grid is sampled or re-sampled. Keeping the bytes on the
+// row would mean every catalog listing drags them along.
+//
+// Keeping them at all is what makes sampling recomputable. NOAA's rolling
+// archive passes, and after it does these bytes are the only copy of what the
+// model said — so a sampling bug found next month is fixable, where a
+// re-fetch would not be.
+type BlobStore interface {
+	// Put stores the bytes and returns the reference to read them back by.
+	Put(ctx context.Context, body []byte) (string, error)
+
+	// Get reads the bytes a reference names.
+	Get(ctx context.Context, reference string) ([]byte, error)
 }
 
 // CycleFilter narrows a cycle listing.

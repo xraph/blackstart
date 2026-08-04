@@ -41,6 +41,9 @@ type Store struct {
 	// hide the fact that they are separate series.
 	forecastSeries map[string][]point
 	stationSeries  map[string][]point
+
+	// blobs holds retrieved messages by content reference.
+	blobs map[string][]byte
 }
 
 // New builds an empty store.
@@ -51,6 +54,7 @@ func New() *Store {
 		stations:       map[id.ID]observation.Station{},
 		forecastSeries: map[string][]point{},
 		stationSeries:  map[string][]point{},
+		blobs:          map[string][]byte{},
 	}
 }
 
