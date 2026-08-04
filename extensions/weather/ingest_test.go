@@ -16,6 +16,7 @@ import (
 	"github.com/xraph/blackstart/extensions/weather"
 	"github.com/xraph/blackstart/extensions/weather/fetch"
 	"github.com/xraph/blackstart/extensions/weather/field"
+	"github.com/xraph/blackstart/extensions/weather/forecast"
 	"github.com/xraph/blackstart/extensions/weather/model"
 	"github.com/xraph/blackstart/extensions/weather/store"
 	"github.com/xraph/blackstart/extensions/weather/store/memory"
@@ -450,5 +451,87 @@ func TestIngestedCyclesAreListable(t *testing.T) {
 
 	if len(got) != 1 {
 		t.Fatalf("listed %d cycles, want 1", len(got))
+	}
+}
+
+// A re-ingest of a cycle that has already been sampled must not push it back
+// to fetched.
+//
+// Every field skips on the second pass, and while nothing swept the fetched
+// state this was invisible. Once the poller started sampling that state, it
+// meant re-uploading every grid to the solver on every tick, forever — which
+// is what a live run actually did before this test existed.
+func TestReingestDoesNotUnsampleACycle(t *testing.T) {
+	t.Parallel()
+
+	fetcher := &fakeFetcher{}
+	engine, s, _ := ingestHarness(t, fetcher)
+
+	first, err := engine.Ingest(t.Context(), aRequest())
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+
+	if err := s.Cycles().SetStatus(
+		t.Context(), first.CycleID, forecast.StatusSampled,
+	); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+
+	second, err := engine.Ingest(t.Context(), aRequest())
+	if err != nil {
+		t.Fatalf("second Ingest: %v", err)
+	}
+
+	if second.Retrieved != 0 {
+		t.Fatalf("the second pass retrieved %d fields, want everything skipped",
+			second.Retrieved)
+	}
+
+	cycle, err := s.Cycles().Get(t.Context(), first.CycleID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if cycle.Status != forecast.StatusSampled {
+		t.Errorf("a skip-only re-ingest moved the cycle to %s, want it left at %s",
+			cycle.Status, forecast.StatusSampled)
+	}
+}
+
+// A forecast hour arriving after a cycle was sampled does move it back, because
+// the new hour has not been sampled onto anything.
+func TestANewHourReopensASampledCycle(t *testing.T) {
+	t.Parallel()
+
+	fetcher := &fakeFetcher{}
+	engine, s, _ := ingestHarness(t, fetcher)
+
+	first, err := engine.Ingest(t.Context(), aRequest())
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+
+	if err := s.Cycles().SetStatus(
+		t.Context(), first.CycleID, forecast.StatusSampled,
+	); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+
+	later := aRequest()
+	later.Hours = []int{2}
+
+	if _, err := engine.Ingest(t.Context(), later); err != nil {
+		t.Fatalf("second Ingest: %v", err)
+	}
+
+	cycle, err := s.Cycles().Get(t.Context(), first.CycleID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if cycle.Status != forecast.StatusFetched {
+		t.Errorf("a newly retrieved hour left the cycle at %s, want %s",
+			cycle.Status, forecast.StatusFetched)
 	}
 }

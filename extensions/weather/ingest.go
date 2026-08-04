@@ -146,7 +146,16 @@ func (e *Engine) Ingest(ctx context.Context, in IngestRequest) (IngestResult, er
 
 	// Fetched rather than sampled: this pass stored bytes and recorded their
 	// provenance, and nothing has been sampled onto a span yet.
-	if result.Retrieved > 0 || result.Skipped > 0 {
+	//
+	// A pass that only skipped leaves the status where it is. Every field of an
+	// already-sampled cycle skips on the next poll tick, so moving it back to
+	// fetched on a skip would make the sampling sweep re-upload every grid to
+	// the solver on every tick, forever — which is precisely what it did until
+	// a live run showed 23 cycles oscillating between the two states.
+	//
+	// Retrieving something genuinely new does move it back, and should: a
+	// forecast hour that has just arrived has not been sampled onto anything.
+	if result.Retrieved > 0 || cycle.Status == forecast.StatusPending {
 		if err := e.store.Cycles().SetStatus(
 			ctx, cycle.ID, forecast.StatusFetched,
 		); err != nil {

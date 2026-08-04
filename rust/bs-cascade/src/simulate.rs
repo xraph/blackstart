@@ -200,13 +200,16 @@ pub struct Cascade {
 /// however many `step` calls observed it down to the single set of numbers
 /// [`IslandReport`] wants.
 ///
-/// Every field but `settling_hz` is a maximum-severity accumulation across
-/// the run, matching how `condition` already worked before this struct
-/// existed: `respond` (in `bs-frequency`) starts each call fresh from rest,
-/// so nothing inside a single `step` call has the whole run's history to
-/// draw on, and accumulating it is this caller's job. `settling_hz` is the
-/// one deliberate exception — see its own field doc.
-#[derive(Debug, Clone, Copy, Default)]
+/// `condition`, `nadir_hz`, and `rocof_hz_s` are each a maximum-severity
+/// accumulation across the run, matching how `condition` already worked
+/// before this struct existed: `respond` (in `bs-frequency`) starts each call
+/// fresh from rest, so nothing inside a single `step` call has the whole
+/// run's history to draw on, and accumulating it is this caller's job.
+/// `settling_hz` is a deliberate exception to that — see its own field doc —
+/// and `trace` and `shed` are neither: a curve is appended to and a shed
+/// total is summed, because both want the whole history rather than either
+/// an extremum or a final instant.
+#[derive(Debug, Clone, Default)]
 struct BusHistory {
     /// Peak severity — see `severity` below.
     condition: Option<IslandCondition>,
@@ -221,6 +224,11 @@ struct BusHistory {
     /// existing value, because a settling frequency is a final-instant
     /// quantity, not an extremum.
     settling_hz: Option<f64>,
+    /// Frequency curve accumulated across every step this bus's island was
+    /// observed in, on the run clock. Appended to, never replaced: unlike
+    /// `settling_hz`, a curve is the whole history rather than a final
+    /// instant.
+    trace: Vec<bs_frequency::Sample>,
     /// Per-unit load shed, summed across every step this bus's island shed
     /// anything.
     shed: f64,
@@ -307,6 +315,15 @@ pub fn simulate(
         // has the whole run's history to draw on. Keyed by bus, not island
         // identity — see the end-of-run comment below for why.
         //
+        // Whether this is the step the loop is about to end on, decided
+        // ahead of `accumulate_bus_history` below because it changes how
+        // much of THIS step's own trace that call may keep — see there.
+        let at = elapsed + out.at;
+        let no_trips = out.fired.is_empty();
+        let no_sheds = out.responses.iter().flatten().all(|r| r.sheds.is_empty());
+        let collapsed = is_collapsed(&out.islands, &case.buses, &out.responses);
+        let terminal = collapsed || (no_trips && no_sheds);
+
         // Unconditional — every step that produced a response updates
         // `bus_history`, including one whose own `is_collapsed` check
         // (below) is about to end the loop before `record_step` ever runs.
@@ -316,7 +333,31 @@ pub fn simulate(
         // an event, and `bus_history` is where that real amount is kept
         // either way. See `IslandReport::shed`'s own doc for why that can
         // make it disagree with the event log.
-        accumulate_bus_history(&mut bus_history, &out, &served_before, nominal);
+        //
+        // `respond`'s own trace always runs to the FULL integration horizon
+        // from wherever its last shed left off — `push_segment`'s `until`
+        // bound only ever truncates an EARLIER segment where a LATER one
+        // within the SAME call takes over; the final segment of every call
+        // has no such successor, so it runs all the way out. That horizon
+        // (60s by default) dwarfs the fraction of a second `out.at` typically
+        // advances the run clock by, so appending an untruncated trace from
+        // every step would make each step's tail run far past the point
+        // where the NEXT step's dispatch and topology actually supersede it,
+        // and the assembled curve would double back at every boundary — the
+        // same defect `push_segment` already exists to prevent, one level up.
+        // Truncating a non-terminal step's contribution at its own `out.at`
+        // (the same instant its events are stamped with) is what keeps the
+        // assembled curve monotonic; the terminal step is the one exception,
+        // since nothing comes after it to supersede what it integrated.
+        let bound = if terminal { None } else { Some(out.at) };
+        accumulate_bus_history(
+            &mut bus_history,
+            &out,
+            &served_before,
+            nominal,
+            elapsed,
+            bound,
+        );
 
         // `record_step` is computed here, before either exit check, because
         // both `Collapsed` and `Settled` can be reached by the SAME step
@@ -326,9 +367,6 @@ pub fn simulate(
         // checks below decide only whether the step also *counts* as a step
         // and whether the run keeps going, not whether its effects get
         // recorded.
-        let at = elapsed + out.at;
-        let no_trips = out.fired.is_empty();
-        let no_sheds = out.responses.iter().flatten().all(|r| r.sheds.is_empty());
         let effects = record_step(&case, &out, at, &served_before, island_count);
 
         // Checked before "nothing fired": a step can find nothing left to
@@ -337,7 +375,7 @@ pub fn simulate(
         // island — left over from an earlier split — looks like, and
         // reporting it `Settled` would call a fully de-energized network a
         // steady state.
-        if is_collapsed(&out.islands, &case.buses, &out.responses) {
+        if collapsed {
             // This is the step the loop is about to end on, and it is not
             // exempt from the same rule as every other step: whatever it
             // fired or shed already changed `case`, and dropping it here —
@@ -417,11 +455,12 @@ pub fn simulate(
     // for the same reason — there is no further call to refine it with.
     for report in &mut reports {
         if let Some(&lowest) = report.members.first() {
-            let history = bus_history[lowest];
+            let history = &bus_history[lowest];
             report.condition = history.condition;
             report.nadir_hz = history.nadir_hz;
             report.rocof_hz_s = history.rocof_hz_s;
             report.settling_hz = history.settling_hz;
+            report.trace.clone_from(&history.trace);
             report.shed = history.shed;
         }
     }
@@ -478,11 +517,20 @@ fn open_initiating(case: &mut Case, initiating: &[usize]) -> (Vec<Event>, usize)
 /// Folds one step's responses into the running per-bus history — see the
 /// call site in [`simulate`] for why this has to be unconditional, keyed by
 /// bus, and run before either of the loop's own exit checks.
+///
+/// `bound` truncates the TRACE contribution only — every other field here is
+/// already a whole-run reduction (a peak, a last-write, a sum) that has
+/// nothing in it to truncate. `Some(t)` keeps a response's trace samples
+/// with a local time strictly less than `t`; `None` keeps all of them. See
+/// the call site for why a non-terminal step passes `Some(out.at)` and the
+/// terminal one passes `None`.
 fn accumulate_bus_history(
     bus_history: &mut [BusHistory],
     out: &Outcome,
     served_before: &[f64],
     nominal: f64,
+    elapsed: f64,
+    bound: Option<f64>,
 ) {
     for (index, (members, response)) in out.islands.members.iter().zip(&out.responses).enumerate() {
         let Some(response) = response else { continue };
@@ -525,6 +573,31 @@ fn accumulate_bus_history(
             // deliberately a final-instant quantity rather than an extremum
             // accumulated across the run.
             history.settling_hz = Some(nominal + response.settling_hz);
+
+            // Each response's trace starts at zero on its own clock. The run
+            // clock is what a scrubber moves along, so every segment shifts
+            // by the elapsed time at the start of this step — the same
+            // `elapsed` used to stamp this step's own events, so the curve
+            // and the event log agree about when things happened. Dropping
+            // this offset would stack every step's curve on top of the
+            // first.
+            //
+            // `take_while` on `bound` is the other half of that same
+            // agreement — see this function's own doc and the call site in
+            // `simulate` for why a non-terminal step's own tail, run all the
+            // way to the integration horizon, has to be cut off where the
+            // NEXT step's `elapsed` takes over, on pain of the assembled
+            // curve doubling back at every step boundary.
+            history.trace.extend(
+                response
+                    .trace
+                    .iter()
+                    .take_while(|s| bound.is_none_or(|limit| s.at < limit))
+                    .map(|s| bs_frequency::Sample {
+                        at: elapsed + s.at,
+                        hz: s.hz,
+                    }),
+            );
 
             history.shed += shed;
         }

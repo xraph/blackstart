@@ -107,6 +107,18 @@ pub struct IslandReport {
     /// earlier — its last machine left the island, say — this is the last
     /// value seen, which is the only honest answer available.
     pub settling_hz: Option<f64>,
+    /// The island's frequency curve over the whole run, absolute hertz on the
+    /// run clock.
+    ///
+    /// Empty — not a flat line at zero — when no step ever observed a machine
+    /// on this island. A zero-hertz curve renders as a collapsed island, and
+    /// the distinction between "no data" and "zero" survives every other
+    /// layer of this path; it would be a poor place to lose it.
+    ///
+    /// Always empty coming out of `verify_islands`, which sees only a case
+    /// and a partition. `simulate` fills it, the same way it fills
+    /// `condition`.
+    pub trace: Vec<bs_frequency::Sample>,
     /// Load shed on this island over the whole run, per unit.
     ///
     /// Not optional, unlike the frequency fields above: zero is a genuine,
@@ -193,6 +205,7 @@ fn verify_one(
             nadir_hz: None,
             rocof_hz_s: None,
             settling_hz: None,
+            trace: Vec::new(),
             shed: 0.0,
             verdict: AcVerdict::Insolvable,
             balance,
@@ -218,6 +231,7 @@ fn verify_one(
         nadir_hz: None,
         rocof_hz_s: None,
         settling_hz: None,
+        trace: Vec::new(),
         shed: 0.0,
         verdict,
         balance,
