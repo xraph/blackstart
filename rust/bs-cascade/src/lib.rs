@@ -16,8 +16,10 @@
 
 pub mod dispatch;
 pub mod island;
+pub mod simulate;
 pub mod step;
 
 pub use dispatch::{Balance, Dispatchable, Plan, apply, rebalance};
 pub use island::{Islands, Subcase};
+pub use simulate::{Cascade, CascadeOutcome, Event, EventKind, Limits};
 pub use step::{Options, Outcome, StepError, step};
