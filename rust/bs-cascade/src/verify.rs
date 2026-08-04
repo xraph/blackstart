@@ -125,10 +125,18 @@ pub struct IslandReport {
     pub shed: f64,
     /// What the AC solve found.
     pub verdict: AcVerdict,
-    /// The island's real-power mismatch before this solve: load minus
-    /// generation, positive for a shortfall, negative for a surplus — see
-    /// [`Balance::gap`]. For a de-energized island this is exactly its load,
-    /// which is the number an operator asks for first.
+    /// The island's real-power mismatch before this solve: GENERATION MINUS
+    /// LOAD, negative for a shortfall, positive for a surplus. This is the
+    /// opposite sign from [`Balance::gap`], which this crate's own dispatch
+    /// code uses internally and which stays load-minus-generation to match
+    /// `bs-frequency`'s imbalance convention — see the module doc on
+    /// `bs-cascade::dispatch`. This field is not that one: it is the value
+    /// that crosses the wire as `IslandState.balance_w`, and the proto
+    /// comment there is the authority both sides agree with — an operator
+    /// reading "balance" expects a negative number to mean "short", the same
+    /// sense as a bank balance going negative. For a de-energized island
+    /// this is exactly its load, negated, which is the number an operator
+    /// asks for first.
     pub balance: f64,
     /// Bus count. Reported for every island, including a de-energized one,
     /// which has no [`AcVerdict::Secure`] or [`AcVerdict::Violated`] to speak
@@ -171,7 +179,11 @@ fn verify_one(
     limits: VoltageLimits,
     options: Options,
 ) -> IslandReport {
-    let balance = Balance::of(&case.buses, members).gap;
+    // Negated from `Balance::gap` (load minus generation) — see
+    // `IslandReport::balance`'s own doc for why this field deliberately
+    // disagrees in sign with the internal dispatch convention.
+    let b = Balance::of(&case.buses, members);
+    let balance = b.generation - b.load;
     let bus_count = members.len();
 
     let Some(sub) = Subcase::extract(case, members) else {

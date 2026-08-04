@@ -148,6 +148,82 @@ fn a_dead_island_is_insolvable() {
     assert_eq!(reports[1].bus_count, 1);
 }
 
+/// A PV bus with real, explicit generation exceeding the one load on its
+/// island — the one fixture in this file where `generation` is not left at
+/// a slack bus's default zero.
+fn surplus_case() -> Case {
+    let base = Base::new(100e6, 345e3).expect("a valid base");
+
+    Case::new(
+        "surplus",
+        base,
+        vec![
+            Bus::slack("g0", 1.0).with_real_limits(0.0, 5.0),
+            Bus::generator("g1", 2.0, 1.0).with_real_limits(0.0, 5.0),
+            Bus::load("l0", -0.5, 0.0),
+        ],
+        vec![
+            Branch::new("a", 0, 1, 0.01, 0.1).with_rating(10.0),
+            Branch::new("b", 1, 2, 0.01, 0.1).with_rating(10.0),
+        ],
+    )
+}
+
+/// `IslandReport::balance` is GENERATION MINUS LOAD, negative for a
+/// shortfall — the opposite sign from `Balance::gap` (this crate's own
+/// internal dispatch convention, load minus generation), and the sign
+/// `IslandState.balance_w`'s own proto comment names as the authority both
+/// sides of the wire must agree with. `separated_case`'s dead island (`l1`
+/// alone, 0.5 pu of load and no generation at all) is the plainest possible
+/// shortfall: `generation - load = 0.0 - 0.5 = -0.5`.
+///
+/// What would make this fail: `verify_one` computing `balance` from
+/// `Balance::of(..).gap` directly (load minus generation) instead of negating
+/// it — this fixture's reported balance would come back `+0.5` instead of
+/// `-0.5`.
+#[test]
+fn a_short_islands_balance_is_negative() {
+    let case = separated_case();
+    let reports = verify_islands(
+        &case,
+        &Islands::of(&case),
+        VoltageLimits::default(),
+        AcOptions::default(),
+    );
+
+    assert!(
+        (reports[1].balance - -0.5).abs() < 1e-9,
+        "balance {}, want -0.5 pu (generation 0.0 - load 0.5)",
+        reports[1].balance
+    );
+}
+
+/// The other sign: an island with real surplus generation reports a
+/// POSITIVE balance. `surplus_case`'s two PV/slack buses sum to
+/// `0.0 + 2.0 = 2.0` pu of generation against `0.5` pu of load:
+/// `generation - load = 2.0 - 0.5 = 1.5`.
+///
+/// Pinning both signs, not just the shortfall one above, is what rules out a
+/// fix that merely swapped which branch of an `if` was negated rather than
+/// actually reversing the convention.
+#[test]
+fn a_surplus_islands_balance_is_positive() {
+    let case = surplus_case();
+    let reports = verify_islands(
+        &case,
+        &Islands::of(&case),
+        VoltageLimits::default(),
+        AcOptions::default(),
+    );
+
+    assert_eq!(reports.len(), 1);
+    assert!(
+        (reports[0].balance - 1.5).abs() < 1e-9,
+        "balance {}, want 1.5 pu (generation 2.0 - load 0.5)",
+        reports[0].balance
+    );
+}
+
 /// Islands come back in the same order `Islands::of` gives them — the live
 /// one (containing bus 0, the lowest member) first.
 ///
