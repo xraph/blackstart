@@ -34,6 +34,12 @@ import * as types from './types';
  * `queryClient.invalidateQueries({ queryKey: ['networkmodel'] })`.
  */
 export const queryKeys = {
+  cascadeRunsGet: (id: string) =>
+    ['cascade', 'runs', 'get', { id }] as const,
+  cascadeRunsIslands: (id: string) =>
+    ['cascade', 'runs', 'islands', { id }] as const,
+  cascadeRunsList: (modelHash?: string, limit?: number | undefined) =>
+    ['cascade', 'runs', 'list', { modelHash, limit }] as const,
   contingencyRunsGet: (id: string) =>
     ['contingency', 'runs', 'get', { id }] as const,
   contingencyRunsList: (modelHash?: string, limit?: number | undefined) =>
@@ -62,6 +68,16 @@ export const queryKeys = {
     ['geo', 'routes', 'list', { limit }] as const,
   geoRoutesSpans: (id: string) =>
     ['geo', 'routes', 'spans', { id }] as const,
+  hazardAssignmentsList: (limit?: number | undefined, after?: string | undefined) =>
+    ['hazard', 'assignments', 'list', { limit, after }] as const,
+  hazardComputationsList: (limit?: number | undefined, after?: string | undefined) =>
+    ['hazard', 'computations', 'list', { limit, after }] as const,
+  hazardConductorsList: () =>
+    ['hazard', 'conductors', 'list'] as const,
+  hazardSpansLoading: (id: string, issued?: string, from?: string, to?: string) =>
+    ['hazard', 'spans', 'loading', { id, issued, from, to }] as const,
+  hazardSpansRating: (id: string, issued?: string, from?: string, to?: string) =>
+    ['hazard', 'spans', 'rating', { id, issued, from, to }] as const,
   networkmodelEncoding: (id: string) =>
     ['networkmodel', 'encoding', { id }] as const,
   networkmodelGet: (id: string) =>
@@ -90,7 +106,57 @@ export const queryKeys = {
     ['topology', 'substations', 'list', { limit }] as const,
   topologySubstationsReduction: (id: string, open?: string[] | undefined, closed?: string[] | undefined) =>
     ['topology', 'substations', 'reduction', { id, open, closed }] as const,
+  weatherCyclesGet: (id: string) =>
+    ['weather', 'cycles', 'get', { id }] as const,
+  weatherCyclesGrids: (id: string) =>
+    ['weather', 'cycles', 'grids', { id }] as const,
+  weatherCyclesList: (model?: string | undefined, status?: string | undefined, limit?: number | undefined) =>
+    ['weather', 'cycles', 'list', { model, status, limit }] as const,
+  weatherSpansForecast: (id: string, field?: string | undefined, issued?: string, from?: string, to?: string) =>
+    ['weather', 'spans', 'forecast', { id, field, issued, from, to }] as const,
+  weatherStationsObservations: (id: string, field?: string | undefined, from?: string, to?: string) =>
+    ['weather', 'stations', 'observations', { id, field, from, to }] as const,
 } as const;
+
+/** One recorded simulation, with every event in the order it happened in simulated time. */
+export function useCascadeRunsGet(
+  client: RESTClient,
+  id: string,
+  options?: Omit<UseQueryOptions<types.Run, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.cascadeRunsGet(id),
+    queryFn: ({ signal }) => client.cascade.runs.get(id, { signal }),
+    ...options,
+  });
+}
+
+/** The islanded state the network settled, truncated, or collapsed into, with each island's worst condition over the run and its final AC verdict. */
+export function useCascadeRunsIslands(
+  client: RESTClient,
+  id: string,
+  options?: Omit<UseQueryOptions<types.islandsResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.cascadeRunsIslands(id),
+    queryFn: ({ signal }) => client.cascade.runs.islands(id, { signal }),
+    ...options,
+  });
+}
+
+/** Every recorded cascade simulation of one network model, most recent first. */
+export function useCascadeRunsList(
+  client: RESTClient,
+  modelHash?: string,
+  limit?: number | undefined,
+  options?: Omit<UseQueryOptions<types.runsResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.cascadeRunsList(modelHash, limit),
+    queryFn: ({ signal }) => client.cascade.runs.list(modelHash, limit, { signal }),
+    ...options,
+  });
+}
 
 /** One recorded analysis, with every contingency in the order it was evaluated. That order is preserved because it is what was asked for; ranking is a separate view. */
 export function useContingencyRunsGet(
@@ -284,6 +350,78 @@ export function useGeoRoutesSpans(
   });
 }
 
+/** Every assignment carries a basis. A surveyed assignment and one assumed from the voltage class are different claims, and a rating conditioned on the second is indicative rather than authoritative. */
+export function useHazardAssignmentsList(
+  client: RESTClient,
+  limit?: number | undefined,
+  after?: string | undefined,
+  options?: Omit<UseQueryOptions<types.assignmentsResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.hazardAssignmentsList(limit, after),
+    queryFn: ({ signal }) => client.hazard.assignments.list(limit, after, { signal }),
+    ...options,
+  });
+}
+
+/** Each names the cycle it read and the provenance run it produced, and counts the spans it rated against the spans it skipped for want of a conductor assignment. */
+export function useHazardComputationsList(
+  client: RESTClient,
+  limit?: number | undefined,
+  after?: string | undefined,
+  options?: Omit<UseQueryOptions<types.computationsResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.hazardComputationsList(limit, after),
+    queryFn: ({ signal }) => client.hazard.computations.list(limit, after, { signal }),
+    ...options,
+  });
+}
+
+/** Standard ACSR types with the properties IEEE 738 needs: diameter, resistance at two temperatures, emissivity, absorptivity and the maximum operating temperature a rating is the current at. */
+export function useHazardConductorsList(
+  client: RESTClient,
+  options?: Omit<UseQueryOptions<types.conductorsResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.hazardConductorsList(),
+    queryFn: ({ signal }) => client.hazard.conductors.list({ signal }),
+    ...options,
+  });
+}
+
+/** Wind drag and ice weight in newtons per meter, ice thickness in meters, ice mass in kilograms per meter, and the resultant of drag and weight. Absent quantities are absent rather than zero: GFS publishes no freezing-rain accumulation, so a GFS-derived pass has no ice series at all. */
+export function useHazardSpansLoading(
+  client: RESTClient,
+  id: string,
+  issued?: string,
+  from?: string,
+  to?: string,
+  options?: Omit<UseQueryOptions<types.valuesResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.hazardSpansLoading(id, issued, from, to),
+    queryFn: ({ signal }) => client.hazard.spans.loading(id, issued, from, to, { signal }),
+    ...options,
+  });
+}
+
+/** Amperes, from IEEE 738's steady-state heat balance evaluated at the conductor's temperature limit. Issuance is a parameter rather than inferred, because "what is the rating now" and "what did the 06Z run say the rating would be" are different questions, and only the second can be checked afterwards. */
+export function useHazardSpansRating(
+  client: RESTClient,
+  id: string,
+  issued?: string,
+  from?: string,
+  to?: string,
+  options?: Omit<UseQueryOptions<types.valuesResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.hazardSpansRating(id, issued, from, to),
+    queryFn: ({ signal }) => client.hazard.spans.rating(id, issued, from, to, { signal }),
+    ...options,
+  });
+}
+
 /** The bytes the solver reads, exactly as stored. The content hash is the sha256 of these bytes, so anyone can verify that a result citing that hash was computed against this network and not another. */
 export function useNetworkmodelEncoding(
   client: RESTClient,
@@ -464,6 +602,77 @@ export function useTopologySubstationsReduction(
   return useQuery({
     queryKey: queryKeys.topologySubstationsReduction(id, open, closed),
     queryFn: ({ signal }) => client.topology.substations.reduction(id, open, closed, { signal }),
+    ...options,
+  });
+}
+
+export function useWeatherCyclesGet(
+  client: RESTClient,
+  id: string,
+  options?: Omit<UseQueryOptions<types.Cycle, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.weatherCyclesGet(id),
+    queryFn: ({ signal }) => client.weather.cycles.get(id, { signal }),
+    ...options,
+  });
+}
+
+/** One entry per field per forecast hour, each naming the bytes it was decoded from and the dataset version that recorded the retrieval. Covered and total say how many spans fell inside the grid's domain — HRRR is CONUS-only, so a span outside it has no sample rather than a zero. */
+export function useWeatherCyclesGrids(
+  client: RESTClient,
+  id: string,
+  options?: Omit<UseQueryOptions<types.gridsResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.weatherCyclesGrids(id),
+    queryFn: ({ signal }) => client.weather.cycles.grids(id, { signal }),
+    ...options,
+  });
+}
+
+export function useWeatherCyclesList(
+  client: RESTClient,
+  model?: string | undefined,
+  status?: string | undefined,
+  limit?: number | undefined,
+  options?: Omit<UseQueryOptions<types.cyclesResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.weatherCyclesList(model, status, limit),
+    queryFn: ({ signal }) => client.weather.cycles.list(model, status, limit, { signal }),
+    ...options,
+  });
+}
+
+/** Issuance is a parameter rather than inferred from the window, because "what does the latest run say" and "what did the 06Z run say" are different questions — and a reader who cannot ask the second cannot check a forecast against what happened. */
+export function useWeatherSpansForecast(
+  client: RESTClient,
+  id: string,
+  field?: string | undefined,
+  issued?: string,
+  from?: string,
+  to?: string,
+  options?: Omit<UseQueryOptions<types.forecastResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.weatherSpansForecast(id, field, issued, from, to),
+    queryFn: ({ signal }) => client.weather.spans.forecast(id, field, issued, from, to, { signal }),
+    ...options,
+  });
+}
+
+export function useWeatherStationsObservations(
+  client: RESTClient,
+  id: string,
+  field?: string | undefined,
+  from?: string,
+  to?: string,
+  options?: Omit<UseQueryOptions<types.observationsResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.weatherStationsObservations(id, field, from, to),
+    queryFn: ({ signal }) => client.weather.stations.observations(id, field, from, to, { signal }),
     ...options,
   });
 }

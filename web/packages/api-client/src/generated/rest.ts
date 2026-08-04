@@ -3,6 +3,72 @@ import { Client } from './client';
 import * as types from './types';
 
 export class RESTClient extends Client {
+  public readonly cascade = {
+    runs: {
+      /**
+       * Get a cascade run
+       * One recorded simulation, with every event in the order it happened in simulated time.
+       */
+      get: async (id: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.Run> => {
+        let __path = `/api/v1/cascade/runs/${encodeURIComponent(String(id))}`;
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "Run",
+        };
+
+        return this.request<types.Run>(config);
+      },
+
+      /**
+       * Get a cascade run's final islands
+       * The islanded state the network settled, truncated, or collapsed into, with each island's worst condition over the run and its final AC verdict.
+       */
+      islands: async (id: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.islandsResponse> => {
+        let __path = `/api/v1/cascade/runs/${encodeURIComponent(String(id))}/islands`;
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "islandsResponse",
+        };
+
+        return this.request<types.islandsResponse>(config);
+      },
+
+      /**
+       * List cascades for a network
+       * Every recorded cascade simulation of one network model, most recent first.
+       */
+      list: async (modelHash?: string, limit?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.runsResponse> => {
+        let __path = `/api/v1/cascade/runs`;
+        const queryParams: Record<string, any> = {};
+        queryParams['modelHash'] = modelHash;
+        if (limit !== undefined) {
+          queryParams['limit'] = limit;
+        }
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "runsResponse",
+        };
+
+        return this.request<types.runsResponse>(config);
+      },
+
+    },
+
+  };
+
   public readonly contingency = {
     runs: {
       /**
@@ -358,6 +424,144 @@ export class RESTClient extends Client {
 
   };
 
+  public readonly hazard = {
+    assignments: {
+      /**
+       * Which conductor each branch is strung with
+       * Every assignment carries a basis. A surveyed assignment and one assumed from the voltage class are different claims, and a rating conditioned on the second is indicative rather than authoritative.
+       */
+      list: async (limit?: number | undefined, after?: string | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.assignmentsResponse> => {
+        let __path = `/api/v1/hazard/assignments`;
+        const queryParams: Record<string, any> = {};
+        if (limit !== undefined) {
+          queryParams['limit'] = limit;
+        }
+        if (after !== undefined) {
+          queryParams['after'] = after;
+        }
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "assignmentsResponse",
+        };
+
+        return this.request<types.assignmentsResponse>(config);
+      },
+
+    },
+
+    computations: {
+      /**
+       * Passes of the models over a weather cycle, newest first
+       * Each names the cycle it read and the provenance run it produced, and counts the spans it rated against the spans it skipped for want of a conductor assignment.
+       */
+      list: async (limit?: number | undefined, after?: string | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.computationsResponse> => {
+        let __path = `/api/v1/hazard/computations`;
+        const queryParams: Record<string, any> = {};
+        if (limit !== undefined) {
+          queryParams['limit'] = limit;
+        }
+        if (after !== undefined) {
+          queryParams['after'] = after;
+        }
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "computationsResponse",
+        };
+
+        return this.request<types.computationsResponse>(config);
+      },
+
+    },
+
+    conductors: {
+      /**
+       * The conductor library
+       * Standard ACSR types with the properties IEEE 738 needs: diameter, resistance at two temperatures, emissivity, absorptivity and the maximum operating temperature a rating is the current at.
+       */
+      list: async (options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.conductorsResponse> => {
+        let __path = `/api/v1/hazard/conductors`;
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "conductorsResponse",
+        };
+
+        return this.request<types.conductorsResponse>(config);
+      },
+
+    },
+
+    spans: {
+      /**
+       * A span's mechanical loading over a window
+       * Wind drag and ice weight in newtons per meter, ice thickness in meters, ice mass in kilograms per meter, and the resultant of drag and weight. Absent quantities are absent rather than zero: GFS publishes no freezing-rain accumulation, so a GFS-derived pass has no ice series at all.
+       */
+      loading: async (id: string, issued?: string, from?: string, to?: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.valuesResponse> => {
+        let __path = `/api/v1/hazard/spans/${encodeURIComponent(String(id))}/loading`;
+        const queryParams: Record<string, any> = {};
+        queryParams['issued'] = issued;
+        queryParams['from'] = from;
+        queryParams['to'] = to;
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "valuesResponse",
+        };
+
+        return this.request<types.valuesResponse>(config);
+      },
+
+      /**
+       * A span's thermal rating over a window
+       * Amperes, from IEEE 738's steady-state heat balance evaluated at the conductor's temperature limit. Issuance is a parameter rather than inferred, because "what is the rating now" and "what did the 06Z run say the rating would be" are different questions, and only the second can be checked afterwards.
+       */
+      rating: async (id: string, issued?: string, from?: string, to?: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.valuesResponse> => {
+        let __path = `/api/v1/hazard/spans/${encodeURIComponent(String(id))}/rating`;
+        const queryParams: Record<string, any> = {};
+        queryParams['issued'] = issued;
+        queryParams['from'] = from;
+        queryParams['to'] = to;
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "valuesResponse",
+        };
+
+        return this.request<types.valuesResponse>(config);
+      },
+
+    },
+
+  };
+
   public readonly networkmodel = {
     /**
      * Get a model's canonical encoding
@@ -675,6 +879,135 @@ Advisory. Nothing here commands anything; it reports what a configuration file s
         };
 
         return this.request<types.reductionResponse>(config);
+      },
+
+    },
+
+  };
+
+  public readonly weather = {
+    cycles: {
+      /**
+       * Get one model run
+       */
+      get: async (id: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.Cycle> => {
+        let __path = `/api/v1/weather/cycles/${encodeURIComponent(String(id))}`;
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "Cycle",
+        };
+
+        return this.request<types.Cycle>(config);
+      },
+
+      /**
+       * List a run's retrievals
+       * One entry per field per forecast hour, each naming the bytes it was decoded from and the dataset version that recorded the retrieval. Covered and total say how many spans fell inside the grid's domain — HRRR is CONUS-only, so a span outside it has no sample rather than a zero.
+       */
+      grids: async (id: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.gridsResponse> => {
+        let __path = `/api/v1/weather/cycles/${encodeURIComponent(String(id))}/grids`;
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "gridsResponse",
+        };
+
+        return this.request<types.gridsResponse>(config);
+      },
+
+      /**
+       * List model runs, newest issuance first
+       */
+      list: async (model?: string | undefined, status?: string | undefined, limit?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.cyclesResponse> => {
+        let __path = `/api/v1/weather/cycles`;
+        const queryParams: Record<string, any> = {};
+        if (model !== undefined) {
+          queryParams['model'] = model;
+        }
+        if (status !== undefined) {
+          queryParams['status'] = status;
+        }
+        if (limit !== undefined) {
+          queryParams['limit'] = limit;
+        }
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "cyclesResponse",
+        };
+
+        return this.request<types.cyclesResponse>(config);
+      },
+
+    },
+
+    spans: {
+      /**
+       * What a run expected at one span
+       * Issuance is a parameter rather than inferred from the window, because "what does the latest run say" and "what did the 06Z run say" are different questions — and a reader who cannot ask the second cannot check a forecast against what happened.
+       */
+      forecast: async (id: string, field?: string | undefined, issued?: string, from?: string, to?: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.forecastResponse> => {
+        let __path = `/api/v1/weather/spans/${encodeURIComponent(String(id))}/forecast`;
+        const queryParams: Record<string, any> = {};
+        if (field !== undefined) {
+          queryParams['field'] = field;
+        }
+        queryParams['issued'] = issued;
+        queryParams['from'] = from;
+        queryParams['to'] = to;
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "forecastResponse",
+        };
+
+        return this.request<types.forecastResponse>(config);
+      },
+
+    },
+
+    stations: {
+      /**
+       * What a station measured
+       */
+      observations: async (id: string, field?: string | undefined, from?: string, to?: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.observationsResponse> => {
+        let __path = `/api/v1/weather/stations/${encodeURIComponent(String(id))}/observations`;
+        const queryParams: Record<string, any> = {};
+        if (field !== undefined) {
+          queryParams['field'] = field;
+        }
+        queryParams['from'] = from;
+        queryParams['to'] = to;
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "observationsResponse",
+        };
+
+        return this.request<types.observationsResponse>(config);
       },
 
     },
