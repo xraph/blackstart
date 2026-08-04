@@ -30,6 +30,14 @@ export interface Candidate {
   worstLoading?: number;
 }
 
+export interface Circuit {
+  externalId: string;
+  id: string;
+  operator: string;
+  source: string;
+  voltageKv: number;
+}
+
 export interface DatasetVersion {
   contentHash: string;
   id: string;
@@ -115,7 +123,7 @@ export interface Reduction {
 }
 
 export interface Route {
-  branchId: string;
+  carrierId: string;
   id: string;
   lengthM: number;
   provenance: string;
@@ -212,6 +220,10 @@ export interface Violation {
   loading: number;
   pFlow: number;
   rating: number;
+}
+
+export interface circuitsResponse {
+  circuits: Circuit[];
 }
 
 export interface devicesResponse {

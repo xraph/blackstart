@@ -50,6 +50,12 @@ export const queryKeys = {
     ['datasource', 'sources', 'list', { kind, slug, limit, after, validAt, knownAt }] as const,
   geoBranchesRoute: (id: string) =>
     ['geo', 'branches', 'route', { id }] as const,
+  geoCircuitsGet: (id: string) =>
+    ['geo', 'circuits', 'get', { id }] as const,
+  geoCircuitsList: (limit?: number | undefined) =>
+    ['geo', 'circuits', 'list', { limit }] as const,
+  geoCircuitsRoute: (id: string) =>
+    ['geo', 'circuits', 'route', { id }] as const,
   geoRoutesGet: (id: string) =>
     ['geo', 'routes', 'get', { id }] as const,
   geoRoutesList: (limit?: number | undefined) =>
@@ -199,6 +205,43 @@ export function useGeoBranchesRoute(
   return useQuery({
     queryKey: queryKeys.geoBranchesRoute(id),
     queryFn: ({ signal }) => client.geo.branches.route(id, { signal }),
+    ...options,
+  });
+}
+
+export function useGeoCircuitsGet(
+  client: RESTClient,
+  id: string,
+  options?: Omit<UseQueryOptions<types.Circuit, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.geoCircuitsGet(id),
+    queryFn: ({ signal }) => client.geo.circuits.get(id, { signal }),
+    ...options,
+  });
+}
+
+/** Transmission lines imported from public sources. These carry no electrical parameters and cannot appear in a power flow or a contingency; a route naming one is geometry only. */
+export function useGeoCircuitsList(
+  client: RESTClient,
+  limit?: number | undefined,
+  options?: Omit<UseQueryOptions<types.circuitsResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.geoCircuitsList(limit),
+    queryFn: ({ signal }) => client.geo.circuits.list(limit, { signal }),
+    ...options,
+  });
+}
+
+export function useGeoCircuitsRoute(
+  client: RESTClient,
+  id: string,
+  options?: Omit<UseQueryOptions<types.Route, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.geoCircuitsRoute(id),
+    queryFn: ({ signal }) => client.geo.circuits.route(id, { signal }),
     ...options,
   });
 }

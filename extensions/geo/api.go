@@ -27,10 +27,22 @@ type branchRouteRequest struct {
 	ID string `path:"id" description:"Branch identifier"`
 }
 
+type circuitRequest struct {
+	ID string `path:"id" description:"Circuit identifier (circ_…)"`
+}
+
+type listCircuitsRequest struct {
+	Limit int `query:"limit" description:"Maximum results" optional:"true"`
+}
+
 // --- Response DTOs ---
 
 type routesResponse struct {
 	Routes []asset.Route `json:"routes"`
+}
+
+type circuitsResponse struct {
+	Circuits []asset.Circuit `json:"circuits"`
 }
 
 // spansResponse is a route's geometry, span by span.
@@ -143,6 +155,36 @@ func (c *Controller) Routes(router forge.Router) error {
 		forge.WithResponseSchema(http.StatusNotFound, "This branch has no route", nil),
 	))
 
+	check(router.GET("/circuits", c.ListCircuits,
+		forge.WithName("geo.circuits.list"),
+		forge.WithSummary("List imported circuits"),
+		forge.WithDescription(
+			"Transmission lines imported from public sources. These carry no "+
+				"electrical parameters and cannot appear in a power flow or a "+
+				"contingency; a route naming one is geometry only."),
+		forge.WithTags("Geo"),
+		forge.WithRequestSchema(listCircuitsRequest{}),
+		forge.WithResponseSchema(http.StatusOK, "Circuits", circuitsResponse{}),
+	))
+
+	check(router.GET("/circuits/:id", c.GetCircuit,
+		forge.WithName("geo.circuits.get"),
+		forge.WithSummary("Get a circuit"),
+		forge.WithTags("Geo"),
+		forge.WithRequestSchema(circuitRequest{}),
+		forge.WithResponseSchema(http.StatusOK, "Circuit", asset.Circuit{}),
+		forge.WithResponseSchema(http.StatusNotFound, "No such circuit", nil),
+	))
+
+	check(router.GET("/circuits/:id/route", c.GetCircuitRoute,
+		forge.WithName("geo.circuits.route"),
+		forge.WithSummary("Find the route of a circuit"),
+		forge.WithTags("Geo"),
+		forge.WithRequestSchema(circuitRequest{}),
+		forge.WithResponseSchema(http.StatusOK, "Route", asset.Route{}),
+		forge.WithResponseSchema(http.StatusNotFound, "This circuit has no route", nil),
+	))
+
 	return firstErr
 }
 
@@ -220,6 +262,71 @@ func (c *Controller) GetBranchRoute(ctx forge.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, found)
+}
+
+// ListCircuits returns imported circuits.
+func (c *Controller) ListCircuits(ctx forge.Context) error {
+	var req listCircuitsRequest
+	if err := ctx.BindRequest(&req); err != nil {
+		return forge.BadRequest(err.Error())
+	}
+
+	found, err := c.engine.Circuits(ctx.Request().Context(), req.Limit)
+	if err != nil {
+		return httperr.From(err)
+	}
+
+	return ctx.JSON(http.StatusOK, circuitsResponse{Circuits: found})
+}
+
+// GetCircuit returns one circuit.
+func (c *Controller) GetCircuit(ctx forge.Context) error {
+	want, err := c.circuit(ctx)
+	if err != nil {
+		return err
+	}
+
+	found, err := c.engine.Circuit(ctx.Request().Context(), want)
+	if err != nil {
+		return httperr.From(err)
+	}
+
+	return ctx.JSON(http.StatusOK, found)
+}
+
+// GetCircuitRoute finds the route of a circuit.
+//
+// Separate from the branch endpoint rather than one path taking either kind of
+// carrier. The two answers support different things — a branch's route can
+// feed a contingency, a circuit's cannot — and a single path would let a
+// client discover that difference by accident.
+func (c *Controller) GetCircuitRoute(ctx forge.Context) error {
+	want, err := c.circuit(ctx)
+	if err != nil {
+		return err
+	}
+
+	found, err := c.engine.RouteForCircuit(ctx.Request().Context(), want)
+	if err != nil {
+		return httperr.From(err)
+	}
+
+	return ctx.JSON(http.StatusOK, found)
+}
+
+// circuit reads and parses the circuit identifier from a request.
+func (c *Controller) circuit(ctx forge.Context) (id.ID, error) {
+	var req circuitRequest
+	if err := ctx.BindRequest(&req); err != nil {
+		return id.Nil, forge.BadRequest(err.Error())
+	}
+
+	want, err := gid.ParseCircuit(req.ID)
+	if err != nil {
+		return id.Nil, forge.BadRequest(err.Error())
+	}
+
+	return want, nil
 }
 
 // route reads and parses the route identifier from a request.

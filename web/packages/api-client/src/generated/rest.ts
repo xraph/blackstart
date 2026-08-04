@@ -235,6 +235,66 @@ export class RESTClient extends Client {
 
     },
 
+    circuits: {
+      /**
+       * Get a circuit
+       */
+      get: async (id: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.Circuit> => {
+        let __path = `/api/v1/geo/circuits/${encodeURIComponent(String(id))}`;
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "Circuit",
+        };
+
+        return this.request<types.Circuit>(config);
+      },
+
+      /**
+       * List imported circuits
+       * Transmission lines imported from public sources. These carry no electrical parameters and cannot appear in a power flow or a contingency; a route naming one is geometry only.
+       */
+      list: async (limit?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.circuitsResponse> => {
+        let __path = `/api/v1/geo/circuits`;
+        const queryParams: Record<string, any> = {};
+        if (limit !== undefined) {
+          queryParams['limit'] = limit;
+        }
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "circuitsResponse",
+        };
+
+        return this.request<types.circuitsResponse>(config);
+      },
+
+      /**
+       * Find the route of a circuit
+       */
+      route: async (id: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.Route> => {
+        let __path = `/api/v1/geo/circuits/${encodeURIComponent(String(id))}/route`;
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "Route",
+        };
+
+        return this.request<types.Route>(config);
+      },
+
+    },
+
     routes: {
       /**
        * Get a route

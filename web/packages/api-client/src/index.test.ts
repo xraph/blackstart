@@ -70,9 +70,22 @@ describe("api client", () => {
 });
 
 describe("query hooks", () => {
+  // A bare count would only say the generator ran. Naming a few keys says the
+  // generator kept up with the API — this caught the three circuit endpoints
+  // arriving, which is exactly what it is here to catch.
   it("exposes a cache key builder per read endpoint", async () => {
     const { queryKeys } = await import("./index");
-    expect(Object.keys(queryKeys).length).toBe(25);
+    expect(Object.keys(queryKeys).length).toBe(28);
+
+    for (const key of [
+      "geoRoutesList",
+      "geoRoutesGet",
+      "geoCircuitsList",
+      "geoCircuitsGet",
+      "geoCircuitsRoute",
+    ]) {
+      expect(queryKeys).toHaveProperty(key);
+    }
   });
 
   it("carries both time axes in the key, not just valid time", async () => {
