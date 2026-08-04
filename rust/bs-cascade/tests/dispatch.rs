@@ -253,6 +253,46 @@ fn infinite_headroom_covers_the_gap_without_poisoning_finite_units() {
     assert!((plan.residual - 0.0).abs() < 1e-12);
 }
 
+/// Mirror of `infinite_headroom_covers_the_gap_without_poisoning_finite_units`
+/// for the surplus direction. A unit with `p_min: f64::NEG_INFINITY` has
+/// infinite `headroom_down`, exactly as capable of producing `inf / inf` as
+/// an infinite `headroom_up` is on the shortfall side — the shortfall test
+/// alone leaves this direction of the same rule unverified.
+#[test]
+fn infinite_headroom_covers_a_surplus_without_poisoning_finite_units() {
+    let units = vec![
+        Dispatchable {
+            bus: 0,
+            output: 1.0,
+            p_min: 0.4,
+            p_max: 2.0,
+        },
+        Dispatchable {
+            bus: 3,
+            output: 1.0,
+            p_min: f64::NEG_INFINITY,
+            p_max: f64::INFINITY,
+        },
+    ];
+
+    let plan = rebalance(-5.0, &units);
+
+    assert!(
+        plan.changes.iter().all(|(_, delta)| delta.is_finite()),
+        "no NaN or infinite delta: {:?}",
+        plan.changes
+    );
+    assert_eq!(
+        plan.changes.len(),
+        1,
+        "the finite unit is left untouched once an infinite one exists: {:?}",
+        plan.changes
+    );
+    assert_eq!(plan.changes[0].0, 3);
+    assert!((plan.changes[0].1 + 5.0).abs() < 1e-9);
+    assert!((plan.residual - 0.0).abs() < 1e-12);
+}
+
 /// Two infinite-headroom units split the gap equally, in bus order.
 #[test]
 fn two_infinite_units_split_the_gap_equally() {
