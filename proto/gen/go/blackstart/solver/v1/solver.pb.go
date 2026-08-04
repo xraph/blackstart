@@ -2676,18 +2676,32 @@ type IslandState struct {
 	Verdict   AcVerdict       `protobuf:"varint,3,opt,name=verdict,proto3,enum=blackstart.solver.v1.AcVerdict" json:"verdict,omitempty"`
 	// Generation minus load at the final instant, WATTS.
 	BalanceW float64 `protobuf:"fixed64,4,opt,name=balance_w,json=balanceW,proto3" json:"balance_w,omitempty"`
-	// Frequency, HERTZ, at the final instant.
+	// Frequency, HERTZ, at the LAST instant this island had a machine to
+	// report one from — the settling value, deliberately a final-instant
+	// quantity unlike nadir and rate-of-change below. "Where did it end up"
+	// is the question this field answers, not "how bad did it get"; folding
+	// it into a peak-severity figure the way those two are would hide a
+	// genuine recovery behind whatever the worst moment looked like.
 	//
 	// Optional along with nadir and rate-of-change below: an island with no
 	// machine data — no inertia, no governors — has no frequency to report,
 	// which is not the same as a frequency of zero.
 	FrequencyHz *float64 `protobuf:"fixed64,5,opt,name=frequency_hz,json=frequencyHz,proto3,oneof" json:"frequency_hz,omitempty"`
-	// Lowest frequency reached anywhere in the run, HERTZ. What decides whether
-	// the island survives.
+	// Lowest frequency reached ANYWHERE in the run, HERTZ — the most severe
+	// value seen, not the value at the final instant, the same peak-severity
+	// rule `condition` above already follows. What decides whether the
+	// island survives.
 	NadirHz *float64 `protobuf:"fixed64,6,opt,name=nadir_hz,json=nadirHz,proto3,oneof" json:"nadir_hz,omitempty"`
-	// Rate of change of frequency at the final instant, HERTZ PER SECOND.
+	// Largest-MAGNITUDE rate of change of frequency observed anywhere in the
+	// run, HERTZ PER SECOND, SIGNED. "Largest magnitude" is deliberately not
+	// "maximum": rate of change is negative for a shortfall, so the more
+	// severe swing is the one furthest from zero in either direction: a plain
+	// maximum would let a mild positive recovery swing outrank a severe
+	// negative collapse swing just for being the larger signed number.
 	RocofHzS *float64 `protobuf:"fixed64,7,opt,name=rocof_hz_s,json=rocofHzS,proto3,oneof" json:"rocof_hz_s,omitempty"`
-	// Load shed on this island over the whole run, WATTS.
+	// Load shed on this island over the whole run, WATTS — accumulated across
+	// every UFLS stage that fired for it, not merely the fraction shed at
+	// whichever instant the island is being reported for.
 	ShedW         float64 `protobuf:"fixed64,8,opt,name=shed_w,json=shedW,proto3" json:"shed_w,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
