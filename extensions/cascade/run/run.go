@@ -111,6 +111,9 @@ type Island struct {
 	Verdict   AcVerdict       `json:"verdict"`
 
 	// Balance is generation minus load at the final instant, per unit.
+	// Negative means short (load exceeds generation), positive means
+	// surplus — the wire message IslandState.balance_w is the authority on
+	// this sign; see its own comment.
 	Balance float64 `json:"balance"`
 
 	// Frequency is the settling value — the last instant this island had a
@@ -168,10 +171,11 @@ type Run struct {
 	// against whatever max_steps the request carried.
 	Steps uint32 `json:"steps"`
 
-	// Elapsed is wall-clock time the simulation took, SECONDS. Not a
-	// power-system quantity — carried for performance tracking, the same
-	// reason SolvePowerFlowResponse carries an iteration count — and never
-	// divided by a base.
+	// Elapsed is SIMULATED time the cascade covered, SECONDS — the run's own
+	// clock, not how long the solve took on the wall clock. Never divided by
+	// a base. StartedAt/FinishedAt below are this side's own wall-clock
+	// bounds on the request, which is a different question this field does
+	// not answer.
 	Elapsed float64 `json:"elapsed_s"`
 
 	// StartedAt and FinishedAt bound the run, on this side of the wire: when

@@ -2674,7 +2674,15 @@ type IslandState struct {
 	// the most important thing that happened to it.
 	Condition IslandCondition `protobuf:"varint,2,opt,name=condition,proto3,enum=blackstart.solver.v1.IslandCondition" json:"condition,omitempty"`
 	Verdict   AcVerdict       `protobuf:"varint,3,opt,name=verdict,proto3,enum=blackstart.solver.v1.AcVerdict" json:"verdict,omitempty"`
-	// Generation minus load at the final instant, WATTS.
+	// Generation minus load at the final instant, WATTS. Negative means the
+	// island is short (load exceeds generation); positive means it has
+	// surplus. This message is the authority on the sign: both the Rust
+	// producer (bs_cascade::verify::IslandReport::balance) and the Go
+	// consumer (extensions/cascade/run.Island.Balance) must agree with it,
+	// not with bs-cascade's own internal dispatch convention
+	// (bs_cascade::dispatch::Balance::gap), which is the opposite sign
+	// (load minus generation, positive for a shortfall) because it exists to
+	// match bs-frequency's imbalance convention instead.
 	BalanceW float64 `protobuf:"fixed64,4,opt,name=balance_w,json=balanceW,proto3" json:"balance_w,omitempty"`
 	// Frequency, HERTZ, at the LAST instant this island had a machine to
 	// report one from — the settling value, deliberately a final-instant
@@ -2804,9 +2812,11 @@ type SimulateCascadeResponse struct {
 	LoadLostW float64 `protobuf:"fixed64,4,opt,name=load_lost_w,json=loadLostW,proto3" json:"load_lost_w,omitempty"`
 	// Discrete events simulated, for comparing against max_steps.
 	Steps uint32 `protobuf:"varint,5,opt,name=steps,proto3" json:"steps,omitempty"`
-	// Wall-clock time the simulation took, SECONDS. Not part of the physical
-	// result; carried for performance tracking the way iterations is on
-	// SolvePowerFlowResponse for the same reason.
+	// SIMULATED time the cascade covered, SECONDS — the run's own clock, the
+	// sum of every step's `at`, not how long the solve took on the wall
+	// clock. This is the useful number for a caller comparing against a
+	// request's horizon; wall-clock duration is a deployment concern this
+	// message does not carry.
 	ElapsedS float64 `protobuf:"fixed64,6,opt,name=elapsed_s,json=elapsedS,proto3" json:"elapsed_s,omitempty"`
 	// The versions this result came from, so it can be reproduced.
 	SolverVersion string `protobuf:"bytes,7,opt,name=solver_version,json=solverVersion,proto3" json:"solver_version,omitempty"`

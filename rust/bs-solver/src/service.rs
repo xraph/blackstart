@@ -455,6 +455,10 @@ fn to_cascade_response(
             .collect(),
         load_lost_w: to_watts(cascade.load_lost, model),
         steps: index(cascade.steps),
+        // `cascade.elapsed` is the SIMULATED clock — the sum of every
+        // step's `at` — not how long this function took to run. See the
+        // wire message's own comment on `elapsed_s`, which is the authority
+        // both sides of the wire agree with.
         elapsed_s: cascade.elapsed,
         solver_version: SOLVER_VERSION.to_owned(),
         model_hash,

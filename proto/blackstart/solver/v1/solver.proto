@@ -633,7 +633,15 @@ message IslandState {
 
   AcVerdict verdict = 3;
 
-  // Generation minus load at the final instant, WATTS.
+  // Generation minus load at the final instant, WATTS. Negative means the
+  // island is short (load exceeds generation); positive means it has
+  // surplus. This message is the authority on the sign: both the Rust
+  // producer (bs_cascade::verify::IslandReport::balance) and the Go
+  // consumer (extensions/cascade/run.Island.Balance) must agree with it,
+  // not with bs-cascade's own internal dispatch convention
+  // (bs_cascade::dispatch::Balance::gap), which is the opposite sign
+  // (load minus generation, positive for a shortfall) because it exists to
+  // match bs-frequency's imbalance convention instead.
   double balance_w = 4;
 
   // Frequency, HERTZ, at the LAST instant this island had a machine to
@@ -695,9 +703,11 @@ message SimulateCascadeResponse {
   // Discrete events simulated, for comparing against max_steps.
   uint32 steps = 5;
 
-  // Wall-clock time the simulation took, SECONDS. Not part of the physical
-  // result; carried for performance tracking the way iterations is on
-  // SolvePowerFlowResponse for the same reason.
+  // SIMULATED time the cascade covered, SECONDS — the run's own clock, the
+  // sum of every step's `at`, not how long the solve took on the wall
+  // clock. This is the useful number for a caller comparing against a
+  // request's horizon; wall-clock duration is a deployment concern this
+  // message does not carry.
   double elapsed_s = 6;
 
   // The versions this result came from, so it can be reproduced.
