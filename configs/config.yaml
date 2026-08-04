@@ -70,3 +70,45 @@ extensions:
     # so "file://./.data" resolves to "/.data" and fails on a read-only root.
     storage:
       driver: "local://./.data/blobs"
+
+  # Numerical weather prediction ingest.
+  #
+  # There is no enabled flag. The loop runs when a source and at least one feed
+  # are named here and the process drains workers — the server does, bsctl does
+  # not — because a feed configured in a process with no worker is inert, and a
+  # flag claiming otherwise could only lie about it.
+  #
+  # The slugs are registry entries, not URLs. Resolving through datasource is
+  # the only route to a fetch, so a source outside spec section 8 cannot be
+  # polled without first being added to the registry.
+  weather:
+    poll:
+      source: noaa
+      feeds:
+        hrrr: hrrr
+      interval: 10m
+
+      # How far back to walk filling gaps. A missed cycle cannot be recovered
+      # once NOAA's rolling archive passes it, and Phase 6's backtest cannot
+      # reconstruct what was knowable at a time whose forecast was never
+      # stored. A backtest-focused deployment widens this; a demo sets it to 0.
+      backfill: 24h
+
+      # Forecast hours retrieved per cycle. Every hour of a cycle costs one
+      # ranged request per field, so this is the main lever on ingest volume.
+      hours: [0, 1, 2, 3, 6, 12, 18]
+
+  # Conductor loading and dynamic line ratings.
+  #
+  # Runs whenever the process drains workers; it needs no registry slugs
+  # because it reads what weather already stored. Shorter than the weather
+  # interval because it makes no network requests — the cost of asking often is
+  # one query, and the benefit is a rating that follows its forecast by minutes.
+  hazard:
+    compute:
+      interval: 2m
+
+      # How far back to consider unrated cycles. An unrated forecast from last
+      # week is not an operational problem, and sweeping all history every tick
+      # would grow without bound.
+      lookback: 12h
