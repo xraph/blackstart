@@ -29,6 +29,10 @@ fn model() -> proto::NetworkModel {
         q_max_var: None,
         g_shunt_s: 0.0,
         b_shunt_s: 0.0,
+        p_min_w: None,
+        p_max_w: None,
+        inertia_h_s: None,
+        droop_r: None,
     };
 
     let branch =

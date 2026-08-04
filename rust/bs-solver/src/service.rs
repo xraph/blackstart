@@ -346,6 +346,19 @@ impl proto::solver_service_server::SolverService for Solver {
 
         Ok(Response::new(ReceiverStream::new(rx)))
     }
+
+    // Temporary stub. SimulateCascade is new on the wire; wiring it to
+    // bs_cascade is the next task's work, not this one's. This exists only so
+    // the trait is fully implemented and the workspace builds — unimplemented
+    // is not an acceptable end state, and the next task replaces this body.
+    async fn simulate_cascade(
+        &self,
+        _request: Request<proto::SimulateCascadeRequest>,
+    ) -> Result<Response<proto::SimulateCascadeResponse>, Status> {
+        Err(Status::unimplemented(
+            "SimulateCascade is not wired up yet; the handler lands in the next task",
+        ))
+    }
 }
 
 fn branch_results(
