@@ -91,42 +91,85 @@ fn disabled_protection_fires_nothing_however_loaded() {
     assert!(got.fired.is_empty(), "fired {:?}", got.fired);
 }
 
-/// Everything inside the coalescing window fires together; everything outside
-/// waits for the next step.
+/// Two radial branches off the same slack, each carrying its own load to its
+/// own bus — no splitting between them, so each branch's loading is exactly
+/// controlled by that bus's load and that branch's rating, with no power-flow
+/// arithmetic needed to know it. Branch `a` (rating 0.9) carries 1.0 pu, a
+/// loading of 1.0/0.9 = 1.1111; branch `b` (rating 0.7) carries the same
+/// 1.0 pu, a loading of 1.0/0.7 = 1.4286. Both loadings sit strictly between
+/// 1.0 (pickup) and 2.5 (instantaneous), so both trip on the inverse-time
+/// curve alone, at different times: with the default `StandardInverse`
+/// curve (A = 0.14, B = 0.02) and `time_multiplier = 0.1`,
+/// `t = TM·A / (mᴮ − 1)` gives
+///   branch a: m = 1.1111 → t ≈ 6.637 s
+///   branch b: m = 1.4286 → t ≈ 1.956 s
+/// a gap of about 4.68 s between them — wide enough that a narrow and a wide
+/// coalescing window land on opposite sides of it deterministically.
+fn two_trip_times_case() -> Case {
+    let base = Base::new(100e6, 345e3).expect("a valid base");
+    let buses = vec![
+        Bus::slack("g0", 1.0)
+            .with_real_limits(0.0, 10.0)
+            .with_machine(4.0, 0.05),
+        Bus::load("l0", -1.0, 0.0),
+        Bus::load("l1", -1.0, 0.0),
+    ];
+    let branches = vec![
+        Branch::new("a", 0, 1, 0.01, 0.1).with_rating(0.9),
+        Branch::new("b", 0, 2, 0.01, 0.1).with_rating(0.7),
+    ];
+
+    Case::new("two-trip-times", base, buses, branches)
+}
+
+/// A window narrower than the ~4.68 s gap between the two trip times fires
+/// only the earlier candidate; a window wider than the gap fires both. Either
+/// way, the earliest candidate is never left out — it is what the window is
+/// measured from.
 #[test]
 fn the_window_selects_which_candidates_fire() {
-    let mut case = parallel_case(0.6);
-    case.branches[0].in_service = false;
+    let mut a = two_trip_times_case();
+    let mut b = two_trip_times_case();
 
-    let wide = Options {
-        coalesce: 100.0,
-        ..Options::default()
-    };
+    // Narrower than the ~4.68 s gap: only branch b (the faster of the two,
+    // at ≈ 1.956 s) falls inside 1.956 s + 0.5 s = 2.456 s.
     let narrow = Options {
-        coalesce: 0.0,
+        coalesce: 0.5,
+        ..Options::default()
+    };
+    // Wider than the gap: branch a's ≈ 6.637 s falls inside
+    // 1.956 s + 10 s = 11.956 s too.
+    let wide = Options {
+        coalesce: 10.0,
         ..Options::default()
     };
 
-    let mut a = case.clone();
-    let mut b = case;
-
-    let with_wide = step(
-        &mut a,
-        &Protection::new(Settings::default(), Vec::new()),
-        &Scheme::none(),
-        &wide,
-    )
-    .expect("solvable");
     let with_narrow = step(
-        &mut b,
+        &mut a,
         &Protection::new(Settings::default(), Vec::new()),
         &Scheme::none(),
         &narrow,
     )
     .expect("solvable");
+    let with_wide = step(
+        &mut b,
+        &Protection::new(Settings::default(), Vec::new()),
+        &Scheme::none(),
+        &wide,
+    )
+    .expect("solvable");
 
-    assert!(with_wide.fired.len() >= with_narrow.fired.len());
-    assert!(!with_narrow.fired.is_empty(), "the earliest always fires");
+    assert_eq!(with_narrow.fired.len(), 1, "fired {:?}", with_narrow.fired);
+    assert_eq!(with_narrow.fired[0].branch, 1, "branch b trips first");
+
+    assert_eq!(with_wide.fired.len(), 2, "fired {:?}", with_wide.fired);
+    let wide_branches: Vec<usize> = with_wide.fired.iter().map(|c| c.branch).collect();
+    assert!(wide_branches.contains(&0) && wide_branches.contains(&1));
+
+    // The earliest candidate fires under both windows — it is the anchor,
+    // not something the window itself can exclude.
+    assert!(with_narrow.fired.iter().any(|c| c.branch == 1));
+    assert!(with_wide.fired.iter().any(|c| c.branch == 1));
 }
 
 /// Solving an island twice against different reference buses gives identical
@@ -268,4 +311,11 @@ fn a_shed_reduces_load_before_the_power_flow_solves() {
         "flow {}",
         got.flows[0]
     );
+
+    // The branch is rated 10.0, so 3.2 pu never comes close to tripping it —
+    // this island's only timeline entry is the shed. `at` still comes back
+    // positive and `fired` is still empty, which is the cross-source case
+    // step 6's merge exists for: a shed alone can anchor the step's clock
+    // with no protection candidate in the timeline at all.
+    assert!(got.fired.is_empty(), "fired {:?}", got.fired);
 }
