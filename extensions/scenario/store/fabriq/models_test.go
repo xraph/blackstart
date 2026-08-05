@@ -2,6 +2,7 @@ package fabriq
 
 import (
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -326,18 +327,33 @@ func TestTimesNormalizeToUTC(t *testing.T) {
 	}
 }
 
-// Every column either model tags must appear in the migration DDL.
+// Every column a model tags must appear in its own table's migration DDL.
 //
 // Derived by reflection rather than from a written-out list, and that is the
 // point: a field added to scenarioRow or runRow with no column to land in
 // fails here without anyone remembering to update a list.
+//
+// Each model is checked against only its own CREATE TABLE statement, not
+// both tables joined into one string. With two tables, joining them would
+// let a column pass by coincidence: a stray `grove:"name"` added to runRow
+// would match the scenario table's real name column and pass here, then fail
+// at INSERT against the run table, which has no such column. Matching is by
+// word boundary rather than substring for the same reason a tag of "tenant"
+// must not appear to match "tenant_id" — they name different columns, and a
+// substring check cannot tell them apart.
 func TestEveryTaggedColumnExistsInTheSchema(t *testing.T) {
 	t.Parallel()
 
-	ddl := strings.Join(tables(), "\n")
+	cases := []struct {
+		model any
+		ddl   string
+	}{
+		{scenarioRow{}, tableDDL(t, ScenarioTable)},
+		{runRow{}, tableDDL(t, RunTable)},
+	}
 
-	for _, model := range []any{scenarioRow{}, runRow{}} {
-		typ := reflect.TypeOf(model)
+	for _, c := range cases {
+		typ := reflect.TypeOf(c.model)
 
 		for field := range typ.Fields() {
 			tag := field.Tag.Get("grove")
@@ -350,9 +366,30 @@ func TestEveryTaggedColumnExistsInTheSchema(t *testing.T) {
 				continue
 			}
 
-			if !strings.Contains(ddl, column) {
-				t.Errorf("%s tags column %q, which no migration creates", typ.Name(), column)
+			pattern := regexp.MustCompile(`\b` + regexp.QuoteMeta(column) + `\b`)
+			if !pattern.MatchString(c.ddl) {
+				t.Errorf("%s tags column %q, which its own table's migration does not create",
+					typ.Name(), column)
 			}
 		}
 	}
+}
+
+// tableDDL returns the single CREATE TABLE statement for table out of
+// tables(), rather than every statement joined together — see
+// TestEveryTaggedColumnExistsInTheSchema's own comment for why the join is
+// exactly what must be avoided here.
+func tableDDL(t *testing.T, table string) string {
+	t.Helper()
+
+	prefix := "CREATE TABLE IF NOT EXISTS " + table
+	for _, stmt := range tables() {
+		if strings.HasPrefix(stmt, prefix) {
+			return stmt
+		}
+	}
+
+	t.Fatalf("no CREATE TABLE statement found for %s", table)
+
+	return ""
 }
