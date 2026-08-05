@@ -67,6 +67,9 @@ func ParseRoute(s string) (id.ID, error) { return id.ParseWithPrefix(s, Route) }
 // ParseSpan reads a span identifier, rejecting any other type.
 func ParseSpan(s string) (id.ID, error) { return id.ParseWithPrefix(s, Span) }
 
+// ParseStructure reads a structure identifier, rejecting any other type.
+func ParseStructure(s string) (id.ID, error) { return id.ParseWithPrefix(s, Structure) }
+
 // ParseCircuit reads a circuit identifier, rejecting any other type.
 func ParseCircuit(s string) (id.ID, error) { return id.ParseWithPrefix(s, Circuit) }
 

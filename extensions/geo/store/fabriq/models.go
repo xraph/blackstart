@@ -19,8 +19,9 @@ import (
 
 // Table names, prefixed with the extension so a shared schema stays legible.
 const (
-	RouteTable = "blackstart_geo_route"
-	SpanTable  = "blackstart_geo_span"
+	RouteTable     = "blackstart_geo_route"
+	SpanTable      = "blackstart_geo_span"
+	StructureTable = "blackstart_geo_structure"
 )
 
 // Entity names, as they appear in the registry and in every command.
@@ -34,6 +35,11 @@ const (
 	// so a span with its own identifier gets its own indexed geometry for
 	// free.
 	SpanEntity = "geo_span"
+
+	// StructureEntity is a tower or pole a route stands on. First-class for
+	// the same reason a span is: its own identifier gets its own indexed
+	// point geometry from Fabriq's spatial port, keyed on (entity, id).
+	StructureEntity = "geo_structure"
 )
 
 // routeRow is the routes table.
@@ -96,5 +102,57 @@ func (s spanRow) toDomain() (asset.Span, error) {
 		Geometry:   geometry,
 		LengthM:    s.LengthM,
 		AzimuthDeg: s.AzimuthDeg,
+	}, nil
+}
+
+// structureRow is the structures table.
+//
+// GeomWKT carries the same two-copy geometry as spanRow, for the reason
+// documented there: the well-known text on the row is the durable copy, and
+// the PostGIS column Fabriq's spatial port writes is a rebuildable index
+// over it.
+type structureRow struct {
+	grove.BaseModel `grove:"table:blackstart_geo_structure"`
+
+	ID       string `grove:"id,pk"`
+	TenantID string `grove:"tenant_id,notnull"`
+	Version  int64  `grove:"version,notnull"`
+
+	RouteID  string  `grove:"route_id,notnull"`
+	Ordinal  int     `grove:"ordinal,notnull"`
+	GeomWKT  string  `grove:"geom_wkt,notnull"`
+	HeightM  float64 `grove:"height_m,notnull"`
+	Kind     string  `grove:"kind"`
+	Material string  `grove:"material"`
+}
+
+// toDomain maps a stored structure back, rebuilding its location from the
+// well-known text on the row.
+func (s structureRow) toDomain() (asset.Structure, error) {
+	structureID, err := gid.ParseStructure(s.ID)
+	if err != nil {
+		return asset.Structure{}, fmt.Errorf(
+			"geo: stored structure id %q: %w", s.ID, err)
+	}
+
+	routeID, err := gid.ParseRoute(s.RouteID)
+	if err != nil {
+		return asset.Structure{}, fmt.Errorf(
+			"geo: stored route id %q: %w", s.RouteID, err)
+	}
+
+	location, err := shape.ParsePointEWKT(s.GeomWKT)
+	if err != nil {
+		return asset.Structure{}, fmt.Errorf("geo: structure %s: %w", s.ID, err)
+	}
+
+	return asset.Structure{
+		ID:       structureID,
+		RouteID:  routeID,
+		Ordinal:  s.Ordinal,
+		Location: location,
+		HeightM:  s.HeightM,
+		Kind:     s.Kind,
+		Material: s.Material,
 	}, nil
 }
