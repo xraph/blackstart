@@ -6,6 +6,31 @@ export class RESTClient extends Client {
   public readonly cascade = {
     runs: {
       /**
+       * Get a cascade run's extent
+       * The corridor area within half_width_m (default 500, in meters on each side of a traced route) of every branch the run tripped. Corridors that overlap are returned whole rather than merged, so this is corridor area, not a single figure of distinct ground — see shape.Cover.
+       */
+      extent: async (id: string, halfWidthM?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.extentResponse> => {
+        let __path = `/api/v1/cascade/runs/${encodeURIComponent(String(id))}/extent`;
+        const queryParams: Record<string, any> = {};
+        if (halfWidthM !== undefined) {
+          queryParams['half_width_m'] = halfWidthM;
+        }
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "extentResponse",
+        };
+
+        return this.request<types.extentResponse>(config);
+      },
+
+      /**
        * Get a cascade run
        * One recorded simulation, with every event in the order it happened in simulated time.
        */
@@ -754,6 +779,134 @@ export class RESTClient extends Client {
         };
 
         return this.request<types.traceResponse>(config);
+      },
+
+    },
+
+  };
+
+  public readonly scenario = {
+    runs: {
+      /**
+       * Queue a run of a scenario
+       * Freezes a copy of the scenario's manifest into a new run and returns it queued. A worker claims and executes it; poll the run for its status and, once complete, the sweep and cascade it produced.
+       */
+      enqueue: async (id: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.ScenarioRun> => {
+        let __path = `/api/v1/scenario/scenarios/${encodeURIComponent(String(id))}/runs`;
+        const config: RequestConfig = {
+          method: 'POST',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "ScenarioRun",
+        };
+
+        return this.request<types.ScenarioRun>(config);
+      },
+
+      /**
+       * Get a scenario run
+       * One run: the manifest it froze, where it is in its lifecycle, the step it failed at if it failed, and the sweep and cascade it produced if it completed.
+       */
+      get: async (id: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.ScenarioRun> => {
+        let __path = `/api/v1/scenario/runs/${encodeURIComponent(String(id))}`;
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "ScenarioRun",
+        };
+
+        return this.request<types.ScenarioRun>(config);
+      },
+
+      /**
+       * List a scenario's runs
+       * Every recorded run of one scenario, most recent first.
+       */
+      list: async (id: string, limit?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.scenarioRunsResponse> => {
+        let __path = `/api/v1/scenario/scenarios/${encodeURIComponent(String(id))}/runs`;
+        const queryParams: Record<string, any> = {};
+        if (limit !== undefined) {
+          queryParams['limit'] = limit;
+        }
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "scenarioRunsResponse",
+        };
+
+        return this.request<types.scenarioRunsResponse>(config);
+      },
+
+    },
+
+    scenarios: {
+      /**
+       * Define or revise a scenario
+       * Records the binding a run will execute: a network model by content hash, a forecast cycle and the moment within it, a contingency policy and a seed. Naming an existing scenario revises it, which changes what the next run executes and nothing about any run already recorded.
+       */
+      define: async (body: Record<string, any>, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.Scenario> => {
+        let __path = `/api/v1/scenario/scenarios`;
+        const config: RequestConfig = {
+          method: 'POST',
+          url: __path,
+          body,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "Scenario",
+        };
+
+        return this.request<types.Scenario>(config);
+      },
+
+      /**
+       * Get a scenario
+       * One scenario and the manifest it currently binds.
+       */
+      get: async (id: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.Scenario> => {
+        let __path = `/api/v1/scenario/scenarios/${encodeURIComponent(String(id))}`;
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "Scenario",
+        };
+
+        return this.request<types.Scenario>(config);
+      },
+
+      /**
+       * List scenarios
+       * Defined scenarios, most recently created first.
+       */
+      list: async (limit?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.scenariosResponse> => {
+        let __path = `/api/v1/scenario/scenarios`;
+        const queryParams: Record<string, any> = {};
+        if (limit !== undefined) {
+          queryParams['limit'] = limit;
+        }
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "scenariosResponse",
+        };
+
+        return this.request<types.scenariosResponse>(config);
       },
 
     },

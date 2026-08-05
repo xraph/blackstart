@@ -112,6 +112,11 @@ export interface Event {
   kind: string;
 }
 
+export interface Failure {
+  reason: string;
+  step: string;
+}
+
 export interface Feed {
   cadence: string;
   format: string;
@@ -163,6 +168,16 @@ export interface Island {
   shed: number;
   trace?: RunSample[];
   verdict: string;
+}
+
+export interface Manifest {
+  branches?: string[];
+  hazardConfig?: string;
+  modelHash: string;
+  policy: string;
+  seed: number;
+  validAt: string;
+  weatherCycle: string;
 }
 
 export interface ModelVersion {
@@ -258,6 +273,30 @@ export interface Sample {
   spanId: string;
   validAt: string;
   value: number;
+}
+
+export interface Scenario {
+  createdAt: string;
+  id: string;
+  manifest: Manifest;
+  name: string;
+  updatedAt: string;
+}
+
+export interface ScenarioRun {
+  branchCount?: number;
+  cascadeRunId?: string;
+  failure?: Failure;
+  finishedAt?: string;
+  id: string;
+  manifest: Manifest;
+  queuedAt: string;
+  scenarioId: string;
+  solverVersion: string;
+  startedAt?: string;
+  status: string;
+  sweepRunId?: string;
+  weatherRated?: number;
 }
 
 export interface Solution {
@@ -378,6 +417,19 @@ export interface encodingResponse {
   sizeBytes: number;
 }
 
+export interface extentResponse {
+  area: {
+  elevation: number;
+  lat: number;
+  lon: number;
+}[][];
+  halfWidthM: number;
+  resolved: number;
+  runId: string;
+  unresolved: string[];
+  untraced: number;
+}
+
 export interface feedsResponse {
   feeds: Feed[];
 }
@@ -429,6 +481,14 @@ export interface reductionResponse {
 
 export interface routesResponse {
   routes: Route[];
+}
+
+export interface scenarioRunsResponse {
+  runs: ScenarioRun[];
+}
+
+export interface scenariosResponse {
+  scenarios: Scenario[];
 }
 
 export interface solutionsResponse {
