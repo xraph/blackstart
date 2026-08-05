@@ -8,9 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/xraph/blackstart/extensions/scenario/id"
 	"github.com/xraph/blackstart/pkg/bserr"
-	pkgid "github.com/xraph/blackstart/pkg/id"
+	"github.com/xraph/blackstart/pkg/id"
 )
 
 // Policy is the contingency policy to apply during the scenario.
@@ -48,12 +47,12 @@ type Manifest struct {
 	// not determine which values to use.
 	WeatherCycle string
 
-	// ValidAt is the moment within the forecast cycle to analyze. Separate
-	// from the cycle because a cycle is a horizon, not a moment. A manifest
-	// naming only the cycle would not determine a result, which breaks the
-	// reproducibility invariant the type exists to protect. This is the
-	// bitemporal knowledge time: ValidAt is when the thing being forecast
-	// is forecast to occur, not when the forecast was made.
+	// ValidAt is the moment within the forecast cycle to analyze: when the
+	// thing being forecast is forecast to occur. Separate from the cycle
+	// because a cycle is a horizon, not a moment. The cycle supplies the
+	// knowledge time (when the forecast was made); this field supplies the
+	// valid time. The pair is what makes a manifest determine a result,
+	// protecting the reproducibility invariant the type exists to defend.
 	ValidAt time.Time
 
 	// HazardConfig identifies the hazard configuration to use: which wind
@@ -108,7 +107,7 @@ func (m Manifest) Validate() error {
 // manifest, and temporal metadata.
 type Scenario struct {
 	// ID identifies this scenario.
-	ID pkgid.ID `json:"id"`
+	ID id.ID `json:"id"`
 
 	// Name is a human-friendly label.
 	Name string `json:"name"`
@@ -122,14 +121,4 @@ type Scenario struct {
 
 	// UpdatedAt is when the scenario was last modified.
 	UpdatedAt time.Time `json:"updated_at"`
-}
-
-// NewScenario mints a new scenario identifier.
-func NewScenario() pkgid.ID {
-	return id.NewScenario()
-}
-
-// NewRun mints a new run identifier.
-func NewRun() pkgid.ID {
-	return id.NewRun()
 }
