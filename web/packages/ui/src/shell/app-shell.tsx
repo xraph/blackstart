@@ -66,11 +66,18 @@ export function TopBar({
   contexts,
   clock,
   initials,
+  onSignOut,
 }: {
   readonly contexts: readonly TopBarContext[];
   readonly clock: string;
   readonly initials: string;
+  /** Turns the identity badge into a sign-out control. Omitted, it stays text. */
+  readonly onSignOut?: () => void;
 }): ReactElement {
+  /* The badge, with or without an action on it. Same box either way — the bar
+   * is 36px tall and a button that changed its metrics would move the clock. */
+  const badge =
+    "flex size-5 items-center justify-center rounded-[3px] border text-[9px] font-semibold";
   return (
     <header className="flex h-9 shrink-0 items-center border-b border-line bg-panel pl-3">
       <span className="pr-4 font-mono text-[11.5px] font-bold tracking-[0.16em] text-fg">
@@ -92,9 +99,21 @@ export function TopBar({
         {clock}
       </span>
       <span className="flex h-full items-center border-l border-line px-3">
-        <span className="flex size-5 items-center justify-center rounded-[3px] border border-line-2 bg-panel-3 text-[9px] font-semibold text-fg-2">
-          {initials}
-        </span>
+        {onSignOut === undefined ? (
+          <span className={`${badge} border-line-2 bg-panel-3 text-fg-2`}>{initials}</span>
+        ) : (
+          /* Labelled rather than left to the initials: "RR" tells a screen
+           * reader nothing about what pressing it does. */
+          <button
+            type="button"
+            onClick={onSignOut}
+            aria-label={`Sign out ${initials}`}
+            title="Sign out"
+            className={`${badge} border-line-2 bg-panel-3 text-fg-2 hover:border-line-3 hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-fg-2`}
+          >
+            {initials}
+          </button>
+        )}
       </span>
     </header>
   );
