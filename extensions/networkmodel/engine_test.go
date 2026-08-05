@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/xraph/blackstart/extensions/networkmodel"
+	"github.com/xraph/blackstart/extensions/networkmodel/canonical"
+	"github.com/xraph/blackstart/extensions/networkmodel/matpower"
 	"github.com/xraph/blackstart/extensions/networkmodel/store"
 	"github.com/xraph/blackstart/extensions/networkmodel/store/memory"
 	"github.com/xraph/blackstart/extensions/provenance"
@@ -304,26 +306,85 @@ func TestImportRecordsABranchPerCanonicalBranch(t *testing.T) {
 }
 
 // The content hash is what every result cites. Recording identity beside the
-// blob must not move it — this is the one assertion here that protects
-// published results.
+// blob must not move it: the hash Import stores on the model row must equal
+// the hash of the same bytes computed independently, by parsing them again
+// here rather than reading anything Import itself derived.
+//
+// Deliberately not "import the same bytes twice and compare the two stored
+// hashes": a second import of unchanged bytes short-circuits at FindByHash
+// and never re-enters the branch-writing code at all, so that comparison
+// would only prove canonical.Hash is deterministic — true regardless of
+// whether branch identity moved the hash — and would pass even if it had.
+// This asserts against a hash computed outside Import altogether, from an
+// import that did write branches, which is what actually protects the
+// invariant.
 func TestImportRecordingIdentityLeavesTheContentHashAlone(t *testing.T) {
 	t.Parallel()
 
 	e, _ := engineWithStore(t)
 
-	first, err := e.Import(t.Context(), caseWithTwoBranches("two-branch"))
+	req := caseWithTwoBranches("two-branch")
+
+	parsed, err := matpower.Parse(string(req.Source))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	want, err := canonical.Hash(parsed.Model)
+	if err != nil {
+		t.Fatalf("Hash: %v", err)
+	}
+
+	got, err := e.Import(t.Context(), req)
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
 
-	// The same bytes, imported again, must be recognized as the same network.
-	second, err := e.Import(t.Context(), caseWithTwoBranches("two-branch-again"))
+	if got.Model.ContentHash != want {
+		t.Errorf("model's stored hash is %s, want %s (the hash of an independent parse)",
+			got.Model.ContentHash, want)
+	}
+}
+
+// A model whose branch write never landed — an interrupted first import that
+// created the row and then failed on Branches().PutAll, or a model built
+// before that write existed — must not stay broken forever. Re-importing the
+// same bytes has to repair it in place, not just report it as already
+// present and leave it unusable.
+func TestReimportingABranchlessModelRepairsIt(t *testing.T) {
+	t.Parallel()
+
+	e, s := engineWithStore(t)
+
+	req := caseWithTwoBranches("two-branch")
+
+	first, err := e.Import(t.Context(), req)
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
 
-	if first.Model.ContentHash != second.Model.ContentHash {
-		t.Errorf("content hash moved: %s then %s",
-			first.Model.ContentHash, second.Model.ContentHash)
+	// Simulate the interrupted import: the model row exists, but nothing
+	// after it recorded a branch.
+	if err := s.Branches().PutAll(t.Context(), first.Model.ID, nil); err != nil {
+		t.Fatalf("PutAll: %v", err)
+	}
+
+	second, err := e.Import(t.Context(), req)
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	if !second.AlreadyPresent {
+		t.Error("a re-import of an unchanged file was not reported as already present")
+	}
+
+	got, err := s.Branches().ForModel(t.Context(), second.Model.ID)
+	if err != nil {
+		t.Fatalf("ForModel: %v", err)
+	}
+
+	if len(got) != second.Model.BranchCount {
+		t.Fatalf("branch-less model was not repaired: got %d branches, model says %d",
+			len(got), second.Model.BranchCount)
 	}
 }

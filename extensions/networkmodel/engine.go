@@ -143,6 +143,18 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (ImportResult, er
 			existing = repaired
 		}
 
+		// Same repair, for the same reason, for a model whose branch write
+		// never landed: an interrupted first import that created the model
+		// row and failed on Branches().PutAll, or a model built before this
+		// write existed at all. Re-deriving the rows from the bytes that
+		// hashed to this model cannot produce a different network, and
+		// leaving it unrepaired would mean a re-import of the exact same
+		// file returns AlreadyPresent forever without ever fixing the model
+		// it points at.
+		if err := e.repairBranches(ctx, existing, parsed); err != nil {
+			return ImportResult{}, err
+		}
+
 		return ImportResult{
 			Model:            existing,
 			AlreadyPresent:   true,
@@ -187,23 +199,15 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (ImportResult, er
 	// Identity is written after the model row exists and before anything is
 	// emitted, so no consumer of the import event can observe a model whose
 	// branches are not there yet.
-	branches := make([]model.Branch, 0, len(parsed.Model.Branches))
-
-	for _, canonicalBranch := range parsed.Model.Branches {
-		branches = append(branches, model.Branch{
-			ID:      nmid.NewBranch(),
-			ModelID: stored.ID,
-			// Exactly the identifier the encoder writes and the solver echoes
-			// back in a cascade event. Minting a separate numbering here would
-			// produce rows nothing could look up.
-			Ordinal: canonicalBranch.ID,
-			FromBus: canonicalBranch.FromID,
-			ToBus:   canonicalBranch.ToID,
-			Alias:   parsed.Aliases[canonicalBranch.ID],
-		})
-	}
-
-	if err := e.store.Branches().PutAll(ctx, stored.ID, branches); err != nil {
+	//
+	// This write is not transactional with the Create above: if PutAll fails
+	// here, the model row already exists with zero recorded branches, and
+	// this call returns without emitting. That is not a silent gap — the
+	// next import of these same bytes takes the AlreadyPresent path above,
+	// which calls repairBranches and writes the rows then. A model is never
+	// left permanently branch-less by a failure here; it is left branch-less
+	// until the next import attempt.
+	if err := e.store.Branches().PutAll(ctx, stored.ID, branchRows(stored.ID, parsed)); err != nil {
 		return ImportResult{}, fmt.Errorf(
 			"networkmodel: recording the branches of %s: %w", stored.ID, err)
 	}
@@ -215,6 +219,77 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (ImportResult, er
 		DatasetVersionID: datasetID,
 		Traceable:        traceable,
 	}, nil
+}
+
+// branchRows turns a parsed case's canonical branches into the rows an
+// import records against one stored model.
+//
+// Shared by the fresh-import path and repairBranches, so a branch minted
+// during a repair is built exactly the same way as one minted during the
+// original import — same ordinal source, same alias lookup.
+func branchRows(modelID id.ID, parsed matpower.Case) []model.Branch {
+	out := make([]model.Branch, 0, len(parsed.Model.Branches))
+
+	for _, canonicalBranch := range parsed.Model.Branches {
+		out = append(out, model.Branch{
+			ID:      nmid.NewBranch(),
+			ModelID: modelID,
+			// Exactly the identifier the encoder writes and the solver echoes
+			// back in a cascade event. Minting a separate numbering here would
+			// produce rows nothing could look up.
+			Ordinal: canonicalBranch.ID,
+			FromBus: canonicalBranch.FromID,
+			ToBus:   canonicalBranch.ToID,
+			Alias:   parsed.Aliases[canonicalBranch.ID],
+		})
+	}
+
+	return out
+}
+
+// repairBranches writes a model's branches when a prior import recorded the
+// model row but never recorded them.
+//
+// Follows restore's example for the analogous BlobRef gap: the bytes are
+// identical by definition — FindByHash matched on content hash — so
+// re-deriving the rows from this parse cannot describe a different network.
+// A model whose BranchCount says it has branches but whose branch store has
+// none is exactly as unusable as one with no stored encoding, and left
+// unrepaired it would keep returning AlreadyPresent forever with no route
+// back to a working state.
+//
+// A model whose BranchCount is genuinely zero — a case with no mpc.branch
+// rows — is not touched: that model is not broken, it correctly has nothing
+// to record.
+//
+// # Errors
+//
+// Returns an error when the existing rows cannot be read or the repair
+// cannot be written. Both leave the model exactly as it was — missing its
+// branches — rather than claiming a repair that did not happen.
+func (e *Engine) repairBranches(
+	ctx context.Context, existing model.NetworkModel, parsed matpower.Case,
+) error {
+	if existing.BranchCount == 0 {
+		return nil
+	}
+
+	got, err := e.store.Branches().ForModel(ctx, existing.ID)
+	if err != nil {
+		return fmt.Errorf(
+			"networkmodel: checking %s for recorded branches: %w", existing.ID, err)
+	}
+
+	if len(got) > 0 {
+		return nil
+	}
+
+	if err := e.store.Branches().PutAll(ctx, existing.ID, branchRows(existing.ID, parsed)); err != nil {
+		return fmt.Errorf(
+			"networkmodel: repairing the branches of %s: %w", existing.ID, err)
+	}
+
+	return nil
 }
 
 // restore re-stores a model's canonical encoding and records the reference.
