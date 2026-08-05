@@ -220,6 +220,13 @@ func TestAmpacityConvertsToVoltAmperes(t *testing.T) {
 // a shorter line than the one being rated, and a zero would be worse still:
 // every consumer treats a non-positive rating as unrated and skips the branch,
 // so it would drop out of every violation check instead of failing one.
+//
+// Each case pins WHICH gap it is, not merely that it is one. The two are
+// reported differently when a whole run comes back rated nothing — a branch
+// that never reached the asset record sends a reader to the model-to-geo
+// join, and a branch whose spans carry no value sends them to the forecast —
+// so a case classified into the wrong bucket names the wrong suspect, which
+// is exactly what the split was introduced to prevent.
 func TestAChainThatBreaksYieldsNoRating(t *testing.T) {
 	t.Parallel()
 
@@ -227,21 +234,31 @@ func TestAChainThatBreaksYieldsNoRating(t *testing.T) {
 		name string
 		geo  *fakeGeo
 		haz  *fakeHazard
+		want spanOutcome
 	}{
 		{
 			name: "no route for the branch",
 			geo:  &fakeGeo{routeErr: errNotFound},
 			haz:  &fakeHazard{ampacity: 900},
+			want: outcomeUnlocated,
 		},
 		{
+			// A route with no spans has not reached the asset record either:
+			// there is no geometry to ask the weather about, so blaming the
+			// forecast would send a reader to look at the wrong extension.
 			name: "route carries no spans",
 			geo:  &fakeGeo{route: aRoute, spans: nil},
 			haz:  &fakeHazard{ampacity: 900},
+			want: outcomeUnlocated,
 		},
 		{
+			// Located: the spans exist and hazard says it has nothing for
+			// them, which is a statement about the forecast rather than
+			// about the asset record.
 			name: "the ampacity read reports the span is unknown",
 			geo:  &fakeGeo{route: aRoute, spans: threeSpans},
 			haz:  &fakeHazard{err: errNotFound},
+			want: outcomeUnrated,
 		},
 		{
 			// Absence in this interface is a span missing from the map, not
@@ -249,6 +266,7 @@ func TestAChainThatBreaksYieldsNoRating(t *testing.T) {
 			name: "spans have no computed ampacity",
 			geo:  &fakeGeo{route: aRoute, spans: threeSpans},
 			haz:  &fakeHazard{bySpan: map[id.ID]float64{}},
+			want: outcomeUnrated,
 		},
 		{
 			// Not a gap in the record but a value that should not exist. It
@@ -257,19 +275,26 @@ func TestAChainThatBreaksYieldsNoRating(t *testing.T) {
 			name: "a span reports a non-positive ampacity",
 			geo:  &fakeGeo{route: aRoute, spans: threeSpans},
 			haz:  &fakeHazard{ampacity: 0},
+			want: outcomeUnrated,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, ok, err := weakestSpan(
+			got, outcome, err := weakestSpan(
 				t.Context(), tc.geo, tc.haz, lines[0].String(), issued, valid)
 			if err != nil {
 				t.Fatalf("a documented absence is a gap, not a run failure: %v", err)
 			}
 
-			if ok == outcomeRated {
-				t.Errorf("weakestSpan reported %v A from a broken chain", got)
+			if outcome == outcomeRated {
+				t.Fatalf("weakestSpan reported %v A from a broken chain", got)
+			}
+
+			if outcome != tc.want {
+				t.Errorf("classified as %v, want %v — the two gaps name different "+
+					"suspects when a whole run comes back rated nothing",
+					outcomeName(outcome), outcomeName(tc.want))
 			}
 		})
 	}
@@ -362,5 +387,20 @@ func TestABranchCostsOneAmpacityRead(t *testing.T) {
 	if haz.calls != 1 {
 		t.Errorf("%d ampacity reads for a %d-span branch, want 1",
 			haz.calls, len(threeSpans))
+	}
+}
+
+// outcomeName spells an outcome, so a failing classification says which
+// bucket it landed in rather than printing 0 and 1 at the reader.
+func outcomeName(o spanOutcome) string {
+	switch o {
+	case outcomeUnlocated:
+		return "unlocated (never reached the asset record)"
+	case outcomeUnrated:
+		return "unrated (located, and the weather had no value)"
+	case outcomeRated:
+		return "rated"
+	default:
+		return "unknown"
 	}
 }

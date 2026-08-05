@@ -125,7 +125,7 @@ func TestAnAmpacityWrittenByHazardReadsBackAtItsInstant(t *testing.T) {
 // The neighboring forecast hours of the same series are not returned. One
 // cycle holds a whole horizon under one key, and a run pinned to 18:00 that
 // silently rated on 17:00 would be a real number for the wrong moment.
-func TestTheNeighbouringForecastHoursAreNotRead(t *testing.T) {
+func TestTheNeighboringForecastHoursAreNotRead(t *testing.T) {
 	values := hazardHarness(t)
 	ctx := context.Background()
 
