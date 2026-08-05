@@ -21,7 +21,7 @@ func issuance() time.Time { return time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC) 
 func assignment(branch id.ID) conductor.Assignment {
 	return conductor.Assignment{
 		ID:            hid.NewAssignment(),
-		BranchID:      branch,
+		CarrierID:     branch,
 		ConductorCode: "drake",
 		Basis:         conductor.Surveyed,
 	}

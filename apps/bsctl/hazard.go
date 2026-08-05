@@ -106,7 +106,7 @@ func hazardAssignCommand() cli.Command {
 
 			assignment := conductor.Assignment{
 				ID:            hid.NewAssignment(),
-				BranchID:      branch,
+				CarrierID:     branch,
 				ConductorCode: code,
 				Basis:         basis,
 				Note:          ctx.String("note"),
@@ -117,7 +117,7 @@ func hazardAssignCommand() cli.Command {
 			}
 
 			ctx.Printf("assignment %s\n", assignment.ID)
-			ctx.Printf("branch     %s\n", assignment.BranchID)
+			ctx.Printf("branch     %s\n", assignment.CarrierID)
 			ctx.Printf("conductor  %s\n", assignment.ConductorCode)
 			ctx.Printf("basis      %s\n", assignment.Basis)
 
@@ -160,7 +160,7 @@ func hazardAssignmentsCommand() cli.Command {
 
 			for _, got := range found {
 				ctx.Printf("%s  %-24s %-10s %s\n",
-					got.ID, got.BranchID, got.ConductorCode, got.Basis)
+					got.ID, got.CarrierID, got.ConductorCode, got.Basis)
 			}
 
 			return nil

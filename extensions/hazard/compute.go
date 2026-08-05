@@ -308,7 +308,7 @@ func (e *Engine) conductorFor(
 			"hazard: reading route %s for span %s: %w", span.RouteID, span.ID, err)
 	}
 
-	// Asked before the lookup rather than after it misses. ForBranch given a
+	// Asked before the lookup rather than after it misses. ForCarrier given a
 	// circuit identifier would return not-found, which the branch below reads
 	// as "nobody assigned a conductor yet" — a category error wearing the
 	// costume of a gap in the record, and indistinguishable from one in every
@@ -317,7 +317,7 @@ func (e *Engine) conductorFor(
 		return conductor.Conductor{}, false, nil
 	}
 
-	assignment, err := e.store.Assignments().ForBranch(ctx, route.CarrierID)
+	assignment, err := e.store.Assignments().ForCarrier(ctx, route.CarrierID)
 	if err != nil {
 		if errors.Is(err, bserr.ErrNotFound) {
 			return conductor.Conductor{}, false, nil

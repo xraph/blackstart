@@ -31,7 +31,7 @@ func (s *assignments) Put(_ context.Context, in conductor.Assignment) error {
 	// memory store that quietly allowed two would let every engine test pass
 	// against a rule production does not have.
 	for existing, got := range s.assignments {
-		if got.BranchID == in.BranchID && existing != in.ID {
+		if got.CarrierID == in.CarrierID && existing != in.ID {
 			delete(s.assignments, existing)
 		}
 	}
@@ -54,14 +54,14 @@ func (s *assignments) Get(_ context.Context, want id.ID) (conductor.Assignment, 
 	return found, nil
 }
 
-func (s *assignments) ForBranch(
+func (s *assignments) ForCarrier(
 	_ context.Context, branch id.ID,
 ) (conductor.Assignment, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	for _, found := range s.assignments {
-		if found.BranchID == branch {
+		if found.CarrierID == branch {
 			return found, nil
 		}
 	}

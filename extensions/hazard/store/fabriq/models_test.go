@@ -1,6 +1,7 @@
 package fabriq
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ func TestAssignmentModelRoundTrips(t *testing.T) {
 
 	want := conductor.Assignment{
 		ID:            hid.NewAssignment(),
-		BranchID:      id.MustNew("brch"),
+		CarrierID:     id.MustNew("brch"),
 		ConductorCode: "cardinal",
 		Basis:         conductor.AssumedByVoltage,
 		Note:          "345 kV, no survey on file",
@@ -50,7 +51,7 @@ func TestAssignmentWithoutANoteRoundTrips(t *testing.T) {
 
 	want := conductor.Assignment{
 		ID:            hid.NewAssignment(),
-		BranchID:      id.MustNew("brch"),
+		CarrierID:     id.MustNew("brch"),
 		ConductorCode: "drake",
 		Basis:         conductor.Surveyed,
 	}
@@ -153,7 +154,7 @@ func TestAStoredIdentifierOfTheWrongTypeIsRefused(t *testing.T) {
 
 	broken := assignmentModel{
 		ID:            id.MustNew("span").String(),
-		BranchID:      id.MustNew("brch").String(),
+		CarrierID:     id.MustNew("brch").String(),
 		ConductorCode: "drake",
 		Basis:         string(conductor.Surveyed),
 	}
@@ -178,5 +179,24 @@ func TestTheSeriesTableCarriesEveryColumnBulkWriteNames(t *testing.T) {
 		if !strings.Contains(ddl, column) {
 			t.Errorf("the series table has no %s column", column)
 		}
+	}
+}
+
+// The stored column names the carrier, not a branch.
+//
+// The grove tag is the contract with the table, and the table is what a
+// migration renamed. A tag still reading branch_id compiles, round-trips in
+// memory, and fails only against a real database — which is the slowest
+// possible place to find out.
+func TestAssignmentModelNamesTheCarrierColumn(t *testing.T) {
+	t.Parallel()
+
+	field, ok := reflect.TypeOf(assignmentModel{}).FieldByName("CarrierID")
+	if !ok {
+		t.Fatal("assignmentModel has no CarrierID field")
+	}
+
+	if got := field.Tag.Get("grove"); !strings.HasPrefix(got, "carrier_id,") {
+		t.Errorf("grove tag = %q, want it to name carrier_id", got)
 	}
 }

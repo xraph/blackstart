@@ -206,13 +206,13 @@ type AssignmentStore interface {
 	// Get reads one assignment.
 	Get(ctx context.Context, want id.ID) (conductor.Assignment, error)
 
-	// ForBranch finds the assignment of a branch.
+	// ForCarrier finds the assignment of a branch.
 	//
 	// The lookup the compute engine makes once per span, by way of the span's
 	// route. Its absence is not an error the engine reports — it is a span
 	// counted unrated, which is why this returns bserr.ErrNotFound rather than
 	// an empty assignment.
-	ForBranch(ctx context.Context, branch id.ID) (conductor.Assignment, error)
+	ForCarrier(ctx context.Context, branch id.ID) (conductor.Assignment, error)
 
 	// List returns assignments.
 	List(ctx context.Context, p store.Page) ([]conductor.Assignment, error)

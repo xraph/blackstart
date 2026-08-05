@@ -23,7 +23,7 @@ type assignmentModel struct {
 	TenantID string `grove:"tenant_id,notnull"`
 	Version  int64  `grove:"version,notnull"`
 
-	BranchID      string `grove:"branch_id,notnull"`
+	CarrierID     string `grove:"carrier_id,notnull"`
 	ConductorCode string `grove:"conductor_code,notnull"`
 	Basis         string `grove:"basis,notnull"`
 
@@ -37,7 +37,7 @@ type assignmentModel struct {
 func assignmentToModel(a conductor.Assignment) *assignmentModel {
 	return &assignmentModel{
 		ID:            a.ID.String(),
-		BranchID:      a.BranchID.String(),
+		CarrierID:     a.CarrierID.String(),
 		ConductorCode: a.ConductorCode,
 		Basis:         string(a.Basis),
 		Note:          a.Note,
@@ -51,15 +51,15 @@ func assignmentFromModel(m assignmentModel) (conductor.Assignment, error) {
 			"hazard: stored assignment id %q: %w", m.ID, err)
 	}
 
-	branchID, err := id.Parse(m.BranchID)
+	branchID, err := id.Parse(m.CarrierID)
 	if err != nil {
 		return conductor.Assignment{}, fmt.Errorf(
-			"hazard: stored branch id %q: %w", m.BranchID, err)
+			"hazard: stored carrier id %q: %w", m.CarrierID, err)
 	}
 
 	return conductor.Assignment{
 		ID:            assignmentID,
-		BranchID:      branchID,
+		CarrierID:     branchID,
 		ConductorCode: m.ConductorCode,
 		Basis:         conductor.Basis(m.Basis),
 		Note:          m.Note,
@@ -81,7 +81,7 @@ func (s *assignmentStore) Put(ctx context.Context, in conductor.Assignment) erro
 		return err
 	}
 
-	existing, err := s.ForBranch(ctx, in.BranchID)
+	existing, err := s.ForCarrier(ctx, in.CarrierID)
 
 	switch {
 	case err == nil && existing.ID == in.ID:
@@ -109,7 +109,7 @@ func (s *assignmentStore) Get(
 	return assignmentFromModel(m)
 }
 
-func (s *assignmentStore) ForBranch(
+func (s *assignmentStore) ForCarrier(
 	ctx context.Context, branch id.ID,
 ) (conductor.Assignment, error) {
 	var rows []assignmentModel
@@ -117,7 +117,7 @@ func (s *assignmentStore) ForBranch(
 	if err := s.base.Query(ctx, &rows,
 		`SELECT * FROM `+AssignmentTable+`
 		 WHERE tenant_id = current_setting('app.tenant_id', true)
-		   AND branch_id = $1`, branch.String()); err != nil {
+		   AND carrier_id = $1`, branch.String()); err != nil {
 		return conductor.Assignment{}, err
 	}
 

@@ -10,7 +10,7 @@ import (
 	"github.com/xraph/blackstart/pkg/id"
 )
 
-// Basis is how a branch came to be assigned the conductor it has.
+// Basis is how a carrier came to be assigned the conductor it has.
 //
 // It is on the row rather than inferred, because a rating conditioned on a
 // surveyed conductor and one conditioned on a guess are different statements,
@@ -40,23 +40,28 @@ func (b Basis) Valid() bool { return slices.Contains(Bases(), b) }
 // String returns the basis as a plain string.
 func (b Basis) String() string { return string(b) }
 
-// Assignment binds one branch to one conductor.
+// Assignment binds one carrier to one conductor.
 //
-// Its own record rather than a column on the branch, because the binding
+// Its own record rather than a column on the carrier, because the binding
 // carries a fact belonging to neither end: how confident this platform is that
-// the branch really is that conductor.
+// the line really is strung with that conductor.
 //
-// One assignment per branch, not per span. A line is strung with one conductor
-// end to end; where it is not, the second stringing is a different branch in
-// the network model.
+// One assignment per carrier, not per span. A line is strung with one conductor
+// end to end; where it is not, the second stringing is a different carrier.
 type Assignment struct {
 	// ID names this assignment.
 	ID id.ID `json:"id"`
 
-	// BranchID is the electrical branch, matching geo.Route's BranchID — which
-	// is how a span reaches its conductor: span to route, route to branch,
-	// branch to here.
-	BranchID id.ID `json:"branch_id"`
+	// CarrierID is whatever the route carries — a branch in a network model, or
+	// a circuit somebody built. It matches geo.Route's CarrierID, which is how a
+	// span reaches its conductor: span to route, route to carrier, carrier here.
+	//
+	// A carrier rather than a branch because both kinds of line are made of real
+	// conductor under real weather, and IEEE 738 does not ask which model an
+	// element came from. The field was BranchID while only branches could be
+	// rated, and a field of that name holding a circuit identifier would be
+	// exactly the kind of quiet untruth the basis below exists to prevent.
+	CarrierID id.ID `json:"carrier_id"`
 
 	// ConductorCode is a [Conductor.Code]. A code rather than an embedded
 	// conductor, so that correcting a library figure corrects every rating
@@ -87,9 +92,9 @@ func (a Assignment) Validate() error {
 			bserr.ErrInvalid, a.ID, got, hid.Assignment)
 	}
 
-	if a.BranchID.IsZero() {
+	if a.CarrierID.IsZero() {
 		return fmt.Errorf(
-			"%w: assignment %s names no branch, so nothing can find it",
+			"%w: assignment %s names no carrier, so nothing can find it",
 			bserr.ErrInvalid, a.ID)
 	}
 
@@ -122,10 +127,16 @@ const (
 
 // AssumeByVoltage picks a conductor typical of a line's voltage class.
 //
-// This is a guess, and callers must record it as one — see [AssumedByVoltage].
-// It exists because the alternative is no rating at all: the network model
-// carries voltage for every branch and conductor type for none, and a platform
-// that refused to rate anything unsurveyed would rate nothing.
+// This is a guess about the conductor, not about the voltage: callers pass a
+// voltage the carrier actually states, and record the result as assumed — see
+// [AssumedByVoltage]. It exists because the alternative is no rating at all.
+// Sources carry voltage for a line and conductor type for almost none, and a
+// platform that refused to rate anything unsurveyed would rate nothing.
+//
+// A caller with no voltage for its carrier must skip it rather than invent one.
+// An assignment recording assumed_by_voltage where the voltage was not the
+// element's spends the basis field — the entire mechanism by which a consumer
+// knows how far to trust a rating — to raise a coverage number.
 //
 // The defaults are defensible starting points from typical transmission
 // practice, not authority. They deserve a second opinion from somebody who

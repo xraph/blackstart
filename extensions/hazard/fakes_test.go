@@ -177,7 +177,7 @@ func newWorld(t *testing.T) *world {
 
 	if err := w.store.Assignments().Put(t.Context(), conductor.Assignment{
 		ID:            hid.NewAssignment(),
-		BranchID:      w.branch,
+		CarrierID:     w.branch,
 		ConductorCode: "drake",
 		Basis:         conductor.Surveyed,
 	}); err != nil {

@@ -114,7 +114,7 @@ func TestASpanOnACircuitIsCountedUnrated(t *testing.T) {
 	// observable: reachable, and it must still not be reached.
 	if err := w.store.Assignments().Put(t.Context(), conductor.Assignment{
 		ID:            hid.NewAssignment(),
-		BranchID:      circuit,
+		CarrierID:     circuit,
 		ConductorCode: "drake",
 		Basis:         conductor.Surveyed,
 	}); err != nil {
