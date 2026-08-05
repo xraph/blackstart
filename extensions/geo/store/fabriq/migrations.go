@@ -127,9 +127,16 @@ func execAll(ctx context.Context, exec migrate.Executor, statements []string) er
 // row carries a branch, and a branch identifier is a valid carrier identifier,
 // so this is a rename with no backfill.
 //
-// IF EXISTS on both statements: a database created after this migration was
+// Guarded on both statements: a database created after this migration was
 // written already has the new names from 0001, and a rename that fails there
 // would block a fresh install to fix an upgrade.
+//
+// That was the intent from the start and it is worth saying what happened
+// instead, because this comment is why nobody caught it: only the index rename
+// ever carried a guard. The column rename went out bare and failed on every
+// fresh database with `column "branch_id" does not exist`, stopping the group
+// and taking 0003 and 0004 with it. Nothing noticed until the geo migrations
+// were first run against a clean database.
 var migration0002Carrier = &migrate.Migration{
 	Name:    "geo_route_carrier",
 	Version: "20260804000010",
@@ -140,7 +147,7 @@ var migration0002Carrier = &migrate.Migration{
 
 func up0002(ctx context.Context, exec migrate.Executor) error {
 	return execAll(ctx, exec, []string{
-		`ALTER TABLE ` + RouteTable + ` RENAME COLUMN branch_id TO carrier_id`,
+		renameColumnIfExists(RouteTable, "branch_id", "carrier_id"),
 		`ALTER INDEX IF EXISTS ` + RouteTable + `_branch_idx
 			RENAME TO ` + RouteTable + `_carrier_idx`,
 	})
@@ -150,8 +157,40 @@ func down0002(ctx context.Context, exec migrate.Executor) error {
 	return execAll(ctx, exec, []string{
 		`ALTER INDEX IF EXISTS ` + RouteTable + `_carrier_idx
 			RENAME TO ` + RouteTable + `_branch_idx`,
-		`ALTER TABLE ` + RouteTable + ` RENAME COLUMN carrier_id TO branch_id`,
+		renameColumnIfExists(RouteTable, "carrier_id", "branch_id"),
 	})
+}
+
+// renameColumnIfExists renames a column only where it is still there to rename.
+//
+// This migration's work is conditional by nature. A database created before
+// 0001 was edited has branch_id and needs the rename; one created after has
+// carrier_id already and nothing to rename. An unguarded ALTER fails on the
+// second, which blocks a fresh install in order to perform an upgrade that
+// install never needed — and blocks every later migration in the group behind
+// it, since a failed step stops the run.
+//
+// Spelled out rather than written as IF EXISTS because Postgres has none for a
+// column rename: ALTER TABLE IF EXISTS guards the table, not the column, so the
+// guard this migration always meant to have was never expressible that way.
+//
+// The reverse is guarded too. Nothing today reaches down0002 on a database that
+// never ran up0002 — a full rollback drops the table immediately after — but an
+// unguarded reverse has the identical shape to the bug above, and the next
+// person to roll back to a single version is who would find that out.
+func renameColumnIfExists(table, from, to string) string {
+	return `DO $$
+	BEGIN
+		IF EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = current_schema()
+			  AND table_name = '` + table + `'
+			  AND column_name = '` + from + `'
+		) THEN
+			ALTER TABLE ` + table + ` RENAME COLUMN ` + from + ` TO ` + to + `;
+		END IF;
+	END
+	$$`
 }
 
 // Circuits are the lines somebody actually built, imported from public
