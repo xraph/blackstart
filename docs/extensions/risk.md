@@ -96,6 +96,27 @@ exponent *p* is still lognormal, with its log-scale spread multiplied by
 *p*; `curve.go`'s comments carry the derivation beside each constant it
 produces.
 
+That conversion is not, however, a conversion into the same quantity
+`compute.go` evaluates the curve against, and this is a real limitation, not
+a rounding error. `windLoadFromSpeed` builds its load from the raw gust speed
+against one fixed reference diameter (Drake, 0.02814 m). What `compute.go`
+actually hands `Curve.Probability` is hazard's `wind_load`, computed as
+`½·ρ(T)·Cd·(D_span + 2·t_ice)·V⊥²` where `V⊥ = gust × |sin(angle between
+wind and span azimuth)|` (`extensions/hazard/mechanical/wind.go`) — a value
+that depends on the span's bearing relative to the wind and on whichever
+conductor is actually strung on it, neither of which the curve's median was
+built from. With the Lattice curve's β = 0.0794 giving it a near-step
+transition at 15.85 N/m, both gaps dominate the answer: a 40 m/s gust 20°
+off a span's line gives roughly 3.2 N/m and P≈0, while the same gust
+perpendicular to the span gives roughly 27.6 N/m and P≈1 — a tower's
+collapse fragility is not a function of which way its line runs, but as fed
+today, it is. The adjacent conductor's diameter varies 0.0218–0.0304 m
+across `extensions/hazard/conductor`'s library, about 2.6β of swing on its
+own. This is disclosed rather than corrected here — see Known gaps — because
+re-deriving the azimuth and diameter dependence into the curve itself is a
+model change, not a bookkeeping fix, and the calibration scalar this
+extension already carries is the wrong tool for a directional error.
+
 This transfer — a different structure population, in different weather, on
 a different network — is exactly the error the calibration scalar exists to
 absorb. A curve fitted to a Chinese 220 kV tower and a curve fitted to a
@@ -270,3 +291,18 @@ to try again.
 - `ConductorRate`'s shape is this package's own construction, not a fit to
   Jamieson, Strbac and Bell (2020)'s data. Only its aggregation equation is
   reproduced from that paper.
+- The structure curves are indexed on a quantity `compute.go` does not feed
+  them. `fragility.windLoadFromSpeed` builds each curve's median from a raw
+  gust speed against one fixed reference diameter; `compute.go` evaluates
+  the curve against hazard's directional, span-specific `wind_load` instead
+  — a value that depends on the angle between the wind and the span's
+  azimuth and on the real conductor's diameter. With the Lattice curve's
+  near-step transition at 15.85 N/m, both dependencies dominate: the same
+  gust can read P≈0 or P≈1 depending only on which way the span runs, and
+  the conductor library's diameter spread (0.0218–0.0304 m) is about 2.6β of
+  swing by itself. A structure's collapse probability should not depend on
+  its line's bearing or on which conductor happens to be strung on it, but
+  as computed today, it does. See `fragility.windLoadFromSpeed`'s doc
+  comment for the full derivation. Not corrected here — this is a model
+  change, not a bookkeeping one, and the uncalibrated scalar is the wrong
+  tool for a directional error.

@@ -100,6 +100,38 @@ const (
 
 // windLoadFromSpeed converts a wind speed in m/s to the transverse load, in
 // N/m, the reference conductor would see at that speed.
+//
+// What this indexes the curve on and what compute.go actually feeds it are
+// not the same quantity, and that gap is not closed anywhere in this
+// package. This function's V is the full, undirected gust speed against a
+// single fixed reference diameter (referenceConductorDiameterM, Drake's
+// 0.02814 m). What Curve.Probability is evaluated against in compute.go is
+// hazard's wind_load, computed by extensions/hazard/mechanical.Wind as
+// ½·ρ(T)·Cd·(D_span + 2·t_ice)·V⊥², where V⊥ = gust × |sin(angle between
+// wind and span azimuth)| — a value that depends on the span's bearing
+// relative to the wind and on the real conductor's diameter, neither of
+// which this function knows about.
+//
+// Two consequences follow, and with the Lattice curve's β = 0.0794 giving it
+// a near-step transition at 15.85 N/m, both dominate the answer rather than
+// perturbing it:
+//
+//   - Azimuth: a 40 m/s gust 20 degrees off the span's line gives
+//     V⊥ ≈ 13.7 m/s and a load around 3.2 N/m (P ≈ 0); the same gust
+//     perpendicular to the span gives V⊥ = 40 m/s and a load around
+//     27.6 N/m (P ≈ 1). One tower's collapse probability is not a function
+//     of which way its line happens to run, but as fed here, it is.
+//   - Conductor diameter: the reference diameter is Drake's fixed 0.02814 m;
+//     the library in extensions/hazard/conductor spans 0.02179 m (Hawk) to
+//     0.03038 m (Cardinal), about 2.6β of swing on the Lattice curve by
+//     itself. A structure's fragility should not depend on which conductor
+//     library entry happens to be strung on the span next to it, but as fed
+//     here, it does.
+//
+// This is a real modelling limitation, not a bug to fix by re-deriving the
+// curve: see docs/extensions/risk.md's Known gaps for the disclosure, and
+// the design note at the top of this file for why an invented correction
+// would be worse than a stated gap.
 func windLoadFromSpeed(speedMS float64) float64 {
 	return 0.5 * referenceAirDensityKgPerM3 * referenceDragCoefficient *
 		referenceConductorDiameterM * speedMS * speedMS
