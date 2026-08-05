@@ -36,12 +36,21 @@ func Decode(encoded []byte) (Model, error) {
 		return Model{}, err
 	}
 
+	// The remedy is in the message, not only in a comment beside the version
+	// constant. An operator meets this error through `bsctl model show` or a
+	// scenario run that failed to resolve, and "the physics fields changed"
+	// alone tells them what happened without telling them what to do — so the
+	// message says to re-import, and says that the new model has a new hash
+	// before they discover it by having a manifest keep failing.
 	if version != Version {
 		return Model{}, fmt.Errorf(
 			"canonical: encoding is version %d and this build reads version %d; "+
 				"the physics fields changed between them, so reading it anyway "+
-				"would produce a different network from the one that was stored",
-			version, Version)
+				"would produce a different network from the one that was stored. "+
+				"Re-import the source file to rebuild this model at version %d — "+
+				"it will get a NEW content hash, deliberately, so any manifest or "+
+				"result naming the old one must be repointed at it",
+			version, Version, Version)
 	}
 
 	out := Model{}

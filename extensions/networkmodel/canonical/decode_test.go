@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/xraph/blackstart/extensions/networkmodel/canonical"
@@ -230,4 +231,28 @@ func TestCorruptEncodingsAreRefused(t *testing.T) {
 			t.Errorf("got %v, want ErrTruncated", err)
 		}
 	})
+}
+
+// The error an operator actually meets, through `bsctl model show` or a
+// scenario run that would not resolve. Naming both versions says what
+// happened; it does not say what to do, and "re-import" lived only in a
+// comment beside the version constant where nobody hitting the error will
+// read it. The new hash is stated too, so it is not discovered later by a
+// manifest that keeps failing.
+func TestTheVersionRefusalNamesTheRemedy(t *testing.T) {
+	encoded, _ := canonical.Encode(threeBusModel())
+
+	stale := bytes.Clone(encoded)
+	stale[0] = 1
+
+	_, err := canonical.Decode(stale)
+	if err == nil {
+		t.Fatal("a version-1 encoding decoded cleanly")
+	}
+
+	for _, want := range []string{"Re-import", "content hash"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message %q does not mention %q", err, want)
+		}
+	}
 }
