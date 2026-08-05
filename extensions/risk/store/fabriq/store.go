@@ -4,13 +4,30 @@
 // that matters: it carries row-level security. Those two write through
 // Fabriq's Timeseries port, whose fixed six-column shape (time, tenant_id,
 // tag_id, value, quality, scope_id) has no room for a probability and a
-// scalar as two separate numbers, and whose columnstore forbids RLS outright.
-// This table needs both numbers, so it is written as an ordinary Fabriq
-// aggregate — one Create per row, going through the command plane and the
-// outbox like every other entity in this codebase — and made a hypertable
-// only as a scale optimization on top of that, not as a replacement for it.
-// A regular (uncompressed) hypertable has no objection to RLS, which is what
-// makes the combination possible here and not there.
+// scalar as two separate numbers, and whose columnstore forbids RLS outright
+// (adapters/postgres/timescale.go in Fabriq v0.0.6 hardcodes that insert, and
+// core/query/ports.go documents the columnstore restriction). This table
+// needs both numbers, so it is written as an ordinary Fabriq aggregate — one
+// Create per row, going through the command plane and the outbox like every
+// other entity in this codebase — and made a hypertable only as a scale
+// optimization on top of that, not as a replacement for it. A regular
+// (uncompressed) hypertable has no objection to RLS, which is what makes the
+// combination possible here and not there — and it must stay uncompressed:
+// see migrations.go for why that is an invariant this package depends on
+// rather than something it enforces.
+//
+// That choice is not free. Fabriq's own documentation motivates the
+// Timeseries port precisely to avoid this cost: "per-row events would melt
+// the outbox." Every row this store writes costs a SELECT ... FOR UPDATE, a
+// single-row INSERT, an outbox INSERT and a pg_notify, all inside one
+// transaction — the price of going through the command plane at all, not
+// something this package chose to add. values.go chunks PutBatch
+// (putBatchChunk) to keep any one transaction's lock footprint and notify
+// burst bounded, but chunking only contains the cost; it does not remove it.
+// A future extension whose write volume is much larger than a risk pass's
+// components-times-forecast-hours should weigh this against the Timeseries
+// port's RLS gap before copying this pattern rather than assuming it is free
+// because RLS was worth having here.
 //
 // Models are unexported and per-backend, declared beside the store that uses
 // them, with explicit mappers to and from the domain types. The domain

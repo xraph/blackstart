@@ -77,9 +77,13 @@ func seriesTable() []string {
 		// Row-level security, forced. Without FORCE the table owner is exempt
 		// and tenant isolation is silently a no-op for exactly the connection
 		// most likely to be used by mistake. Unlike hazard's and weather's
-		// series tables, nothing here exempts this one: this hypertable is
-		// never compressed, so Timescale's columnstore restriction on RLS
-		// never applies to it.
+		// series tables, nothing here exempts this one, and that must stay
+		// true: this hypertable must never gain a compression policy.
+		// Timescale's columnstore forbids RLS outright, so compressing it
+		// later would silently turn FORCE back into a no-op with no error at
+		// the ALTER TABLE that did it — an invariant this migration relies on
+		// but cannot itself enforce, since nothing stops a future migration
+		// from adding add_compression_policy to this table.
 		rlsFor(ValueSeries),
 		forceRLSFor(ValueSeries),
 		dropPolicyFor(ValueSeries),
