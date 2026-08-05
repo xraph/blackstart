@@ -13,6 +13,8 @@ import (
 	"github.com/xraph/blackstart/extensions/cascade/store"
 	fabriqstore "github.com/xraph/blackstart/extensions/cascade/store/fabriq"
 	"github.com/xraph/blackstart/extensions/fabric"
+	"github.com/xraph/blackstart/extensions/geo"
+	"github.com/xraph/blackstart/extensions/networkmodel"
 	"github.com/xraph/blackstart/pkg/apiauth"
 	"github.com/xraph/blackstart/pkg/hooks"
 	"github.com/xraph/blackstart/pkg/solver"
@@ -136,7 +138,7 @@ func (e *Extension) Start(ctx context.Context) error {
 	// legitimate configuration — bsctl is one.
 	bus, _ := forge.Inject[*hooks.Bus](app.Container())
 
-	engine, err := NewEngine(e.store, client, bus)
+	engine, err := NewEngine(e.store, client, bus, e.extentHalf(app)...)
 	if err != nil {
 		return err
 	}
@@ -156,6 +158,34 @@ func (e *Extension) Start(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// extentHalf assembles Extent's collaborators if this deployment can support
+// them.
+//
+// All three or none, the same rule WithExtent itself states: Models and
+// Branches both come off networkmodel.Engine's Store(), and Geo off the geo
+// extension, so a host missing either extension can simulate and read back
+// runs but not compute a run's extent. Silent about it would make that
+// discoverable only as an error on the first request; a deployment that
+// omitted geo on purpose should still be told what it gave up.
+func (e *Extension) extentHalf(app forge.App) []EngineOption {
+	models, modelsErr := forge.Inject[*networkmodel.Engine](app.Container())
+	geoEngine, geoErr := forge.Inject[*geo.Engine](app.Container())
+
+	if modelsErr != nil || geoErr != nil {
+		e.Logger().Warn(
+			"cascade: networkmodel and/or geo are not available; "+
+				"GET /runs/:id/extent will refuse every request",
+			forge.F("networkmodel_resolved", modelsErr == nil),
+			forge.F("geo_resolved", geoErr == nil))
+
+		return nil
+	}
+
+	modelStore := models.Store()
+
+	return []EngineOption{WithExtent(modelStore.Models(), modelStore.Branches(), geoEngine)}
 }
 
 // Stop releases the store.
