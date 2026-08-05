@@ -154,8 +154,14 @@ pub fn apply_overrides(case: &mut Case, overrides: &[proto::Override]) {
             // Normalized by the same `/ s_base` the model's own `rating_va`
             // goes through above, so a rating that arrives as an override and
             // the same rating baked into the uploaded model are the same
-            // number here. Zero passes through untouched because zero is what
-            // `Branch::rating` already means by unrated.
+            // number here.
+            //
+            // Zero passes through untouched because zero is what
+            // `Branch::rating` already means by unrated — and unrated is
+            // *skipped* by every loading check downstream, not treated as a
+            // limit of nothing. An override of zero therefore hides a
+            // violation rather than manufacturing one, which is why the
+            // contract tells producers to send no override instead.
             Some(proto::r#override::Change::BranchRating(rating)) => {
                 let s_base = case.base.s_base();
                 if let Some(branch) = case.branches.get_mut(rating.branch as usize) {

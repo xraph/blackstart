@@ -1341,10 +1341,19 @@ type BranchRating struct {
 	// Long-term rating, VOLT-AMPERES, matching Branch.rating_va.
 	//
 	// Zero means unrated — the limit is unknown rather than zero — which is
-	// Branch.rating_va's convention and must stay that way here. A weather
-	// pipeline that could not derive a rating for a branch has to send no
-	// override at all rather than a zero, because a zero-rated branch reads as
-	// infinitely overloaded and would trip a whole network on the first screen.
+	// Branch.rating_va's convention and must stay that way here.
+	//
+	// What a zero actually does is SUPPRESS a violation, not invent one. Every
+	// consumer skips a branch whose rating is not positive: the DC flow's
+	// loading pass, the contingency screen and its verifier, the cascade
+	// verifier, and the service's result assembly. The overcurrent element
+	// reports no trip at all for one. So an override of zero does not trip the
+	// network — it quietly removes that branch from every violation check, and
+	// a line at 180% of its true limit is reported as an all-clear.
+	//
+	// For an advisory tool a false all-clear is the worse failure, which is why
+	// a pipeline that could not derive a rating for a branch must send no
+	// override for it rather than an override of zero.
 	RatingVa      float64 `protobuf:"fixed64,2,opt,name=rating_va,json=ratingVa,proto3" json:"rating_va,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
