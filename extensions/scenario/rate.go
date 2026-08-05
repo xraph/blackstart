@@ -48,6 +48,27 @@ type Rated struct {
 	// the join is fine and the pinned cycle computed nothing at that instant.
 	// A single "rated nothing" error covering both helps nobody.
 	Located int
+
+	// BaseVoltageFallback is how many of the overrides above were converted
+	// against the model-level voltage base because their from-bus states no
+	// nominal voltage of its own.
+	//
+	// Counted for the reason Located is counted: two runs that both rated two
+	// thousand branches are not the same run if one of them converted against
+	// a voltage that belongs to a different part of the network. On a model
+	// spanning 345 kV and 138 kV that is a rating out by a factor of 2.5 —
+	// arrived at by correct arithmetic, carried into the screen and the
+	// cascade, and invisible downstream, because volt-amperes computed against
+	// the wrong voltage look exactly like volt-amperes. A non-zero count is
+	// the only evidence that any of these ratings rests on a voltage the model
+	// did not state for that bus.
+	//
+	// Not a failure. Falling back is right — a static rating for a line the
+	// weather did reach is worse than a rating on the network's own base — and
+	// a single-voltage model imported before the contract carried this field
+	// falls back on every branch while being entirely correct. It is reported
+	// rather than raised so that the two cases are distinguishable at all.
+	BaseVoltageFallback int
 }
 
 // rate derives dynamic line ratings for a model from the weather.
@@ -92,12 +113,16 @@ func rate(
 
 	branches := model.GetBranches()
 
-	// The contract carries one line-to-line voltage base for the whole model,
-	// so it is also the only voltage a branch has here. Non-positive means the
-	// model is wrong rather than merely unrated, and every conversion below
-	// would silently produce zero or a negative rating.
-	volts := model.GetVBaseV()
-	if !(volts > 0) || math.IsInf(volts, 0) {
+	// The model-level base, which is the fallback rather than the answer: each
+	// branch converts against its own from-bus's nominal voltage where that
+	// bus states one, and this is what is left for a bus that does not.
+	//
+	// Still required to be positive. A model that states neither a base nor a
+	// per-bus voltage has no voltage at all, and every conversion below would
+	// silently produce a zero or negative rating — which reads as unrated, and
+	// removes the branch from every check rather than failing one.
+	base := model.GetVBaseV()
+	if !(base > 0) || math.IsInf(base, 0) {
 		return Rated{}, errors.New(
 			"scenario: the model states no usable voltage base; a current " +
 				"cannot be converted to volt-amperes without one")
@@ -140,6 +165,14 @@ func rate(
 
 		if outcome == outcomeUnrated {
 			continue
+		}
+
+		// Chosen per branch rather than once for the model, because one model
+		// can span several voltage levels and the ampacity hazard computed is
+		// a current on this line, at this line's voltage.
+		volts, fellBack := branchVolts(model, branch, base)
+		if fellBack {
+			out.BaseVoltageFallback++
 		}
 
 		out.Overrides = append(out.Overrides, &solverv1.Override{

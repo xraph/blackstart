@@ -287,3 +287,170 @@ func TestLocatedCountsRatedBranchesToo(t *testing.T) {
 		t.Errorf("located %d and rated %d of 5", got.Located, got.WeatherRated)
 	}
 }
+
+// A network at two voltage levels, which is what a transmission model
+// normally is. Branch 0 runs from a 345 kV bus, branch 1 from a 138 kV bus,
+// and the model base is 345 kV because that is the level the importer's
+// per-unit base happened to come from.
+func twoVoltageModel() *solverv1.NetworkModel {
+	volts := func(v float64) *float64 { return &v }
+
+	return &solverv1.NetworkModel{
+		Name:    "two voltages",
+		SBaseVa: 100e6,
+		VBaseV:  345e3,
+		Buses: []*solverv1.Bus{
+			{Id: "bus-1", VNominalV: volts(345e3)},
+			{Id: "bus-2", VNominalV: volts(138e3)},
+			// States none, so a branch leaving it falls back to the base.
+			{Id: "bus-3"},
+		},
+		Branches: []*solverv1.Branch{
+			{Id: lines[0].String(), FromBus: 0, ToBus: 1, RatingVa: 500e6, InService: true, Tap: 1},
+			{Id: lines[1].String(), FromBus: 1, ToBus: 2, RatingVa: 500e6, InService: true, Tap: 1},
+			{Id: lines[2].String(), FromBus: 2, ToBus: 0, RatingVa: 500e6, InService: true, Tap: 1},
+		},
+	}
+}
+
+// The defect this whole change exists for, and the one test that must fail
+// against the single-base code.
+//
+// Every branch used to convert against the model's one voltage base. On a
+// mixed-voltage network that is right for the branches that happen to sit at
+// the base's level and wrong for the rest: the 138 kV branch below came out
+// at √3 × 345 kV × 900 A, which is 2.5 times its real rating — correct
+// arithmetic on the wrong input, carried into the contingency screen and the
+// cascade, where 2.5 times a line's capacity is the difference between a
+// reported overload and a silent one.
+func TestEachBranchConvertsAgainstItsOwnFromBusVoltage(t *testing.T) {
+	t.Parallel()
+
+	got, err := rate(
+		t.Context(), twoVoltageModel(),
+		&fakeGeo{route: aRoute, spans: threeSpans},
+		&fakeHazard{ampacity: 900},
+		issued, valid,
+	)
+	if err != nil {
+		t.Fatalf("rate: %v", err)
+	}
+
+	if len(got.Overrides) != 3 {
+		t.Fatalf("got %d overrides, want one per branch", len(got.Overrides))
+	}
+
+	// Branch 0 leaves the 345 kV bus, branch 1 leaves the 138 kV bus, and
+	// branch 2 leaves the bus that states nothing and so falls back to the
+	// 345 kV base.
+	want := []float64{
+		math.Sqrt(3) * 345e3 * 900,
+		math.Sqrt(3) * 138e3 * 900,
+		math.Sqrt(3) * 345e3 * 900,
+	}
+
+	for index, expected := range want {
+		rating := got.Overrides[index].GetBranchRating()
+
+		if rating.GetBranch() != uint32(index) {
+			t.Fatalf("override %d names branch %d", index, rating.GetBranch())
+		}
+
+		if math.Abs(rating.GetRatingVa()-expected) > 1 {
+			t.Errorf("branch %d is rated %v VA, want %v — a factor of %.2f",
+				index, rating.GetRatingVa(), expected,
+				rating.GetRatingVa()/expected)
+		}
+	}
+}
+
+// A rating computed against a voltage nobody stated for that bus must not be
+// indistinguishable from one computed against the bus's own. It is not a
+// failure — a static rating for a line the weather did reach would be worse,
+// and a model imported before the contract carried the field falls back
+// everywhere while being entirely correct — but a reader has no other way to
+// know that any of these numbers rests on a substituted voltage.
+func TestTheFallbackToTheModelBaseIsCounted(t *testing.T) {
+	t.Parallel()
+
+	got, err := rate(
+		t.Context(), twoVoltageModel(),
+		&fakeGeo{route: aRoute, spans: threeSpans},
+		&fakeHazard{ampacity: 900},
+		issued, valid,
+	)
+	if err != nil {
+		t.Fatalf("rate: %v", err)
+	}
+
+	// Only the third branch: its from-bus states no nominal voltage.
+	if got.BaseVoltageFallback != 1 {
+		t.Errorf("BaseVoltageFallback = %d, want 1 of %d rated branches",
+			got.BaseVoltageFallback, got.WeatherRated)
+	}
+}
+
+// A model whose buses all state their own voltage substitutes nothing, and
+// the count says so. Without this, a fallback counter stuck at the number of
+// overrides would look correct in the test above.
+func TestAModelThatStatesEveryVoltageFallsBackNowhere(t *testing.T) {
+	t.Parallel()
+
+	model := twoVoltageModel()
+	stated := 138e3
+	model.Buses[2].VNominalV = &stated
+
+	got, err := rate(
+		t.Context(), model,
+		&fakeGeo{route: aRoute, spans: threeSpans},
+		&fakeHazard{ampacity: 900},
+		issued, valid,
+	)
+	if err != nil {
+		t.Fatalf("rate: %v", err)
+	}
+
+	if got.BaseVoltageFallback != 0 {
+		t.Errorf("BaseVoltageFallback = %d, want none — every bus states a voltage",
+			got.BaseVoltageFallback)
+	}
+
+	// And the third branch now converts at 138 kV rather than at the base.
+	want := math.Sqrt(3) * 138e3 * 900
+	if rating := got.Overrides[2].GetBranchRating().GetRatingVa(); math.Abs(rating-want) > 1 {
+		t.Errorf("branch 2 is rated %v VA, want %v", rating, want)
+	}
+}
+
+// A bus stating zero volts is a bus stating nothing, not a bus at no voltage.
+// Converting against it would emit a rating of zero, which every consumer
+// reads as unrated and skips — the branch would leave every violation check
+// rather than fail one.
+func TestAZeroNominalVoltageIsTreatedAsAbsent(t *testing.T) {
+	t.Parallel()
+
+	model := twoVoltageModel()
+	zero := 0.0
+	model.Buses[1].VNominalV = &zero
+
+	got, err := rate(
+		t.Context(), model,
+		&fakeGeo{route: aRoute, spans: threeSpans},
+		&fakeHazard{ampacity: 900},
+		issued, valid,
+	)
+	if err != nil {
+		t.Fatalf("rate: %v", err)
+	}
+
+	// Branch 1 leaves bus-2, which now says zero.
+	rating := got.Overrides[1].GetBranchRating().GetRatingVa()
+
+	if rating <= 0 {
+		t.Fatalf("branch 1 is rated %v VA, which every consumer reads as unrated", rating)
+	}
+
+	if want := math.Sqrt(3) * 345e3 * 900; math.Abs(rating-want) > 1 {
+		t.Errorf("branch 1 is rated %v VA, want the base's %v", rating, want)
+	}
+}

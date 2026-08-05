@@ -20,6 +20,7 @@ import (
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
 	"github.com/xraph/blackstart/pkg/quantity"
+	solverv1 "github.com/xraph/blackstart/proto/gen/go/blackstart/solver/v1"
 )
 
 // GeoReader is the geometry this needs and nothing more.
@@ -215,6 +216,51 @@ func weakestSpan(
 	}
 
 	return weakest, outcomeRated, nil
+}
+
+// branchVolts is the line-to-line voltage a branch's ampacity converts
+// against, in VOLTS, and whether the model-level base had to stand in.
+//
+// Selection, not computation, and the distinction is load-bearing here: no
+// number is derived, averaged or scaled — one of two voltages the model
+// already states is chosen and returned unaltered. The single arithmetic site
+// in this package is voltAmperes, below, and it stays single.
+//
+// The from-bus's own nominal voltage, because the model-level base is one
+// voltage for a network that may have several: a 138 kV line converted at a
+// 345 kV base is rated 2.5 times too high, and the contingency screen and the
+// cascade then run correct arithmetic on that. The base is the fallback rather
+// than the default.
+//
+// The FROM end rather than the to end, an average, or the higher of the two.
+// A transformer's ends are at different voltages and no single number is right
+// for both, so the rule has to be stated rather than derived — and it has to
+// be deterministic, because two runs of one pinned scenario must produce
+// byte-identical requests. In practice every branch that reaches this point is
+// a line whose ends are at one voltage: a transformer carries no route with
+// spans, so weakestSpan returns outcomeUnlocated for it and no override is
+// ever emitted. The rule matters for the case where that stops being true.
+//
+// A from-bus index outside the model's bus list falls back too, rather than
+// failing. It is a broken model and the solver will say so about the model;
+// this function's job is to pick a voltage, and inventing an error here would
+// mean a rating step that fails for a reason the rating step cannot fix.
+func branchVolts(
+	model *solverv1.NetworkModel, branch *solverv1.Branch, base float64,
+) (float64, bool) {
+	buses := model.GetBuses()
+
+	if from := int(branch.GetFromBus()); from >= 0 && from < len(buses) {
+		// Absent is nil on the wire and reads as zero through the getter, and
+		// a non-positive or infinite voltage is not a bus that sits at nothing
+		// — it is a bus that states nothing. Converting against it would emit
+		// a rating of zero, which every consumer reads as unrated and skips.
+		if volts := buses[from].GetVNominalV(); volts > 0 && !math.IsInf(volts, 0) {
+			return volts, false
+		}
+	}
+
+	return base, true
 }
 
 // voltAmperes converts a line current into three-phase apparent power.
