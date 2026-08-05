@@ -33,7 +33,7 @@ import {
   useMediaQuery,
 } from "@blackstart/ui";
 import { Scene } from "@blackstart/globe";
-import { useCascadeRunsGet, type Run as WireRun } from "@blackstart/api-client";
+import { useCascadeRunsGet, type CascadeRun as WireRun } from "@blackstart/api-client";
 import { CascadeRun, provenanceOf, hz, mw, type CascadeEventKind } from "@blackstart/schema";
 
 import { cascadeRoute } from "../router";
