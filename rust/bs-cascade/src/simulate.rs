@@ -24,7 +24,7 @@
 //! Advisory only. See `docs/SAFETY.md`.
 
 use bs_case::{Bus, Case};
-use bs_frequency::{IslandCondition, Response, Scheme};
+use bs_frequency::{IslandCondition, Response, Scheme, classify};
 use bs_powerflow::ac::{Options as AcOptions, VoltageLimits};
 use bs_protection::{Protection, TripCandidate, TripCause};
 
@@ -343,8 +343,26 @@ pub fn simulate(
         // (the same instant its events are stamped with) is what keeps the
         // assembled curve monotonic; the terminal step is the one exception,
         // since nothing comes after it to supersede what it integrated.
+        //
+        // `bound` only ever truncates a TRACE — `response.sheds`, the
+        // shedding EVENTS, is read unbounded everywhere it is used (this
+        // step's own `shed` running total above, `accumulate_bus_history`'s
+        // re-derived `condition`, and `record_step`'s event log). A shed
+        // stage already scaled the island's PQ injections before `respond`
+        // returned, so it is not a counterfactual `bound` needs to hide —
+        // it already happened, in full, to the case this run tracks. A
+        // curve can therefore legitimately stop before a shed the model
+        // applied; that is this asymmetry working as intended, not a gap.
         let bound = if terminal { None } else { Some(out.at) };
-        accumulate_bus_history(&mut bus_history, &out, &served_before, elapsed, bound);
+        accumulate_bus_history(
+            &mut bus_history,
+            &out,
+            &served_before,
+            elapsed,
+            bound,
+            scheme,
+            options.defaults.nominal_hz,
+        );
 
         // `record_step` is computed here, before either exit check, because
         // both `Collapsed` and `Settled` can be reached by the SAME step
@@ -524,23 +542,44 @@ fn truncated_slice(trace: &[bs_frequency::Sample], bound: Option<f64>) -> &[bs_f
 }
 
 /// Folds one step's responses into the running per-bus history — see the
-/// call site in [`simulate`] for why this has to be unconditional, keyed by
-/// bus, and run before either of the loop's own exit checks.
+/// call site in [`simulate`] for why this has to run before either of the
+/// loop's own exit checks.
 ///
-/// `condition`, `rocof_hz_s`, and `shed` are already whole-run reductions (a
-/// peak, a peak, a sum) with nothing in them for `bound` to truncate —
-/// `rocof_hz_s` in particular is a closed-form INITIAL derivative, computed
-/// before any integration sample exists at all, so there is no series for a
-/// bound to bite on. `trace`, `nadir_hz`, and `settling_hz` all read from
-/// [`truncated_slice`] instead, computed once per response — see there for
-/// why, and the call site in `simulate` for why a non-terminal step passes
-/// `Some(out.at)` and the terminal one passes `None`.
+/// `shed` is already a whole-run reduction (a sum) with nothing in it for
+/// `bound` to truncate, so it folds in unconditionally. `condition` and
+/// `rocof_hz_s` do NOT get the same pass: both are gated on the truncated
+/// slice being non-empty, exactly like `nadir_hz` and `settling_hz` below,
+/// because an empty slice means this step's real, lived contribution from
+/// this island was nothing at all (see `truncated_slice`'s own doc) — and an
+/// island with nothing real to report this step has no rate of change or
+/// condition to fold in either, whether or not `rocof_hz_s` itself happens
+/// to be a closed-form value computed before any sample exists. `condition`
+/// is also re-derived from THIS step's bounded nadir and settling via
+/// `classify`, rather than taking `response.condition` wholesale: that field
+/// is `classify`'s read of the FULL, unbounded trajectory, and a step whose
+/// real contribution ends at `bound` can legitimately disagree with it.
+/// `trace`, `nadir_hz`, and `settling_hz` all read from [`truncated_slice`]
+/// instead, computed once per response — see there for why, and the call
+/// site in `simulate` for why a non-terminal step passes `Some(out.at)` and
+/// the terminal one passes `None`.
+///
+/// One deliberate asymmetry: `response.sheds` — the shedding EVENTS, as
+/// opposed to `shed` above's running total — is read unbounded, both here
+/// (to decide `classify`'s own `shed: bool`) and in `record_step`'s event
+/// log. `step` already applied a fired stage to the case before `respond`
+/// ever ran, so a stage this step's bounded trace does not reach is not a
+/// counterfactual the way a nadir past `bound` would be — it already
+/// happened, in full, to the case this run is tracking. A curve can
+/// therefore legitimately stop before a shed the model applied; that is not
+/// a contradiction to reconcile.
 fn accumulate_bus_history(
     bus_history: &mut [BusHistory],
     out: &Outcome,
     served_before: &[f64],
     elapsed: f64,
     bound: Option<f64>,
+    scheme: &Scheme,
+    nominal_hz: f64,
 ) {
     for (index, (members, response)) in out.islands.members.iter().zip(&out.responses).enumerate() {
         let Some(response) = response else { continue };
@@ -582,14 +621,31 @@ fn accumulate_bus_history(
         };
         let step_settling = truncated.last().map(|s| s.hz);
 
+        // Re-derived from THIS step's own bounded samples, rather than
+        // trusting `response.condition` wholesale — see this function's own
+        // doc. `classify` wants deviations, while `truncated`'s samples are
+        // absolute hertz (`Sample`'s own doc), hence the `- nominal_hz`.
+        // `None` exactly when `step_nadir`/`step_settling` are: an empty
+        // truncated slice has nothing for `classify` to classify.
+        let step_condition = step_nadir.zip(step_settling).map(|(nadir, settling)| {
+            classify(
+                scheme,
+                nominal_hz,
+                nadir - nominal_hz,
+                settling - nominal_hz,
+                !response.sheds.is_empty(),
+            )
+        });
+
         for &bus in members {
             let history = &mut bus_history[bus];
 
-            let candidate = response.condition;
-            history.condition = Some(match history.condition {
-                Some(existing) if severity(existing) >= severity(candidate) => existing,
-                _ => candidate,
-            });
+            if let Some(candidate) = step_condition {
+                history.condition = Some(match history.condition {
+                    Some(existing) if severity(existing) >= severity(candidate) => existing,
+                    _ => candidate,
+                });
+            }
 
             if let Some(nadir) = step_nadir {
                 history.nadir_hz = Some(match history.nadir_hz {
@@ -598,11 +654,16 @@ fn accumulate_bus_history(
                 });
             }
 
-            let rocof = response.rocof_hz_s;
-            history.rocof_hz_s = Some(match history.rocof_hz_s {
-                Some(existing) if existing.abs() >= rocof.abs() => existing,
-                _ => rocof,
-            });
+            // Gated on the same "this step had a real, bounded contribution"
+            // condition as `condition` above — see this function's own doc
+            // for why a closed-form initial derivative still needs the gate.
+            if step_nadir.is_some() {
+                let rocof = response.rocof_hz_s;
+                history.rocof_hz_s = Some(match history.rocof_hz_s {
+                    Some(existing) if existing.abs() >= rocof.abs() => existing,
+                    _ => rocof,
+                });
+            }
 
             // Last-write-wins, not a severity maximum — see
             // `IslandReport::settling_hz` for why this one field is
@@ -831,7 +892,8 @@ fn representative(islands: &Islands, index: usize, case: &Case) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{CascadeOutcome, Limits};
+    use super::{BusHistory, CascadeOutcome, Islands, Limits, Outcome, accumulate_bus_history};
+    use bs_frequency::{IslandCondition, Response, Sample, Scheme, Stage};
 
     /// The documented defaults: 100 steps, a one-hour horizon. A caller
     /// reading `Limits::default()` in isolation has no other way to know
@@ -860,5 +922,76 @@ mod tests {
             CascadeOutcome::Truncated { steps: 3 },
             CascadeOutcome::Settled
         );
+    }
+
+    /// A step's bounded contribution can disagree with `respond`'s own
+    /// whole-trajectory verdict, which is exactly what
+    /// `accumulate_bus_history` used to get wrong by folding in
+    /// `response.condition` unconditionally.
+    ///
+    /// The trace dips to 59.3 Hz (below the scheme's one stage, at 59.5 Hz)
+    /// and recovers to 59.8 Hz by `t = 1.9` — no stage actually crossed, so
+    /// `sheds` stays empty — then, past this step's own `bound` of `2.0`,
+    /// keeps falling to 56.0 Hz: a LATER cascade event's business, not this
+    /// one's, but the sample `respond` would have used to settle
+    /// `response.condition` regardless. Before the fix, this test asserted
+    /// `IslandCondition::Collapsed` — `response.condition`'s read of the
+    /// FULL trace — where the correct answer, re-derived from only the
+    /// samples this step actually contributed, is `Recovering`.
+    #[test]
+    fn condition_is_re_derived_from_the_bounded_slice() {
+        let scheme = Scheme {
+            stages: vec![Stage {
+                at_hz: 59.5,
+                shed_fraction: 0.1,
+                delay: 0.5,
+            }],
+            floor_hz: 57.0,
+            ceiling_hz: 61.8,
+        };
+        let nominal_hz = 60.0;
+
+        let trace = vec![
+            Sample { at: 0.0, hz: 60.0 },
+            Sample { at: 0.5, hz: 59.3 },
+            Sample { at: 1.9, hz: 59.8 },
+            Sample { at: 5.0, hz: 56.0 },
+        ];
+
+        let response = Response {
+            // What `respond` would have classified over the WHOLE trace
+            // above: settling at 56.0 Hz is below `floor_hz`.
+            condition: IslandCondition::Collapsed,
+            sheds: Vec::new(),
+            rocof_hz_s: -0.4,
+            nadir_hz: 56.0 - nominal_hz,
+            settling_hz: 56.0 - nominal_hz,
+            shed_fraction: 0.0,
+            trace,
+        };
+
+        let out = Outcome {
+            fired: Vec::new(),
+            at: 1.9,
+            islands: Islands {
+                of_bus: vec![0],
+                members: vec![vec![0]],
+            },
+            responses: vec![Some(response)],
+            flows: vec![0.0],
+        };
+
+        let mut bus_history = vec![BusHistory::default(); 1];
+        accumulate_bus_history(
+            &mut bus_history,
+            &out,
+            &[1.0],
+            0.0,
+            Some(2.0),
+            &scheme,
+            nominal_hz,
+        );
+
+        assert_eq!(bus_history[0].condition, Some(IslandCondition::Recovering));
     }
 }
