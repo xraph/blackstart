@@ -11,18 +11,46 @@ import (
 
 	scnid "github.com/xraph/blackstart/extensions/scenario/id"
 	scn "github.com/xraph/blackstart/extensions/scenario/scenario"
+	"github.com/xraph/blackstart/pkg/id"
 )
 
 // --- Bounding the list ---
 
-// A scenario's run list may never ask a store for everything, for the reason
-// TestListingScenariosNeverAsksAStoreForEverything states: the store honors
-// a non-positive limit as "everything", and this surface is the caller that
-// knows it never wants that.
+// seededRuns is how many runs the listing test queues before reading them
+// back.
+//
+// More than one, and that is the whole point. A bound is two mistakes away
+// from correct in opposite directions — too loose is "everything", too tight
+// silently drops rows — and a store holding a single run cannot tell them
+// apart: every assertion about the limit that reached the store still holds
+// when the bound is 1 and the caller asked for sixty. Three is the smallest
+// number that makes a wrongly-small bound visible in the response body.
+const seededRuns = 3
+
+// A scenario's run list may never ask a store for everything, and must still
+// return what it was asked for.
+//
+// The first half is the rule TestListingScenariosNeverAsksAStoreForEverything
+// states: the store honors a non-positive limit as "everything", and this
+// surface is the caller that knows it never wants that. The second half is
+// what stops that rule from being satisfied by a bound so tight it answers
+// nothing — the failure mode a bound introduces, checked in the same place
+// the bound is.
 func TestListingRunsNeverAsksAStoreForEverything(t *testing.T) {
 	for _, query := range []string{"", "?limit=0", "?limit=-1", "?limit=999999"} {
 		s := newSurface(t)
 		defined := s.define(t)
+
+		queued := make(map[id.ID]bool, seededRuns)
+
+		for range seededRuns {
+			run, err := s.engine.Enqueue(t.Context(), defined.ID)
+			if err != nil {
+				t.Fatalf("Enqueue: %v", err)
+			}
+
+			queued[run.ID] = true
+		}
 
 		path := "/api/v1/scenario/scenarios/" + defined.ID.String() + "/runs" + query
 
@@ -32,6 +60,30 @@ func TestListingRunsNeverAsksAStoreForEverything(t *testing.T) {
 		}
 
 		assertBounded(t, query, s.store.runLimits)
+
+		var got scenarioRunsResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("decoding the listing: %v; body: %s", err, rec.Body.String())
+		}
+
+		if len(got.Runs) != seededRuns {
+			t.Errorf("listing%s returned %d runs, want the %d that were queued; "+
+				"a bound tight enough to drop them satisfies every check above",
+				query, len(got.Runs), seededRuns)
+		}
+
+		for _, run := range got.Runs {
+			if !queued[run.ID] {
+				t.Errorf("listing%s returned run %s, which was never queued",
+					query, run.ID)
+			}
+
+			delete(queued, run.ID)
+		}
+
+		if len(queued) > 0 {
+			t.Errorf("listing%s never returned %d of the queued runs", query, len(queued))
+		}
 	}
 }
 
