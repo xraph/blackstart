@@ -20,6 +20,7 @@ import (
 	nmfabriq "github.com/xraph/blackstart/extensions/networkmodel/store/fabriq"
 	pffabriq "github.com/xraph/blackstart/extensions/powerflow/store/fabriq"
 	pvfabriq "github.com/xraph/blackstart/extensions/provenance/store/fabriq"
+	rskfabriq "github.com/xraph/blackstart/extensions/risk/store/fabriq"
 	scnfabriq "github.com/xraph/blackstart/extensions/scenario/store/fabriq"
 	sclfabriq "github.com/xraph/blackstart/extensions/scl/store/fabriq"
 	wxfabriq "github.com/xraph/blackstart/extensions/weather/store/fabriq"
@@ -48,6 +49,7 @@ var Contributors = []entities.Contributor{
 	ctgfabriq.Contributor{},
 	wxfabriq.Contributor{},
 	hzfabriq.Contributor{},
+	rskfabriq.Contributor{},
 	cscfabriq.Contributor{},
 	scnfabriq.Contributor{},
 }

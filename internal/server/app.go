@@ -28,6 +28,7 @@ import (
 	"github.com/xraph/fabriq/core/registry"
 	fabriqmigrations "github.com/xraph/fabriq/migrations"
 	"github.com/xraph/forge"
+	"github.com/xraph/grove/migrate"
 	"github.com/xraph/vessel"
 	wardenext "github.com/xraph/warden/extension"
 
@@ -55,6 +56,8 @@ import (
 	pfmigrations "github.com/xraph/blackstart/extensions/powerflow/store/fabriq"
 	"github.com/xraph/blackstart/extensions/provenance"
 	pvmigrations "github.com/xraph/blackstart/extensions/provenance/store/fabriq"
+	"github.com/xraph/blackstart/extensions/risk"
+	rskmigrations "github.com/xraph/blackstart/extensions/risk/store/fabriq"
 	"github.com/xraph/blackstart/extensions/scenario"
 	scnmigrations "github.com/xraph/blackstart/extensions/scenario/store/fabriq"
 	"github.com/xraph/blackstart/extensions/scl"
@@ -186,6 +189,32 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// MigrationGroups returns every extension's migration group, in exactly the
+// order Build hands them to the orchestrator.
+//
+// Exported so anything that needs to run the same migrations Build does —
+// currently only a test proving risk's group runs correctly alongside every
+// other extension's, not merely on its own — runs this list rather than a
+// hand-maintained copy that could silently drift from what the host actually
+// applies.
+func MigrationGroups() []*migrate.Group {
+	return []*migrate.Group{
+		fabriqmigrations.Group(),
+		dsmigrations.Group(),
+		pvmigrations.Group(),
+		nmmigrations.Group(),
+		geomigrations.Group(),
+		sclmigrations.Group(),
+		pfmigrations.Group(),
+		ctgmigrations.Group(),
+		wxmigrations.Group(),
+		hzmigrations.Group(),
+		rskmigrations.Group(),
+		cscmigrations.Group(),
+		scnmigrations.Group(),
+	}
+}
+
 // Build assembles the application.
 //
 // The order here is load-bearing and is the reason this function exists rather
@@ -218,20 +247,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		// dependency order. Grove resolves that ordering topologically, but only
 		// within a single orchestrator — registering each extension's group
 		// separately makes DependsOn a silent no-op, which its own source notes.
-		groveext.WithMigrations(
-			fabriqmigrations.Group(),
-			dsmigrations.Group(),
-			pvmigrations.Group(),
-			nmmigrations.Group(),
-			geomigrations.Group(),
-			sclmigrations.Group(),
-			pfmigrations.Group(),
-			ctgmigrations.Group(),
-			wxmigrations.Group(),
-			hzmigrations.Group(),
-			cscmigrations.Group(),
-			scnmigrations.Group(),
-		),
+		groveext.WithMigrations(MigrationGroups()...),
 	)
 
 	fabricExt := fabric.New(reg, fabric.WithConfig(fabricConfig(cfg)))
@@ -255,6 +271,12 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 		topology.New(), geo.New(), scl.New(),
 		weather.New(weather.WithPolling(weatherPollConfig(cfg))),
 		hazard.New(hazard.WithComputeSchedule(hazardComputeConfig(cfg))),
+		// After hazard, weather and geo: its compute half resolves all three
+		// from the container at Start, and Forge's default lifecycle
+		// interleaves Register and Start per extension in registration order —
+		// see risk.Extension.computeHalf's doc for why that makes the order
+		// here load-bearing rather than cosmetic.
+		risk.New(),
 	}
 
 	// Authsome, this application's own authentication authority.
