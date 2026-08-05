@@ -115,6 +115,81 @@ func TestWeatherRatingCannotBeSetPartially(t *testing.T) {
 	}
 }
 
+// A fallback count with no rating observation to count against is not a
+// state Validate lets through.
+//
+// The number is a count of the overrides the rating step emitted, so
+// WeatherRated is its denominator: "17 fell back" says nothing without "of
+// how many". A run carrying the count while claiming never to have rated
+// anything is not a partial record, it is a contradiction.
+func TestAVoltageBaseFallbackNeedsTheRatingItCounts(t *testing.T) {
+	t.Parallel()
+
+	fellBack := 17
+
+	r := scenario.ScenarioRun{Status: scenario.StatusRunning, BaseVoltageFallback: &fellBack}
+
+	if err := r.Validate(); err == nil {
+		t.Fatal("want an error: a fallback count with no WeatherRated to count against")
+	}
+}
+
+// The implication runs one way only, and the asymmetry is the decision.
+//
+// A run that rated its branches without recording how many fell back is
+// exactly what every run stored before this column existed looks like: the
+// rating pair set, the fallback unknown. That is a legitimate historical
+// record, not an incoherent one, and Validate tying the three together
+// would make it a run nothing could re-store. Tightening this to a
+// biconditional is the production change this test exists to catch.
+func TestTheRatingPairDoesNotRequireAFallbackCount(t *testing.T) {
+	t.Parallel()
+
+	rated, branches := 1841, 2000
+
+	r := scenario.ScenarioRun{
+		Status:       scenario.StatusRunning,
+		WeatherRated: &rated,
+		BranchCount:  &branches,
+	}
+
+	if err := r.Validate(); err != nil {
+		t.Fatalf("want nil: a run may record its rating without knowing the fallback, got %v", err)
+	}
+}
+
+// A fallback of zero is a measurement, and has to survive as one.
+//
+// Nil says the count was never taken; a pointer to 0 says every rated branch
+// converted against its own from-bus's stated voltage. The second is the
+// answer a well-formed model gives, and reporting it as "unknown" would make
+// the model that states every voltage indistinguishable from the one nobody
+// has looked at.
+func TestAFallbackOfZeroIsAMeasurementNotAnAbsence(t *testing.T) {
+	t.Parallel()
+
+	rated, branches, fellBack := 1841, 2000, 0
+
+	r := scenario.ScenarioRun{
+		Status:              scenario.StatusRunning,
+		WeatherRated:        &rated,
+		BranchCount:         &branches,
+		BaseVoltageFallback: &fellBack,
+	}
+
+	if err := r.Validate(); err != nil {
+		t.Fatalf("want nil, got %v", err)
+	}
+
+	if r.BaseVoltageFallback == nil {
+		t.Fatal("BaseVoltageFallback is nil; falling back nowhere must be a pointer to 0, not absent")
+	}
+
+	if *r.BaseVoltageFallback != 0 {
+		t.Errorf("BaseVoltageFallback = %d, want 0", *r.BaseVoltageFallback)
+	}
+}
+
 // A run finishes complete or failed and nothing else. Writing a queued status
 // over a run that already produced an answer would put it back in the queue
 // for a second worker to execute again.

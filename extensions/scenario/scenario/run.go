@@ -136,6 +136,29 @@ type ScenarioRun struct {
 	WeatherRated *int `json:"weather_rated,omitempty"`
 	BranchCount  *int `json:"branch_count,omitempty"`
 
+	// BaseVoltageFallback is how many of the branches counted in WeatherRated
+	// were rated against the model-level voltage base rather than against
+	// their own from-bus's nominal voltage, because that bus states none.
+	//
+	// It is the only evidence a reader has that a rating rests on a
+	// substituted voltage. On a model spanning 345 kV and 138 kV the
+	// substitution is a rating out by a factor of 2.5 — reached by correct
+	// arithmetic, carried into the screen and the cascade, and invisible
+	// everywhere downstream, because volt-amperes computed against the wrong
+	// voltage look exactly like volt-amperes. Not a failure: falling back is
+	// right, and a single-voltage model falls back on every branch while
+	// being entirely correct.
+	//
+	// A pointer for the reason the pair above are pointers, and the two
+	// absences it distinguishes are different ones. Nil means the count was
+	// never recorded — the rating step has not run, or the run predates this
+	// field. A pointer to 0 means it was recorded and every rated branch
+	// converted against a voltage its own bus stated, which is what a
+	// well-formed model answers and is not the same fact at all.
+	//
+	// Tied to WeatherRated in one direction only: see Validate.
+	BaseVoltageFallback *int `json:"base_voltage_fallback,omitempty"`
+
 	// SolverVersion is the solver that produced the cascade result, read
 	// from the solver's own response rather than configured into the engine
 	// — the same provenance rule run.CascadeRun.SolverVersion follows.
@@ -163,6 +186,16 @@ type ScenarioRun struct {
 // status: they are one observation about one run, recorded together at the
 // point the rating step completes, so a run with one set and the other nil
 // is not a state the type should tolerate constructing.
+//
+// BaseVoltageFallback is tied to that pair in one direction only, and the
+// asymmetry is deliberate. The count is a count of rated branches, so
+// WeatherRated is its denominator and a fallback without one is refused. The
+// converse is allowed: a run that rated its branches without recording how
+// many fell back is what every run stored before this field existed looks
+// like, and a rule making those unstorable would be a rule about this
+// codebase's history rather than about the run. Nil therefore keeps meaning
+// "not recorded" rather than "fell back nowhere" — the same distinction
+// WeatherRated protects, and the reason a reader must never render it as 0.
 func (r ScenarioRun) Validate() error {
 	if r.Status == StatusFailed {
 		if r.Failure == nil || r.Failure.Step == "" {
@@ -184,6 +217,13 @@ func (r ScenarioRun) Validate() error {
 		return fmt.Errorf(
 			"%w: weather rated and branch count are one observation and must "+
 				"be set together", bserr.ErrInvalid)
+	}
+
+	if r.BaseVoltageFallback != nil && r.WeatherRated == nil {
+		return fmt.Errorf(
+			"%w: a voltage-base fallback count needs the rating it counts "+
+				"against; %d fell back of nothing rated is not a finding",
+			bserr.ErrInvalid, *r.BaseVoltageFallback)
 	}
 
 	return nil

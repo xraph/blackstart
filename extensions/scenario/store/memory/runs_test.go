@@ -386,6 +386,58 @@ func TestFinishRecordsATerminalState(t *testing.T) {
 	}
 }
 
+// The coverage counts a finished run carries reach this store too, the
+// fallback count among them.
+//
+// Parity, which is the thing this plan has already been burned on. The Fabriq
+// store maps a run field by field onto columns and has a test per field for
+// exactly that reason; this store keeps whole structs, so the field arrives
+// for free — and "for free" is the state that stops being true the moment
+// Finish starts carrying fields forward selectively, which it already does
+// for the four frozen ones. A count of zero is asserted rather than some
+// other number because zero is the value a store that silently dropped the
+// field would also produce.
+func TestFinishRecordsTheCoverageCountsIncludingTheVoltageBaseFallback(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	ctx := context.Background()
+
+	rated, branches, fellBack := 1841, 2000, 0
+
+	claimed := aClaimedRun(t, s)
+	claimed.Status = scenario.StatusComplete
+	claimed.SweepRunID = scnid.NewRun()
+	claimed.CascadeRunID = scnid.NewRun()
+	claimed.WeatherRated = &rated
+	claimed.BranchCount = &branches
+	claimed.BaseVoltageFallback = &fellBack
+	claimed.FinishedAt = time.Now().UTC()
+
+	if _, err := s.Runs().Finish(ctx, claimed); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+
+	stored, err := s.Runs().Get(ctx, claimed.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if stored.WeatherRated == nil || *stored.WeatherRated != rated {
+		t.Errorf("weather rated stored as %v, want %d", stored.WeatherRated, rated)
+	}
+
+	if stored.BaseVoltageFallback == nil {
+		t.Fatal("base voltage fallback stored as nil; a run that fell back nowhere " +
+			"must read as 0, not as one nobody counted")
+	}
+
+	if *stored.BaseVoltageFallback != fellBack {
+		t.Errorf("base voltage fallback stored as %d, want %d",
+			*stored.BaseVoltageFallback, fellBack)
+	}
+}
+
 // A run that is not running cannot finish. A second worker that believed it
 // owned a run someone else already finished must be told, not allowed to
 // write its own answer over the first one's.
