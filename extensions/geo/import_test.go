@@ -1,10 +1,12 @@
 package geo_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/xraph/blackstart/extensions/geo"
 	"github.com/xraph/blackstart/extensions/geo/asset"
+	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/geo/shape"
 	"github.com/xraph/blackstart/extensions/geo/source"
 	"github.com/xraph/blackstart/pkg/id"
@@ -16,6 +18,27 @@ func rightOfWay() shape.Line {
 		{Lon: -101.76, Lat: 34.54},
 		{Lon: -102.10, Lat: 34.20},
 		{Lon: -102.38, Lat: 34.20},
+	}
+}
+
+// asStructures wraps bare positions as source structures that say nothing
+// about what they are, for tests that only care about the geometry.
+func asStructures(positions shape.Line) []source.Structure {
+	structures := make([]source.Structure, len(positions))
+	for index, position := range positions {
+		structures[index] = source.Structure{Position: position}
+	}
+
+	return structures
+}
+
+// threeStructures is what a source reports when it knows what its structures
+// are, not just where they stand.
+func threeStructures() []source.Structure {
+	return []source.Structure{
+		{Position: shape.Point{Lon: -97.80, Lat: 30.3}, Kind: "tower", Material: "steel"},
+		{Position: shape.Point{Lon: -97.7979, Lat: 30.3}, Kind: "tower"},
+		{Position: shape.Point{Lon: -97.7958, Lat: 30.3}, Kind: "pole"},
 	}
 }
 
@@ -52,7 +75,7 @@ func TestImportWithStructuresIsSurveyed(t *testing.T) {
 	route, err := e.Import(t.Context(), geo.ImportRequest{
 		CarrierID:  id.MustNew("circ"),
 		Path:       rightOfWay(),
-		Structures: rightOfWay(),
+		Structures: asStructures(rightOfWay()),
 	})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
@@ -72,7 +95,7 @@ func TestImportDoesNotResampleRecordedStructures(t *testing.T) {
 	route, err := e.Import(t.Context(), geo.ImportRequest{
 		CarrierID:  id.MustNew("circ"),
 		Path:       structures,
-		Structures: structures,
+		Structures: asStructures(structures),
 		SpanM:      50, // would insert many points if it were applied
 	})
 	if err != nil {
@@ -232,5 +255,75 @@ func TestImportedStructuresBecomeTheVerticesThemselves(t *testing.T) {
 			t.Errorf("span %d starts at %v, want the structure at %v",
 				index+1, span.Geometry[0], towers[index])
 		}
+	}
+}
+
+func TestImportRecordsWhatEachStructureIs(t *testing.T) {
+	e, st := testEngine(t)
+	ctx := context.Background()
+
+	route, err := e.Import(ctx, geo.ImportRequest{
+		CarrierID: gid.NewCircuit(),
+		Path:      shape.Line{{Lon: -97.80, Lat: 30.3}, {Lon: -97.7958, Lat: 30.3}},
+		Structures: []source.Structure{
+			{Position: shape.Point{Lon: -97.80, Lat: 30.3}, Kind: "tower", Material: "steel"},
+			{Position: shape.Point{Lon: -97.7979, Lat: 30.3}, Kind: "tower"},
+			{Position: shape.Point{Lon: -97.7958, Lat: 30.3}, Kind: "pole"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	back, err := st.Structures().ForRoute(ctx, route.ID)
+	if err != nil {
+		t.Fatalf("ForRoute: %v", err)
+	}
+
+	if len(back) != 3 {
+		t.Fatalf("stored %d structures, imported 3", len(back))
+	}
+
+	if back[0].Kind != "tower" || back[0].Material != "steel" {
+		t.Errorf("structure 0 = %+v", back[0])
+	}
+
+	if back[2].Kind != "pole" {
+		t.Errorf("structure 2 = %+v", back[2])
+	}
+
+	for index, structure := range back {
+		if structure.Ordinal != index || structure.RouteID != route.ID {
+			t.Fatalf("structure %d = %+v", index, structure)
+		}
+	}
+}
+
+func TestASpanCountIsOneLessThanItsStructures(t *testing.T) {
+	e, st := testEngine(t)
+	ctx := context.Background()
+
+	route, err := e.Import(ctx, geo.ImportRequest{
+		CarrierID:  gid.NewCircuit(),
+		Path:       shape.Line{{Lon: -97.80, Lat: 30.3}, {Lon: -97.7958, Lat: 30.3}},
+		Structures: threeStructures(),
+	})
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	spans, err := e.Spans(ctx, route.ID)
+	if err != nil {
+		t.Fatalf("Spans: %v", err)
+	}
+
+	structures, err := st.Structures().ForRoute(ctx, route.ID)
+	if err != nil {
+		t.Fatalf("ForRoute: %v", err)
+	}
+
+	// The invariant that makes a route a line rather than a set of points.
+	if len(spans) != len(structures)-1 {
+		t.Fatalf("%d spans between %d structures", len(spans), len(structures))
 	}
 }

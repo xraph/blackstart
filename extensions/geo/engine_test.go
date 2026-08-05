@@ -9,6 +9,7 @@ import (
 	"github.com/xraph/blackstart/extensions/geo/asset"
 	"github.com/xraph/blackstart/extensions/geo/shape"
 	"github.com/xraph/blackstart/extensions/geo/source"
+	"github.com/xraph/blackstart/extensions/geo/store"
 	"github.com/xraph/blackstart/extensions/geo/store/memory"
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
@@ -28,6 +29,22 @@ func engine(t *testing.T) *geo.Engine {
 	}
 
 	return e
+}
+
+// testEngine is engine, plus the store backing it — for the tests that need
+// to read back what the engine wrote through a path other than the engine's
+// own accessors.
+func testEngine(t *testing.T) (*geo.Engine, store.Store) {
+	t.Helper()
+
+	s := memory.New()
+
+	e, err := geo.NewEngine(s, 0, nil)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+
+	return e, s
 }
 
 func TestTracingABranchStoresItsSpans(t *testing.T) {
