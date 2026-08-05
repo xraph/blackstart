@@ -192,7 +192,24 @@ func TestTheScalarScalesEveryValue(t *testing.T) {
 	half := probabilityWithScalar(t, 0.5)
 
 	if math.Abs(half-full/2) > 1e-9 {
-		t.Fatalf("scalar 0.5 gave %v, want half of %v", half, full)
+		t.Fatalf("conductor: scalar 0.5 gave %v, want half of %v", half, full)
+	}
+}
+
+// TestTheScalarScalesAStructureValueToo is the structure-path analog of
+// TestTheScalarScalesEveryValue above. That test reads back only a conductor
+// row, computed in computeSpan; a structure row is written by the separate
+// computeStructure, where `* e.scalar` is a second, independent
+// multiplication (compute.go:409). Deleting it there leaves
+// TestTheScalarScalesEveryValue and TestTheScalarIsRecordedOnTheRow both
+// green — the first never reads a structure row, and the second only proves
+// the Scalar field is recorded, not that it was applied to the probability.
+func TestTheScalarScalesAStructureValueToo(t *testing.T) {
+	full := structureProbabilityWithScalar(t, 1.0)
+	half := structureProbabilityWithScalar(t, 0.5)
+
+	if math.Abs(half-full/2) > 1e-9 {
+		t.Fatalf("structure: scalar 0.5 gave %v, want half of %v", half, full)
 	}
 }
 
@@ -398,6 +415,34 @@ func probabilityWithScalar(t *testing.T, scalar float64) float64 {
 	return firstConductorProbability(t, w)
 }
 
+// structureProbabilityWithScalar runs a clean pass under a fixed storm with
+// the given scalar and returns the structure probability the pass wrote for
+// the world's first structure (Kind "tower", Ordinal 0).
+func structureProbabilityWithScalar(t *testing.T, scalar float64) float64 {
+	t.Helper()
+
+	const stormWindLoadNPerM = 60.0
+
+	w := newWorld(t).withHazard(map[hzstore.Quantity]float64{
+		hzstore.QuantityWindLoad: stormWindLoadNPerM,
+		hzstore.QuantityIceLoad:  0,
+	})
+
+	e, err := risk.NewEngine(w.store, nil,
+		risk.WithCompute(w.hazard, w.weather, w.geometry, w.recorder),
+		risk.WithClock(issuance),
+		risk.WithScalar(scalar))
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+
+	if _, err := e.Compute(t.Context(), risk.ComputeRequest{CycleID: w.cycle}); err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+
+	return firstStructureProbability(t, w, w.geometry.structures[0].ID)
+}
+
 // firstConductorProbability reads back the span's conductor probability at
 // the first hour of the world's fixture.
 func firstConductorProbability(t *testing.T, w *world) float64 {
@@ -412,6 +457,25 @@ func firstConductorProbability(t *testing.T, w *world) float64 {
 
 	if len(values) == 0 {
 		t.Fatal("the pass wrote no conductor probability")
+	}
+
+	return values[0].Probability
+}
+
+// firstStructureProbability reads back one structure's probability at the
+// first hour of the world's fixture.
+func firstStructureProbability(t *testing.T, w *world, structure id.ID) float64 {
+	t.Helper()
+
+	values, err := w.store.Values().ForComponent(t.Context(), structure,
+		[]rstore.Quantity{rstore.QuantityStructureFailure},
+		w.issuedAt, w.issuedAt, w.issuedAt.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("ForComponent: %v", err)
+	}
+
+	if len(values) == 0 {
+		t.Fatal("the pass wrote no structure probability")
 	}
 
 	return values[0].Probability
