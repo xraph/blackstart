@@ -3,6 +3,7 @@ package cascade_test
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/xraph/blackstart/extensions/cascade"
@@ -295,5 +296,78 @@ func TestExtentReportsTheBufferItUsed(t *testing.T) {
 
 	if result.HalfWidthM != 42.5 {
 		t.Errorf("half-width = %v, want 42.5", result.HalfWidthM)
+	}
+}
+
+// A branch that trips twice in one run is one piece of ground: resolved
+// once, counted once, buffered once. shape.Cover deliberately does not
+// merge, so a duplicate corridor from a repeated trip event is not absorbed
+// downstream — it has to not be produced in the first place.
+//
+// Deleting the `if seen[event.Element] { continue }` guard in Extent would
+// fail this test: Resolved would come back 2 for the twice-tripped run
+// (instead of matching the once-tripped run's 1), and Area would carry two
+// copies of the same corridor instead of one.
+func TestExtentDedupesRepeatedTripsOfTheSameBranch(t *testing.T) {
+	fixture := tripped(true)
+
+	once := []run.Event{{Kind: run.EventTrip, Element: "branch-0"}}
+	twice := []run.Event{
+		{Kind: run.EventTrip, Element: "branch-0"},
+		{Kind: run.EventTrip, Element: "branch-0"},
+	}
+
+	eOnce, runOnce := extentEngine(t, fixture, once)
+	eTwice, runTwice := extentEngine(t, fixture, twice)
+
+	resultOnce, err := eOnce.Extent(t.Context(), runOnce, 25)
+	if err != nil {
+		t.Fatalf("Extent (one trip): %v", err)
+	}
+
+	resultTwice, err := eTwice.Extent(t.Context(), runTwice, 25)
+	if err != nil {
+		t.Fatalf("Extent (two trips, same branch): %v", err)
+	}
+
+	if resultTwice.Resolved != resultOnce.Resolved {
+		t.Errorf("resolved = %d for a branch tripped twice, want %d (same as tripped once)",
+			resultTwice.Resolved, resultOnce.Resolved)
+	}
+
+	if resultTwice.Untraced != resultOnce.Untraced {
+		t.Errorf("untraced = %d for a branch tripped twice, want %d (same as tripped once)",
+			resultTwice.Untraced, resultOnce.Untraced)
+	}
+
+	if len(resultTwice.Area) != len(resultOnce.Area) {
+		t.Fatalf("area has %d polygons for a branch tripped twice, want %d (same as tripped once); "+
+			"the corridor was counted twice", len(resultTwice.Area), len(resultOnce.Area))
+	}
+
+	if !reflect.DeepEqual(resultOnce.Area, resultTwice.Area) {
+		t.Errorf("area differs between one trip and two trips of the same branch:\n%v\nvs\n%v",
+			resultOnce.Area, resultTwice.Area)
+	}
+}
+
+// Two events naming an ordinal the model does not have is one disagreement,
+// not two.
+func TestExtentDedupesAnUnresolvedOrdinalNamedTwice(t *testing.T) {
+	fixture := tripped(true)
+	events := []run.Event{
+		{Kind: run.EventTrip, Element: "branch-9"},
+		{Kind: run.EventTrip, Element: "branch-9"},
+	}
+
+	e, runID := extentEngine(t, fixture, events)
+
+	result, err := e.Extent(t.Context(), runID, 25)
+	if err != nil {
+		t.Fatalf("Extent: %v", err)
+	}
+
+	if len(result.Unresolved) != 1 || result.Unresolved[0] != "branch-9" {
+		t.Errorf("unresolved = %v, want [branch-9] exactly once", result.Unresolved)
 	}
 }

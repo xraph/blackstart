@@ -74,22 +74,26 @@ type ExtentResult struct {
 	// corridor around each conductor it assumes.
 	HalfWidthM float64
 
-	// Resolved is how many tripped branches' ordinals were found in the
-	// model, whether or not their route could be traced.
+	// Resolved is how many DISTINCT tripped branches' ordinals were found in
+	// the model, whether or not their route could be traced. A branch named
+	// by more than one trip event counts once: it is one piece of ground,
+	// not one per event.
 	Resolved int
 
-	// Unresolved is every tripped branch's ordinal the model has no branch
+	// Unresolved is every DISTINCT tripped ordinal the model has no branch
 	// for. Reported rather than dropped: it means the run and the model
 	// disagree, which is worth knowing regardless of what it does to the
-	// area computed.
+	// area computed. An ordinal named by more than one trip event appears
+	// once: it is one disagreement, not two.
 	Unresolved []string
 
-	// Untraced is how many resolved, tripped branches had no traced route —
-	// no route at all, or a route with no spans. Counted separately from
-	// Unresolved because the disagreement is different: the branch is real
-	// and known to the model, only its geometry is missing. A network only
-	// partly traced must not read as a small blast radius, so this number
-	// exists to say how much of the trip count Area could not draw from.
+	// Untraced is how many resolved, DISTINCT tripped branches had no traced
+	// route — no route at all, or a route with no spans. Counted separately
+	// from Unresolved because the disagreement is different: the branch is
+	// real and known to the model, only its geometry is missing. A network
+	// only partly traced must not read as a small blast radius, so this
+	// number exists to say how much of the trip count Area could not draw
+	// from.
 	Untraced int
 }
 
@@ -135,10 +139,24 @@ func (e *Engine) Extent(ctx context.Context, runID id.ID, halfWidthM float64) (E
 
 	var corridors []shape.Polygon
 
+	// seen dedupes by ordinal. run.Event carries no guarantee that a branch
+	// trips at most once — a relay chattering, or two protection zones both
+	// naming the same line, are both events the wire allows — and Cover does
+	// not merge, so a second event for a branch already accounted for must
+	// be skipped before it reaches Resolved, Untraced or corridors, not
+	// merged away afterward.
+	seen := make(map[string]bool)
+
 	for _, event := range found.Events {
 		if event.Kind != run.EventTrip {
 			continue
 		}
+
+		if seen[event.Element] {
+			continue
+		}
+
+		seen[event.Element] = true
 
 		branch, err := e.branches.ByOrdinal(ctx, model.ID, event.Element)
 		if err != nil {
