@@ -103,12 +103,59 @@ func (c Candidate) Concerning() bool {
 }
 
 // Run is one execution of a contingency analysis.
+//
+// It names the network twice. The two are not a duplicate: one is the identity
+// of what the solver was handed, the other the identity of the model as this
+// platform stores it, and a record that carried only one could not answer both
+// "which bytes produced these numbers" and "which stored network is this
+// about". See the two fields.
 type Run struct {
 	// ID identifies this run.
 	ID id.ID
 
-	// ModelHash names the network that was screened.
+	// ModelHash names the network as the SOLVER knows it: the hash of the
+	// deterministic protobuf encoding that was uploaded, which is the key the
+	// solver caches a model against. Provenance for the candidates below,
+	// because it names the exact bytes the screen ran on.
+	//
+	// It keeps the plain name, and that is a decision rather than inertia.
+	// This struct carries no json tags, so every field name here IS a
+	// published wire key: the OpenAPI component "Run" declares "ModelHash",
+	// web/packages/api-client/src/generated/codecs.ts maps that key to
+	// modelHash, and web/apps/viewer/src/routes/runs.tsx renders it. Renaming
+	// the field renames the key for a field whose meaning has not changed, and
+	// powerflow.Solution.ModelHash is the same value under the same name — so
+	// a rename here would leave the platform with two vocabularies for the
+	// solver's hash instead of removing the ambiguity it was meant to remove.
 	ModelHash string
+
+	// CanonicalHash names the same network as the PLATFORM knows it:
+	// canonical.Hash over networkmodel's canonical encoding. That is the hash
+	// networkmodel stores a model under, the one bsctl prints, and the one a
+	// scenario manifest pins — the hash a person actually has in hand, which
+	// is why ListByModel below must accept it.
+	//
+	// A pointer because absent and empty are different, and here the
+	// distinction is load-bearing rather than theoretical. Two runs have no
+	// canonical hash at all: one recorded before this field existed, and one
+	// screened against a model networkmodel never stored. Writing "" for
+	// either would not record "unknown" — it would record a 64-character hash
+	// that happens to be zero characters long, and ListByModel would then join
+	// every such run into one network that does not exist.
+	//
+	// No optional:"true" here, unlike scn.ScenarioRun.SweepRunID, and the
+	// difference is measured rather than assumed. Forge builds an OpenAPI
+	// component's required array from omitempty and pointer-ness and knows
+	// nothing of omitzero — so a non-pointer field relying on omitzero needs
+	// the tag, and this one, being both a pointer and omitempty, is already
+	// left out of required. The generated document was read back to confirm
+	// it; see the spec test.
+	//
+	// The key matches the unmapped siblings above rather than switching to
+	// snake_case. The generated client camelCases either form to the same
+	// identifier, so snake_case would buy nothing and leave one field in the
+	// component following a convention the other five do not.
+	CanonicalHash *string `json:"CanonicalHash,omitempty"`
 
 	// SolverVersion is the solver that produced the screen.
 	SolverVersion string
@@ -133,6 +180,16 @@ func (r Run) Validate() error {
 		return fmt.Errorf(
 			"%w: a run must name the model it screened, or its results cannot "+
 				"be reproduced", bserr.ErrInvalid)
+	}
+
+	// A present-but-empty canonical hash is a third state the field has no
+	// meaning for, and the one that would do damage silently: nil says the
+	// canonical hash is unknown, a real hash says which network, and "" says
+	// neither while still comparing equal to itself in every ListByModel.
+	if r.CanonicalHash != nil && *r.CanonicalHash == "" {
+		return fmt.Errorf(
+			"%w: a run's canonical hash is present and empty; leave it absent to "+
+				"say it is unknown", bserr.ErrInvalid)
 	}
 
 	if r.SolverVersion == "" {
@@ -209,5 +266,31 @@ type Store interface {
 	Get(ctx context.Context, runID id.ID) (Run, error)
 
 	// ListByModel returns runs for one network, most recent first.
+	//
+	// The hash may be in EITHER space: a run matches when it equals the run's
+	// ModelHash or its CanonicalHash. Both, because a caller has whichever one
+	// it has — a user or a scenario manifest holds the canonical hash, while
+	// every run recorded before CanonicalHash existed carries only the
+	// solver's. Accepting only the canonical one would make those runs
+	// unfindable by any string at all; accepting only the solver's is the gap
+	// this pair was added to close.
 	ListByModel(ctx context.Context, modelHash string, limit int) ([]Run, error)
+}
+
+// NamesModel reports whether a run names this network under either hash.
+//
+// Shared by both store implementations so the two cannot drift on what "this
+// network" means — the memory store filters in Go and the Fabriq store in SQL,
+// and a rule written twice is a rule that eventually says two things.
+//
+// A hash that matches either space identifies the network unambiguously: the
+// two are sha256 over different encodings, so a value equal to one run's
+// canonical hash and another run's protobuf hash would be a collision between
+// two hash functions rather than an ambiguity this predicate could resolve.
+func (r Run) NamesModel(hash string) bool {
+	if r.ModelHash == hash {
+		return true
+	}
+
+	return r.CanonicalHash != nil && *r.CanonicalHash == hash
 }
