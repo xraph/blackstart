@@ -27,17 +27,21 @@ import (
 type Store struct {
 	mu sync.RWMutex
 
-	models map[id.ID]model.NetworkModel
-	byHash map[string]id.ID
-	blobs  map[string][]byte
+	models     map[id.ID]model.NetworkModel
+	byHash     map[string]id.ID
+	blobs      map[string][]byte
+	branches   map[id.ID][]model.Branch
+	placements map[id.ID][]model.Placement
 }
 
 // New builds an empty store.
 func New() *Store {
 	return &Store{
-		models: map[id.ID]model.NetworkModel{},
-		byHash: map[string]id.ID{},
-		blobs:  map[string][]byte{},
+		models:     map[id.ID]model.NetworkModel{},
+		byHash:     map[string]id.ID{},
+		blobs:      map[string][]byte{},
+		branches:   map[id.ID][]model.Branch{},
+		placements: map[id.ID][]model.Placement{},
 	}
 }
 

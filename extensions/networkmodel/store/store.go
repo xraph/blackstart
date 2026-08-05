@@ -17,6 +17,12 @@ type Store interface {
 
 	// Blobs holds the canonical bytes each model encodes to.
 	Blobs() BlobStore
+
+	// Branches reads and writes the identity of a model's branches.
+	Branches() model.BranchStore
+
+	// Placements reads and writes where a model's buses are.
+	Placements() model.PlacementStore
 }
 
 // BlobStore holds the canonical encoding of a model.
