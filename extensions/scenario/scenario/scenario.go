@@ -40,12 +40,12 @@ type Manifest struct {
 	// ModelHash names the network model. A scenario cannot be reproduced
 	// without it; absent means unknown, and unknown scenarios are not
 	// reproducible.
-	ModelHash string
+	ModelHash string `json:"model_hash"`
 
 	// WeatherCycle identifies a forecast. A cycle spans a whole forecast
 	// horizon rather than naming a moment, so naming the cycle alone does
 	// not determine which values to use.
-	WeatherCycle string
+	WeatherCycle string `json:"weather_cycle"`
 
 	// ValidAt is the moment within the forecast cycle to analyze: when the
 	// thing being forecast is forecast to occur. Separate from the cycle
@@ -53,23 +53,23 @@ type Manifest struct {
 	// knowledge time (when the forecast was made); this field supplies the
 	// valid time. The pair is what makes a manifest determine a result,
 	// protecting the reproducibility invariant the type exists to defend.
-	ValidAt time.Time
+	ValidAt time.Time `json:"valid_at"`
 
 	// HazardConfig identifies the hazard configuration to use: which wind
 	// model, thermal model, ice model, etc. Absent means use defaults.
-	HazardConfig string
+	HazardConfig string `json:"hazard_config,omitempty"`
 
 	// Policy determines which contingencies to analyze. See Policy's own
 	// comment for the seam it represents.
-	Policy Policy
+	Policy Policy `json:"policy"`
 
 	// Branches lists the contingencies to analyze when Policy is PolicyExplicit.
 	// Ignored when Policy is PolicyAll. Must be non-empty when Policy is
 	// PolicyExplicit.
-	Branches []string
+	Branches []string `json:"branches,omitempty"`
 
 	// Seed is the random seed for reproducibility.
-	Seed int64
+	Seed int64 `json:"seed"`
 }
 
 // Validate reports whether a manifest is coherent enough to use.
