@@ -262,11 +262,19 @@ func branchRows(modelID id.ID, parsed matpower.Case) []model.Branch {
 // rows — is not touched: that model is not broken, it correctly has nothing
 // to record.
 //
+// Compared against BranchCount, not against "any rows at all": PutAll is not
+// transactional with the write that recorded BranchCount (see its own
+// comment), so an interrupted import can leave some rows landed and some
+// not. len(got) > 0 would read that partial state as already repaired and
+// leave it that way forever — the exact state this function exists to fix,
+// not a rarer cousin of the fully-empty case.
+//
 // # Errors
 //
 // Returns an error when the existing rows cannot be read or the repair
-// cannot be written. Both leave the model exactly as it was — missing its
-// branches — rather than claiming a repair that did not happen.
+// cannot be written. Both leave the model exactly as it was — missing some
+// or all of its branches — rather than claiming a repair that did not
+// happen.
 func (e *Engine) repairBranches(
 	ctx context.Context, existing model.NetworkModel, parsed matpower.Case,
 ) error {
@@ -280,7 +288,7 @@ func (e *Engine) repairBranches(
 			"networkmodel: checking %s for recorded branches: %w", existing.ID, err)
 	}
 
-	if len(got) > 0 {
+	if len(got) >= existing.BranchCount {
 		return nil
 	}
 

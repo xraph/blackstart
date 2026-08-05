@@ -388,3 +388,54 @@ func TestReimportingABranchlessModelRepairsIt(t *testing.T) {
 			len(got), second.Model.BranchCount)
 	}
 }
+
+// The non-transactional write TestReimportingABranchlessModelRepairsIt's own
+// doc comment describes can also land some rows and not others — not just
+// none at all. A guard that only checks "any rows" reads that partial state
+// as already fine and never fixes it.
+func TestReimportingAPartiallyBranchlessModelRepairsIt(t *testing.T) {
+	t.Parallel()
+
+	e, s := engineWithStore(t)
+
+	req := caseWithTwoBranches("two-branch-partial")
+
+	first, err := e.Import(t.Context(), req)
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	got, err := s.Branches().ForModel(t.Context(), first.Model.ID)
+	if err != nil {
+		t.Fatalf("ForModel: %v", err)
+	}
+
+	if len(got) < 2 {
+		t.Fatalf("fixture recorded %d branches, want at least 2 to simulate a partial write", len(got))
+	}
+
+	// Simulate a PutAll that landed some rows and failed partway: only the
+	// first of the model's two branches survives.
+	if err := s.Branches().PutAll(t.Context(), first.Model.ID, got[:1]); err != nil {
+		t.Fatalf("PutAll: %v", err)
+	}
+
+	second, err := e.Import(t.Context(), req)
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	if !second.AlreadyPresent {
+		t.Error("a re-import of an unchanged file was not reported as already present")
+	}
+
+	repaired, err := s.Branches().ForModel(t.Context(), second.Model.ID)
+	if err != nil {
+		t.Fatalf("ForModel: %v", err)
+	}
+
+	if len(repaired) != second.Model.BranchCount {
+		t.Fatalf("partially branch-less model was not repaired: got %d branches, model says %d",
+			len(repaired), second.Model.BranchCount)
+	}
+}
