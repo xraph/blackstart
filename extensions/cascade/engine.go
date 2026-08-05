@@ -196,7 +196,7 @@ func fromWire(response *solverv1.SimulateCascadeResponse, model *solverv1.Networ
 		// the same reason Elapsed below does. Never nil: an empty repeated
 		// field comes back nil from the generated getter, and a cascade with
 		// no initiating outage — which the engine's own Request.Validate
-		// allows — must serialise as "[]", not "null", or the wire's own
+		// allows — must serialize as "[]", not "null", or the wire's own
 		// required field throws in a reader that assumes an array.
 		Initiating: nonNilStrings(response.GetInitiating()),
 		Events:     events,
