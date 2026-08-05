@@ -14,6 +14,14 @@ import (
 	"github.com/xraph/forge"
 )
 
+// Asserted at compile time, for the reason api.go asserts
+// ControllerWithMiddleware. Forge discovers both by type assertion and says
+// nothing when one fails: a controller that stops satisfying its interface
+// registers every route unguarded, and an extension that stops satisfying
+// this one simply never starts its worker. Nothing queued would ever be
+// claimed, and the only symptom would be runs sitting at "queued" forever.
+var _ forge.RunnableExtension = (*Extension)(nil)
+
 // Run starts the queue drainer. It satisfies forge.RunnableExtension, so Forge
 // calls it after the HTTP server starts and cancels it on shutdown.
 //
@@ -27,14 +35,6 @@ import (
 // workers can never receive the same run. Electing a leader here would take a
 // queue that N replicas can safely share and serialize it onto one, which is
 // throughput given away to prevent something that cannot happen.
-// Asserted at compile time, for the reason api.go asserts
-// ControllerWithMiddleware. Forge discovers both by type assertion and says
-// nothing when one fails: a controller that stops satisfying its interface
-// registers every route unguarded, and an extension that stops satisfying
-// this one simply never starts its worker. Nothing queued would ever be
-// claimed, and the only symptom would be runs sitting at "queued" forever.
-var _ forge.RunnableExtension = (*Extension)(nil)
-
 func (e *Extension) Run(ctx context.Context) error {
 	if !e.runWorker {
 		return nil

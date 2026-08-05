@@ -152,6 +152,13 @@ func (m Manifest) Validate() error {
 	// a manifest whose 30-entry branch list describes a run that did not
 	// happen. Nothing later can catch it: by then the two readings are
 	// indistinguishable.
+	//
+	// Absent is refused along with a typo, deliberately, because Policy's zero
+	// value is "" and defaulting it here would reinstate exactly the silent
+	// reading this check exists to stop. A scenario stored before this check
+	// still reads, enqueues, executes and finishes — ScenarioRun.Validate does
+	// not call this — so the only thing that fails on a legacy row is saving
+	// it again, which is the moment someone is looking at it anyway.
 	if m.Policy != PolicyAll && m.Policy != PolicyExplicit {
 		return fmt.Errorf(
 			"%w: policy %q is neither %q nor %q; an unrecognized policy is read as "+

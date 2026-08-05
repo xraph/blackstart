@@ -21,7 +21,7 @@ func aSweep() sweep.Run {
 	return sweep.Run{
 		ID:            crid.NewRun(),
 		ModelHash:     "sha256:screened",
-		SolverVersion: "bs-solver 0.4.1",
+		SolverVersion: "0.0.0",
 		Candidates: []sweep.Candidate{
 			{
 				ContingencyID: lines[0].String(), Branch: 0,
@@ -50,7 +50,7 @@ func aSweepOverAnOpenBranch() sweep.Run {
 	return sweep.Run{
 		ID:            crid.NewRun(),
 		ModelHash:     "sha256:screened",
-		SolverVersion: "bs-solver 0.4.1",
+		SolverVersion: "0.0.0",
 		Candidates: []sweep.Candidate{
 			{
 				ContingencyID: lines[4].String(), Branch: 4,
@@ -71,7 +71,7 @@ func aSweepOverAnOpenBranch() sweep.Run {
 func aCascade() cascaderun.CascadeRun {
 	return cascaderun.CascadeRun{
 		ID:            cid.NewRun(),
-		SolverVersion: "bs-solver 0.4.1",
+		SolverVersion: "0.0.0",
 		Outcome:       cascaderun.OutcomeSettled,
 	}
 }

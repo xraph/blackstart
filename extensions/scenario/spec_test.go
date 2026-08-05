@@ -160,6 +160,12 @@ func TestTheScenarioRunIsItsOwnComponent(t *testing.T) {
 // Scoped to this extension rather than swept over the tree. A repo-wide guard
 // would fail today on thirteen pre-existing duplicates and be turned off; one
 // that covers what this extension is responsible for is a guard that survives.
+//
+// What it therefore does NOT catch: spec() builds its document from the
+// contingency and scenario controllers alone, so a THIRD extension shipping
+// its own Manifest or Failure would collide in the real application document
+// while this test stayed green. Register new controllers here as they ship —
+// the harness is the limit, not the assertions.
 func TestEveryComponentThisExtensionPublishesIsItsOwn(t *testing.T) {
 	document := spec(t)
 
