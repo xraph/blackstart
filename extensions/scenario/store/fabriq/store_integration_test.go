@@ -11,6 +11,8 @@ import (
 
 	"github.com/xraph/fabriq"
 
+	cid "github.com/xraph/blackstart/extensions/cascade/id"
+	crid "github.com/xraph/blackstart/extensions/contingency/id"
 	sid "github.com/xraph/blackstart/extensions/scenario/id"
 	"github.com/xraph/blackstart/extensions/scenario/scenario"
 	scnfabriq "github.com/xraph/blackstart/extensions/scenario/store/fabriq"
@@ -177,6 +179,90 @@ func TestRunRoundTripsThroughPostgres(t *testing.T) {
 	}
 }
 
+// TestRunRoundTripsThroughPostgres only ever writes a run with every
+// absent-able field left absent. This is the other direction: every one of
+// those fields populated, including WeatherRated pointing at 0 rather than
+// some other number — the pointer-to-zero case models_test.go's
+// TestWeatherRatedZeroRoundTrips already covers in-process, but never against
+// the real INTEGER column. If grove wrote NULL for a pointer-to-zero, or
+// scanned a stored 0 back as nil, every other test in this file would still
+// pass and "rated zero of two thousand branches" would silently read back as
+// "has not looked yet" — this is the one test that would catch it.
+func TestRunWithEveryFieldSetRoundTripsThroughPostgres(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	sc := aScenario("sha256:run-fully-populated")
+	if _, err := s.Scenarios().Create(ctx, sc); err != nil {
+		t.Fatalf("creating the scenario: %v", err)
+	}
+
+	weatherRated, branchCount := 0, 2000
+
+	want := aQueuedRun(sc.ID, createdAt)
+	want.Status = scenario.StatusFailed
+	want.Failure = &scenario.Failure{
+		Step:   scenario.StepCascade,
+		Reason: "solver timed out",
+	}
+	want.WeatherRated = &weatherRated
+	want.BranchCount = &branchCount
+	want.SweepRunID = crid.NewRun()
+	want.CascadeRunID = cid.NewRun()
+	want.SolverVersion = "0.1.0-test"
+	want.StartedAt = createdAt.Add(time.Minute)
+	want.FinishedAt = createdAt.Add(2 * time.Minute)
+
+	if _, err := s.Runs().Create(ctx, want); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := s.Runs().Get(ctx, want.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if got.Failure == nil {
+		t.Fatal("failure came back nil")
+	}
+
+	if got.Failure.Step != want.Failure.Step || got.Failure.Reason != want.Failure.Reason {
+		t.Errorf("failure round-tripped as %+v, want %+v", got.Failure, want.Failure)
+	}
+
+	if got.WeatherRated == nil || got.BranchCount == nil {
+		t.Fatalf("weather rated / branch count came back nil: %+v", got)
+	}
+
+	// Dereference and compare the value, not merely check non-nil: a
+	// non-nil check alone would pass against an implementation that stored
+	// some other number in place of the real 0.
+	if *got.WeatherRated != weatherRated {
+		t.Errorf("weather rated = %d, want %d", *got.WeatherRated, weatherRated)
+	}
+
+	if *got.BranchCount != branchCount {
+		t.Errorf("branch count = %d, want %d", *got.BranchCount, branchCount)
+	}
+
+	if got.SweepRunID != want.SweepRunID || got.CascadeRunID != want.CascadeRunID {
+		t.Errorf("child run ids round-tripped as %+v, want sweep=%s cascade=%s",
+			got, want.SweepRunID, want.CascadeRunID)
+	}
+
+	if got.SolverVersion != want.SolverVersion {
+		t.Errorf("solver version = %q, want %q", got.SolverVersion, want.SolverVersion)
+	}
+
+	if !got.StartedAt.Equal(want.StartedAt) {
+		t.Errorf("started at = %v, want %v", got.StartedAt, want.StartedAt)
+	}
+
+	if !got.FinishedAt.Equal(want.FinishedAt) {
+		t.Errorf("finished at = %v, want %v", got.FinishedAt, want.FinishedAt)
+	}
+}
+
 func TestASecondRunWriteToOneIdentifierConflicts(t *testing.T) {
 	s := harness(t)
 	ctx := context.Background()
@@ -274,6 +360,41 @@ func TestListByScenarioHonoursTheLimit(t *testing.T) {
 
 	if len(got) != 2 {
 		t.Errorf("a limit of 2 returned %d rows", len(got))
+	}
+}
+
+// A limit of zero or less returns everything — scenario.RunStore documents
+// that, and store.go's ListByScenario relies on it after commit 4dbf824
+// removed a silent clamp to 50. A row count at or under 50 would pass this
+// assertion whether or not the clamp were still there, which is why this
+// creates more than 50 runs: it is the only way a reintroduced clamp would
+// make this test fail.
+func TestListByScenarioWithNoLimitReturnsEverything(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	sc := aScenario("sha256:unclamped")
+	if _, err := s.Scenarios().Create(ctx, sc); err != nil {
+		t.Fatalf("creating the scenario: %v", err)
+	}
+
+	const runCount = 60
+
+	for hour := range runCount {
+		if _, err := s.Runs().Create(ctx,
+			aQueuedRun(sc.ID, createdAt.Add(time.Duration(hour)*time.Hour)),
+		); err != nil {
+			t.Fatalf("Create run %d: %v", hour, err)
+		}
+	}
+
+	got, err := s.Runs().ListByScenario(ctx, sc.ID, 0)
+	if err != nil {
+		t.Fatalf("ListByScenario: %v", err)
+	}
+
+	if len(got) != runCount {
+		t.Fatalf("a limit of 0 returned %d rows, want all %d", len(got), runCount)
 	}
 }
 
