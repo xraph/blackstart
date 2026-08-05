@@ -31,12 +31,7 @@ interface SceneProps {
  * to. Leaving near at the default 0.1 would clip the surface away as soon as
  * the camera approached it.
  */
-export function Scene({
-  model,
-  routes,
-  onSelect,
-  onSelectRoute,
-}: SceneProps): React.JSX.Element {
+export function Scene({ model, routes, onSelect, onSelectRoute }: SceneProps): React.JSX.Element {
   return (
     <Canvas
       camera={{ position: [-1.4, -2.2, 1.4], near: 0.001, far: 100, fov: 40 }}

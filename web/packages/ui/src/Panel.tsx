@@ -25,9 +25,7 @@ export function Panel({ title, children, className }: PanelProps): React.JSX.Ele
         className,
       )}
     >
-      <h2 className="mb-2 font-mono text-[9.5px] uppercase tracking-[0.13em] text-fg-3">
-        {title}
-      </h2>
+      <h2 className="mb-2 font-mono text-[9.5px] uppercase tracking-[0.13em] text-fg-3">{title}</h2>
       {children}
     </section>
   );

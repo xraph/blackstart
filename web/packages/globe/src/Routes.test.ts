@@ -23,7 +23,14 @@ describe("buildRouteSegments", () => {
     // Four points is three segments. Off by one here draws a line back to the
     // origin, which reads as a stray conductor across the map.
     const { positions, segmentRoute } = buildRouteSegments(
-      [line("a", [[-101, 34], [-101.2, 34.2], [-101.4, 34.4], [-101.6, 34.6]])],
+      [
+        line("a", [
+          [-101, 34],
+          [-101.2, 34.2],
+          [-101.4, 34.4],
+          [-101.6, 34.6],
+        ]),
+      ],
       0,
     );
 
@@ -33,7 +40,13 @@ describe("buildRouteSegments", () => {
 
   it("shares interior points between adjacent segments", () => {
     const { positions } = buildRouteSegments(
-      [line("a", [[-101, 34], [-101.2, 34.2], [-101.4, 34.4]])],
+      [
+        line("a", [
+          [-101, 34],
+          [-101.2, 34.2],
+          [-101.4, 34.4],
+        ]),
+      ],
       0,
     );
 
@@ -45,8 +58,15 @@ describe("buildRouteSegments", () => {
   it("maps every segment back to the route that owns it", () => {
     const { segmentRoute } = buildRouteSegments(
       [
-        line("a", [[-101, 34], [-101.2, 34.2]]),
-        line("b", [[-99, 32], [-99.2, 32.2], [-99.4, 32.4]]),
+        line("a", [
+          [-101, 34],
+          [-101.2, 34.2],
+        ]),
+        line("b", [
+          [-99, 32],
+          [-99.2, 32.2],
+          [-99.4, 32.4],
+        ]),
       ],
       0,
     );
@@ -58,7 +78,13 @@ describe("buildRouteSegments", () => {
 
   it("skips a route with fewer than two points instead of emitting a degenerate segment", () => {
     const { positions, segmentRoute } = buildRouteSegments(
-      [line("a", [[-101, 34]]), line("b", [[-99, 32], [-99.2, 32.2]])],
+      [
+        line("a", [[-101, 34]]),
+        line("b", [
+          [-99, 32],
+          [-99.2, 32.2],
+        ]),
+      ],
       0,
     );
 
@@ -68,10 +94,30 @@ describe("buildRouteSegments", () => {
   });
 
   it("lifts the path off the ellipsoid so it is not z-fought by the globe", () => {
-    const flat = buildRouteSegments([line("a", [[0, 0], [1, 0]])], 0);
-    const lifted = buildRouteSegments([line("a", [[0, 0], [1, 0]])], 0.01);
+    const flat = buildRouteSegments(
+      [
+        line("a", [
+          [0, 0],
+          [1, 0],
+        ]),
+      ],
+      0,
+    );
+    const lifted = buildRouteSegments(
+      [
+        line("a", [
+          [0, 0],
+          [1, 0],
+        ]),
+      ],
+      0.01,
+    );
 
-    const flatRadius = Math.hypot(flat.positions[0] ?? 0, flat.positions[1] ?? 0, flat.positions[2] ?? 0);
+    const flatRadius = Math.hypot(
+      flat.positions[0] ?? 0,
+      flat.positions[1] ?? 0,
+      flat.positions[2] ?? 0,
+    );
     const liftedRadius = Math.hypot(
       lifted.positions[0] ?? 0,
       lifted.positions[1] ?? 0,

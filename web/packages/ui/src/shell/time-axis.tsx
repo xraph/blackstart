@@ -60,9 +60,7 @@ export function TimeAxis({
   return (
     <div className="flex h-14 shrink-0 items-stretch border-t border-line bg-panel">
       <div className="w-[150px] shrink-0 border-r border-line pl-3 pt-2">
-        <div className="font-mono text-[9px] uppercase tracking-[0.13em] text-fg-3">
-          Valid time
-        </div>
+        <div className="font-mono text-[9px] uppercase tracking-[0.13em] text-fg-3">Valid time</div>
         <div className="mt-1 font-mono text-[12.5px] tracking-[-0.02em] tabular text-fg">
           {formatInstant(temporal.validTime)}
         </div>

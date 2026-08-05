@@ -61,7 +61,11 @@ export function ContingencyRail({
               </span>
             </span>
 
-            <Sparkline points={c.horizon} max={ceiling} label={`${c.name} risk over the forecast horizon`} />
+            <Sparkline
+              points={c.horizon}
+              max={ceiling}
+              label={`${c.name} risk over the forecast horizon`}
+            />
 
             <span className="shrink-0 text-right">
               <ProbabilityValue p={c.probability} className="text-xs" />

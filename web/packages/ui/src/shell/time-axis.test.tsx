@@ -42,7 +42,13 @@ describe("TimeAxis", () => {
   it("scrubs with one labelled control rather than a row of hairline buttons", () => {
     const onScrub = vi.fn();
     render(
-      <TimeAxis temporal={LIVE} horizon={HORIZON} leadHour={4} mode="live" onScrubValid={onScrub} />,
+      <TimeAxis
+        temporal={LIVE}
+        horizon={HORIZON}
+        leadHour={4}
+        mode="live"
+        onScrubValid={onScrub}
+      />,
     );
     const slider = screen.getByRole("slider", { name: /forecast hour/i });
     expect(slider.getAttribute("min")).toBe("0");

@@ -188,11 +188,5 @@ export function eventDensity(events: readonly CascadeEvent[]): number[] {
 }
 
 /** The five phases the transport labels, as fractions of the run. */
-export const CASCADE_PHASES = [
-  "trip",
-  "redistribute",
-  "separate",
-  "shed",
-  "settle",
-] as const;
+export const CASCADE_PHASES = ["trip", "redistribute", "separate", "shed", "settle"] as const;
 export type CascadePhase = (typeof CASCADE_PHASES)[number];

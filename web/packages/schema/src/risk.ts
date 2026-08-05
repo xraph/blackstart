@@ -172,7 +172,10 @@ export const ContingencyList = z.array(Contingency).superRefine((rows, ctx) => {
     }
 
     const prev = i > 0 ? rows[i - 1] : undefined;
-    if (prev !== undefined && row.expectedUnservedEnergy.value > prev.expectedUnservedEnergy.value) {
+    if (
+      prev !== undefined &&
+      row.expectedUnservedEnergy.value > prev.expectedUnservedEnergy.value
+    ) {
       ctx.addIssue({
         code: "custom",
         path: [i, "expectedUnservedEnergy"],

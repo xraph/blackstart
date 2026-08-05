@@ -115,7 +115,9 @@ describe("contingency ranking", () => {
   });
 
   it("accepts a list ordered by expected cost", () => {
-    expect(ContingencyList.safeParse([row(1, 41.2), row(2, 34.8), row(3, 28.1)]).success).toBe(true);
+    expect(ContingencyList.safeParse([row(1, 41.2), row(2, 34.8), row(3, 28.1)]).success).toBe(
+      true,
+    );
   });
 
   it("rejects a list ordered by probability instead of cost", () => {
@@ -131,7 +133,9 @@ describe("contingency ranking", () => {
   });
 
   it("rankByExpectedCost produces a list the schema accepts", () => {
-    const unordered = [row(0, 28.1), row(0, 41.2), row(0, 34.8)].map(({ rank: _r, ...rest }) => rest);
+    const unordered = [row(0, 28.1), row(0, 41.2), row(0, 34.8)].map(
+      ({ rank: _r, ...rest }) => rest,
+    );
     expect(ContingencyList.safeParse(rankByExpectedCost(unordered)).success).toBe(true);
   });
 });

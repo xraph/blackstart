@@ -73,9 +73,7 @@ export function quantity<U extends Unit>(unit: U) {
   return z.object({
     value: z.number().finite(),
     unit: z.literal(unit),
-    base: z
-      .object({ value: z.number().finite().positive(), unit: z.enum(unitNames()) })
-      .optional(),
+    base: z.object({ value: z.number().finite().positive(), unit: z.enum(unitNames()) }).optional(),
   });
 }
 

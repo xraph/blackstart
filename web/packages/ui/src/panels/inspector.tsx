@@ -27,8 +27,16 @@ export function ElementInspector({
   readonly explanation: ElementExplanation;
   readonly onClose?: () => void;
 }): ReactElement {
-  const { element, probability, rank, totalRanked, decomposition, conditions, analogues, counterfactual } =
-    explanation;
+  const {
+    element,
+    probability,
+    rank,
+    totalRanked,
+    decomposition,
+    conditions,
+    analogues,
+    counterfactual,
+  } = explanation;
 
   return (
     <aside className="flex min-h-0 w-[480px] shrink-0 flex-col border-l border-line bg-panel">
@@ -67,8 +75,8 @@ export function ElementInspector({
             </dd>
             <dt className="text-fg-3">length</dt>
             <dd className="m-0 text-fg">
-              <QuantityValue q={element.length} className="text-[10px]" /> · {element.spanCount} spans ·{" "}
-              {element.structureCount} structures
+              <QuantityValue q={element.length} className="text-[10px]" /> · {element.spanCount}{" "}
+              spans · {element.structureCount} structures
             </dd>
             <dt className="text-fg-3">rating</dt>
             <dd className="m-0 text-fg">

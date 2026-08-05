@@ -33,7 +33,9 @@ export function ProvenanceChainView({ chain }: { readonly chain: Chain }): React
       <div className="mb-2.5 flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.13em] text-fg-3">
         Provenance
         <span className="h-px flex-1 bg-line" />
-        <span className={cn("normal-case tracking-normal", status.complete ? "text-ok" : "text-risk-3")}>
+        <span
+          className={cn("normal-case tracking-normal", status.complete ? "text-ok" : "text-risk-3")}
+        >
           {status.complete
             ? "chain complete"
             : status.missing.length > 0

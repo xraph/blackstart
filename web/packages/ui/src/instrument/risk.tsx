@@ -113,15 +113,12 @@ export function RiskWaterfall({
         />
       ))}
       <div className="mt-1.5 flex h-[27px] items-center gap-2 border-t border-line-2 pt-1.5">
-        <span className="w-[104px] shrink-0 text-[10px] font-semibold text-fg">
-          P(fail)
-        </span>
+        <span className="w-[104px] shrink-0 text-[10px] font-semibold text-fg">P(fail)</span>
         <span className="relative h-[11px] flex-1 rounded-[1px] border border-line-t bg-panel-2">
           <i
             className="absolute inset-y-0 left-0 w-full rounded-[1px]"
             style={{
-              background:
-                "linear-gradient(90deg, var(--bs-fg-4), var(--bs-risk-4))",
+              background: "linear-gradient(90deg, var(--bs-fg-4), var(--bs-risk-4))",
             }}
           />
         </span>

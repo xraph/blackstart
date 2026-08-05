@@ -225,8 +225,7 @@
   --spacing-event-row: 1.625rem; /* 26px — event log row */
   --radius-instrument: 4px;
 
-  --font-mono:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
 }
 
 /*

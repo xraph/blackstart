@@ -213,10 +213,7 @@ export function GlassPanel({
 }): ReactElement {
   return (
     <div
-      className={cn(
-        "absolute rounded-[4px] border border-line-2 backdrop-blur-[6px]",
-        className,
-      )}
+      className={cn("absolute rounded-[4px] border border-line-2 backdrop-blur-[6px]", className)}
       style={{ background: "var(--bs-glass)", ...style }}
     >
       {title !== undefined && (

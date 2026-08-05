@@ -53,7 +53,10 @@ export function RunsGrid({
            * the scenario name and hoping someone spelled it consistently. */
           const back =
             r.temporal.validTime !== undefined &&
-            isBacktest({ validTime: r.temporal.validTime, knowledgeTime: r.temporal.knowledgeTime });
+            isBacktest({
+              validTime: r.temporal.validTime,
+              knowledgeTime: r.temporal.knowledgeTime,
+            });
           const timeTone = back ? "text-amber" : undefined;
 
           return (

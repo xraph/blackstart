@@ -11,12 +11,7 @@ import { z } from "zod";
 import { quantity } from "./quantity";
 import { typeId, Alias } from "./identity";
 import { cited } from "./provenance";
-import {
-  Probability,
-  RiskDecomposition,
-  Counterfactual,
-  HistoricalAnalogue,
-} from "./risk";
+import { Probability, RiskDecomposition, Counterfactual, HistoricalAnalogue } from "./risk";
 
 /** Voltage classes the console styles line weight by. */
 export const VOLTAGE_CLASSES = [115, 230, 345, 500, 765] as const;

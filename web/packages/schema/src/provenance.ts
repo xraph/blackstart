@@ -84,7 +84,13 @@ export type ProvenanceLink = z.infer<typeof ProvenanceLink>;
  * and the platform's own trace returns them as an array with a role on each.
  * The original rule forbade that, and the first real trace said so.
  */
-const SINGULAR_KINDS: readonly ProvenanceKind[] = ["network", "feature-set", "model", "run", "commit"];
+const SINGULAR_KINDS: readonly ProvenanceKind[] = [
+  "network",
+  "feature-set",
+  "model",
+  "run",
+  "commit",
+];
 
 export const ProvenanceChain = z.array(ProvenanceLink).superRefine((links, ctx) => {
   const seen = new Set<ProvenanceKind>();
