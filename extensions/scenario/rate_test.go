@@ -45,9 +45,10 @@ func aBranch(line id.ID) *solverv1.Branch {
 }
 
 // A branch whose chain breaks keeps its static rating and emits no override.
-// A zero rating would make the branch infinitely overloaded and trip the whole
-// network on the first screen, and one incomplete asset record is not a reason
-// to abandon the scenario.
+// One incomplete asset record is not a reason to abandon the scenario, and an
+// override of zero would be worse than none: every consumer reads a
+// non-positive rating as unrated and skips the branch, so a zero would remove
+// that line from every violation check rather than fail one.
 func TestAChainThatBreaksLeavesTheBranchStatic(t *testing.T) {
 	t.Parallel()
 

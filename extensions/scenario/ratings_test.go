@@ -217,8 +217,9 @@ func TestAmpacityConvertsToVoltAmperes(t *testing.T) {
 
 // A chain that breaks anywhere yields no rating at all, rather than a partial
 // one. A minimum taken over the spans that happened to resolve is a rating for
-// a shorter line than the one being rated, and a zero would make the branch
-// infinitely overloaded.
+// a shorter line than the one being rated, and a zero would be worse still:
+// every consumer treats a non-positive rating as unrated and skips the branch,
+// so it would drop out of every violation check instead of failing one.
 func TestAChainThatBreaksYieldsNoRating(t *testing.T) {
 	t.Parallel()
 

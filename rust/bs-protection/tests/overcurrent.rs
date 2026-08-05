@@ -48,8 +48,13 @@ fn instantaneous_overrides_the_curve() {
 
 /// An unrated branch has an unknown limit, not a limit of zero.
 ///
-/// Same rule as `assess` in bs-contingency: dividing by a zero rating would
-/// make every unrated branch infinitely overloaded and trip the whole network.
+/// Same rule as `assess` in bs-contingency, which skips a branch whose rating
+/// is not positive rather than dividing by it. So the consequence of a zero
+/// rating is that the branch drops out of every violation check: the element
+/// reports no trip, the screen reports no overload, and a line at 180% of its
+/// true limit reads as an all-clear. A zero suppresses a violation, it does
+/// not invent one, which is why a rating that could not be derived must be
+/// absent rather than zero.
 #[test]
 fn an_unrated_branch_has_no_pickup() {
     let relay = Overcurrent::default();
