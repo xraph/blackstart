@@ -135,7 +135,11 @@ func (e *Engine) Extent(ctx context.Context, runID id.ID, halfWidthM float64) (E
 			"cascade: resolving the model run %s simulated: %w", runID, err)
 	}
 
-	result := ExtentResult{HalfWidthM: halfWidthM}
+	// Unresolved starts allocated rather than nil: a run whose every tripped
+	// ordinal resolves against the model — the common case — must still wire
+	// `"unresolved":[]`, not `"unresolved":null`, for the same reason Area
+	// does. See shape.Cover's doc.
+	result := ExtentResult{HalfWidthM: halfWidthM, Unresolved: []string{}}
 
 	var corridors []shape.Polygon
 

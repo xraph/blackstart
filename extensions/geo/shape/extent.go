@@ -131,11 +131,14 @@ func PolygonAreaM2(p Polygon) float64 {
 // that overlap twice — it gives total corridor area, not distinct ground
 // covered. A caller that needs the latter cannot get it by summing; that
 // would require a real union, which this package does not attempt.
+//
+// Always non-nil, even for zero inputs: a cascade that tripped nothing with
+// traced geometry — the ordinary state before `bsctl geo trace-model` has
+// run — covers no ground, and that is an empty MultiPolygon, not the absence
+// of one. json.Marshal turns a nil slice into `null`; a caller downstream of
+// an HTTP wire (extensions/cascade's extentResponse) must never have to
+// treat that as a third state alongside "some ground" and "no ground".
 func Cover(in []Polygon) MultiPolygon {
-	if len(in) == 0 {
-		return nil
-	}
-
 	out := make(MultiPolygon, 0, len(in))
 
 	return append(out, in...)

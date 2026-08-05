@@ -68,7 +68,13 @@ export function Scene({
       <Network model={model} onSelect={onSelect} />
       {/* Drawn before the routes so a route is never sorted beneath the
        * translucent ground it sits on — conductors stay legible on top. */}
-      {extent !== undefined && extent.length > 0 && <Extent area={extent} />}
+      {/* `!= null` on purpose: catches both `undefined` (no run selected) and
+       * `null` (a wire shape the generated client's types say cannot happen,
+       * but a client should not trust a shape it does not control — the
+       * platform's own extentResponse.area used to serialise `null` for an
+       * empty extent before that was fixed server-side; this guard survives
+       * it happening again, here or on some other field shaped like it). */}
+      {extent != null && extent.length > 0 && <Extent area={extent} />}
       {routes !== undefined && routes.length > 0 && (
         <Routes routes={routes} colorOf={colorOf} onSelect={onSelectRoute} />
       )}

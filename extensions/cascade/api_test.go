@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/xraph/forge"
@@ -143,6 +144,52 @@ func TestExtentReportsTheHalfWidthItWasGiven(t *testing.T) {
 
 	if got.HalfWidthM != 42.5 {
 		t.Errorf("half_width_m = %v, want 42.5", got.HalfWidthM)
+	}
+}
+
+// THE assertion for the null-wire bug: the ordinary state before `bsctl geo
+// trace-model` has run is a tripped branch the model recognizes but has no
+// traced route — resolved, untraced, and therefore no ground to draw. That
+// used to answer `{"area":null,"unresolved":null,...}`, and
+// `extent !== undefined && extent.length > 0` in the viewer's Scene threw on
+// the `null` during render. Both fields must come back `[]`.
+func TestExtentEndpointNeverSendsNullForAreaOrUnresolved(t *testing.T) {
+	fixture := tripped(false) // no route: resolved, untraced, no ground
+	events := []run.Event{{Kind: run.EventTrip, Element: "branch-0"}}
+
+	s := newExtentSurface(t, fixture, events)
+
+	rec := s.do("/api/v1/cascade/runs/" + s.runID + "/extent?half_width_m=25")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+
+	if strings.Contains(body, `"area":null`) {
+		t.Errorf("response carries \"area\":null, want []: %s", body)
+	}
+
+	if strings.Contains(body, `"unresolved":null`) {
+		t.Errorf("response carries \"unresolved\":null, want []: %s", body)
+	}
+
+	// Decoding into a type whose zero value is nil would pass even if the
+	// wire sent null, so the raw-bytes check above is the one that catches
+	// the bug — this just confirms the shape decodes as the reviewer's own
+	// repro described it: resolved 1, untraced 1, no ground.
+	var got extentWire
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding the response: %v; body: %s", err, body)
+	}
+
+	if got.Resolved != 1 || got.Untraced != 1 {
+		t.Fatalf("resolved=%d untraced=%d, want 1 and 1 (a resolved, untraced trip)",
+			got.Resolved, got.Untraced)
+	}
+
+	if len(got.Area) != 0 {
+		t.Errorf("area has %d polygons, want 0 for an untraced branch", len(got.Area))
 	}
 }
 
