@@ -1,6 +1,7 @@
 package scenario_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -64,5 +65,43 @@ func TestAValidManifestPasses(t *testing.T) {
 
 	if err := validManifest().Validate(); err != nil {
 		t.Fatalf("want nil, got %v", err)
+	}
+}
+
+// The exact wire form, not just a round trip. Every round-trip test in this
+// codebase marshals and unmarshals with the same struct — it would pass
+// whether the tags read model_hash, modelHash, or nothing at all, because
+// json.Unmarshal silently ignores unknown keys. A run's frozen manifest is
+// stored as this JSON, so a later rename of one of these tags — say
+// weather_cycle to forecast_cycle — would make new writes fine while every
+// already-stored run's manifest unmarshals with WeatherCycle == "": no
+// error, no signal, and the reproducibility invariant the manifest exists to
+// protect fails silently. Pinning the literal is what makes that rename
+// something a change has to confront instead of something it can pass
+// through unnoticed.
+func TestManifestJSONKeysAreExact(t *testing.T) {
+	t.Parallel()
+
+	m := scenario.Manifest{
+		ModelHash:    "sha256:abc123",
+		WeatherCycle: "wxcyc_01j9xyz0000000000000000000",
+		ValidAt:      time.Date(2026, 8, 4, 18, 0, 0, 0, time.UTC),
+		HazardConfig: "ice-storm-v2",
+		Policy:       scenario.PolicyExplicit,
+		Branches:     []string{"branch:14", "branch:22"},
+		Seed:         42,
+	}
+
+	got, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	want := `{"model_hash":"sha256:abc123","weather_cycle":"wxcyc_01j9xyz0000000000000000000",` +
+		`"valid_at":"2026-08-04T18:00:00Z","hazard_config":"ice-storm-v2","policy":"explicit",` +
+		`"branches":["branch:14","branch:22"],"seed":42}`
+
+	if string(got) != want {
+		t.Errorf("Manifest marshaled as:\n%s\nwant:\n%s", got, want)
 	}
 }
