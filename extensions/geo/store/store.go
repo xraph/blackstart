@@ -18,6 +18,9 @@ type Store interface {
 
 	// Circuits reads and writes the lines somebody actually built.
 	Circuits() CircuitStore
+
+	// Structures reads and writes the towers and poles a route stands on.
+	Structures() StructureStore
 }
 
 // CircuitStore holds circuits imported from public sources.
@@ -72,4 +75,20 @@ type RouteStore interface {
 
 	// List returns routes.
 	List(ctx context.Context, limit int) ([]asset.Route, error)
+}
+
+// StructureStore holds the towers and poles a route stands on.
+type StructureStore interface {
+	// Put replaces every structure on a route.
+	//
+	// Replaces rather than appends, for RouteStore.Put's reason: a re-import
+	// produces a new set, and appending would leave the old positions beside
+	// the new ones with nothing to say which is current.
+	Put(ctx context.Context, route id.ID, structures []asset.Structure) error
+
+	// ForRoute returns a route's structures in ordinal order.
+	ForRoute(ctx context.Context, route id.ID) ([]asset.Structure, error)
+
+	// Get reads one structure.
+	Get(ctx context.Context, want id.ID) (asset.Structure, error)
 }

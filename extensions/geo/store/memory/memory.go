@@ -28,6 +28,14 @@ type Store struct {
 	// than scanned for on every import: an import re-runs over thousands of
 	// lines and a linear scan per line makes it quadratic.
 	byExternal map[externalKey]id.ID
+
+	structures map[id.ID]asset.Structure
+
+	// byRoute is the ordinal-ordered index of structure ids for a route, kept
+	// beside the structures rather than sorted on every read: ForRoute serves
+	// every per-span calculation downstream, and sorting on each call would
+	// make that path quadratic under repeated reads.
+	byRoute map[id.ID][]id.ID
 }
 
 // New builds an empty store.
@@ -37,6 +45,8 @@ func New() *Store {
 		spans:      map[id.ID][]asset.Span{},
 		circuits:   map[id.ID]asset.Circuit{},
 		byExternal: map[externalKey]id.ID{},
+		structures: map[id.ID]asset.Structure{},
+		byRoute:    map[id.ID][]id.ID{},
 	}
 }
 
