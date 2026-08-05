@@ -15,6 +15,9 @@ import (
 	"github.com/xraph/blackstart/extensions/geo/asset"
 	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/geo/shape"
+	"github.com/xraph/blackstart/extensions/networkmodel"
+	"github.com/xraph/blackstart/extensions/networkmodel/model"
+	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
 )
 
@@ -24,11 +27,12 @@ func geoCommand() cli.Command {
 		"geo",
 		"Trace and inspect where the network physically is",
 		func(ctx cli.CommandContext) error {
-			ctx.Println("usage: bsctl geo <trace|import|show>")
+			ctx.Println("usage: bsctl geo <trace|trace-model|import|show>")
 
 			return nil
 		},
 		cli.WithSubcommand(geoTraceCommand()),
+		cli.WithSubcommand(geoTraceModelCommand()),
 		cli.WithSubcommand(geoImportCommand()),
 		cli.WithSubcommand(geoShowCommand()),
 	)
@@ -103,6 +107,196 @@ func geoTraceCommand() cli.Command {
 		cli.WithFlag(cli.NewIntFlag(
 			"span", "", "nominal meters between structures", geo.DefaultSpanM)),
 	)
+}
+
+// geoTraceModelCommand traces a route for every branch of a model that has
+// placements at both ends.
+//
+// This is what `bsctl geo trace` could not do: trace a whole network's
+// branches at once rather than one hand-typed coordinate pair at a time,
+// which is why only four branch routes existed on a 2000-bus case.
+func geoTraceModelCommand() cli.Command {
+	return cli.NewCommand(
+		"trace-model",
+		"Trace a route for every branch of a model that has placements at both ends",
+		func(ctx cli.CommandContext) error {
+			if ctx.NArgs() < 1 {
+				return errors.New(
+					"usage: bsctl geo trace-model <nmdl_… | content-hash> " +
+						"[--dry-run] [--span METERS]")
+			}
+
+			nmEngine, gxEngine, cleanup, err := modelAndGeo(ctx.Context())
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			found, err := resolveModel(ctx, nmEngine, ctx.Args()[0])
+			if err != nil {
+				return err
+			}
+
+			candidates, noPlacement, alreadyTraced, err := traceCandidates(
+				ctx.Context(), nmEngine, gxEngine, found.ID)
+			if err != nil {
+				return err
+			}
+
+			dryRun := ctx.Bool("dry-run")
+			spanM := float64(ctx.Int("span"))
+			traced := 0
+
+			for _, candidate := range candidates {
+				if !dryRun {
+					if _, err := gxEngine.Trace(ctx.Context(), geo.TraceRequest{
+						BranchID: candidate.Branch.ID,
+						From:     candidate.From,
+						To:       candidate.To,
+						SpanM:    spanM,
+					}); err != nil {
+						return fmt.Errorf(
+							"bsctl: tracing branch %s: %w", candidate.Branch.ID, err)
+					}
+				}
+
+				traced++
+			}
+
+			if dryRun {
+				ctx.Println("dry run — nothing was written")
+			}
+
+			// Every number, every time — the same reason `bsctl hazard assume`
+			// prints all of its counts. "No placement" is a gap in the
+			// coordinate file; "already traced" is a previous run having done
+			// its job, and running this command twice must not double the
+			// routes.
+			ctx.Printf("\ntraced            %d\n", traced)
+			ctx.Printf("no placement      %d\n", noPlacement)
+			ctx.Printf("already traced    %d\n", alreadyTraced)
+			ctx.Printf("branches total    %d\n", traced+noPlacement+alreadyTraced)
+
+			return nil
+		},
+		cli.WithUsage(
+			"bsctl geo trace-model <nmdl_… | content-hash> [--dry-run] [--span METERS]"),
+		cli.WithFlag(cli.NewBoolFlag(
+			"dry-run", "", "report what would be traced without writing", false)),
+		cli.WithFlag(cli.NewIntFlag(
+			"span", "", "nominal meters between structures", geo.DefaultSpanM)),
+	)
+}
+
+// traceCandidate is one branch ready to be traced: the branch itself and the
+// two placements its endpoints resolved to.
+type traceCandidate struct {
+	Branch   model.Branch
+	From, To shape.Point
+}
+
+// traceCandidates walks a model's branches and sorts each into one of three
+// piles: ready to trace, missing a placement at one or both ends, or already
+// traced.
+//
+// A branch missing either placement is counted and skipped rather than given
+// an invented coordinate — a model with no placements, or an incomplete one,
+// is a legitimate state, and everything downstream reports its absence as a
+// count rather than a guess.
+func traceCandidates(
+	ctx context.Context, nm *networkmodel.Engine, gx *geo.Engine, modelID id.ID,
+) (candidates []traceCandidate, noPlacement, alreadyTraced int, err error) {
+	branches, err := nm.Store().Branches().ForModel(ctx, modelID)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("bsctl: reading branches of %s: %w", modelID, err)
+	}
+
+	placements, err := nm.Store().Placements().ForModel(ctx, modelID)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("bsctl: reading placements of %s: %w", modelID, err)
+	}
+
+	byBus := make(map[string]model.Placement, len(placements))
+	for _, placement := range placements {
+		byBus[placement.Bus] = placement
+	}
+
+	for _, branch := range branches {
+		from, ok := byBus[branch.FromBus]
+		if !ok {
+			noPlacement++
+
+			continue
+		}
+
+		to, ok := byBus[branch.ToBus]
+		if !ok {
+			noPlacement++
+
+			continue
+		}
+
+		// Idempotent by construction: a branch already carrying a route is
+		// counted and skipped, so running this command twice does not double
+		// the routes.
+		_, err := gx.RouteForBranch(ctx, branch.ID)
+		if err == nil {
+			alreadyTraced++
+
+			continue
+		}
+
+		if !errors.Is(err, bserr.ErrNotFound) {
+			return nil, 0, 0, fmt.Errorf(
+				"bsctl: checking whether %s is already traced: %w", branch.ID, err)
+		}
+
+		candidates = append(candidates, traceCandidate{
+			Branch: branch,
+			From:   shape.Point{Lon: from.Lon, Lat: from.Lat, Elevation: from.Elevation},
+			To:     shape.Point{Lon: to.Lon, Lat: to.Lat, Elevation: to.Elevation},
+		})
+	}
+
+	return candidates, noPlacement, alreadyTraced, nil
+}
+
+// modelAndGeo resolves both the network-model and geo engines from one
+// application.
+//
+// One application, not two. Each helper starts its own, and starting the
+// stack twice in one command opens two connection pools and runs the
+// migration orchestrator concurrently against the same database — the same
+// reasoning as hazardAndGeo, for the same pair-of-engines shape.
+func modelAndGeo(
+	ctx context.Context,
+) (*networkmodel.Engine, *geo.Engine, func(), error) {
+	app, err := App()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if err := app.Start(ctx); err != nil {
+		return nil, nil, nil, fmt.Errorf("starting the application: %w", err)
+	}
+
+	cleanup := func() { _ = app.Stop(context.WithoutCancel(ctx)) }
+
+	nm, err := forge.Inject[*networkmodel.Engine](app.Container())
+	if err != nil {
+		cleanup()
+
+		return nil, nil, nil, fmt.Errorf("resolving the model engine: %w", err)
+	}
+
+	gx, err := forge.Inject[*geo.Engine](app.Container())
+	if err != nil {
+		cleanup()
+
+		return nil, nil, nil, fmt.Errorf("resolving the geo engine: %w", err)
+	}
+
+	return nm, gx, cleanup, nil
 }
 
 // geoShowCommand prints a route and the ends of its spans.

@@ -28,7 +28,7 @@ func modelCommand() cli.Command {
 		"model",
 		"Import, inspect and export network models",
 		func(ctx cli.CommandContext) error {
-			ctx.Println("usage: bsctl model <import|list|show|export>")
+			ctx.Println("usage: bsctl model <import|list|show|export|place>")
 
 			return nil
 		},
@@ -36,6 +36,7 @@ func modelCommand() cli.Command {
 		cli.WithSubcommand(modelListCommand()),
 		cli.WithSubcommand(modelShowCommand()),
 		cli.WithSubcommand(modelExportCommand()),
+		cli.WithSubcommand(modelPlaceCommand()),
 	)
 }
 
@@ -313,6 +314,68 @@ func modelExportCommand() cli.Command {
 			"format", "", "canonical, json or viewer", "canonical")),
 		cli.WithFlag(cli.NewStringFlag(
 			"coords", "", "CSV of bus,lat,lon[,elevation] for the viewer format", "")),
+	)
+}
+
+// modelPlaceCommand stores a model's bus coordinates.
+//
+// A stored coordinate file rather than something passed to one export, so
+// that placing a model's buses is a fact recorded once rather than an
+// argument every future export or trace has to remember to repeat. The CSV
+// stays the input format — it is what the ACTIVSg distribution ships — but
+// once it is read here it becomes rows a branch's endpoints can be looked up
+// by, which is what `bsctl geo trace-model` needs.
+func modelPlaceCommand() cli.Command {
+	return cli.NewCommand(
+		"place",
+		"Store a model's bus coordinates from a CSV",
+		func(ctx cli.CommandContext) error {
+			if ctx.NArgs() < 1 {
+				return errors.New(
+					"usage: bsctl model place <nmdl_… | content-hash> --coords FILE")
+			}
+
+			engine, cleanup, err := modelEngine(ctx.Context())
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			found, err := resolveModel(ctx, engine, ctx.Args()[0])
+			if err != nil {
+				return err
+			}
+
+			coords := ctx.String("coords")
+			if coords == "" {
+				// Required rather than defaulted, for the same reason --out is
+				// required on export: a command with nothing useful to do
+				// absent a flag should refuse rather than silently write zero
+				// placements.
+				return errors.New(
+					"--coords is required: a CSV of bus,lat,lon[,elevation]")
+			}
+
+			read, err := readPlacements(coords)
+			if err != nil {
+				return err
+			}
+
+			placements := placementsOf(read, found.ID)
+
+			if err := engine.Store().Placements().PutAll(
+				ctx.Context(), found.ID, placements); err != nil {
+				return err
+			}
+
+			ctx.Printf("placed %d buses for model %s\n", len(placements), found.ID)
+
+			return nil
+		},
+		cli.WithUsage(
+			"bsctl model place <nmdl_… | content-hash> --coords FILE"),
+		cli.WithFlag(cli.NewStringFlag(
+			"coords", "", "CSV of bus,lat,lon[,elevation]", "")),
 	)
 }
 

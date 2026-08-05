@@ -390,6 +390,16 @@ func (e *Engine) Encoding(ctx context.Context, hash string) ([]byte, error) {
 	return e.store.Blobs().Get(ctx, found.BlobRef)
 }
 
+// Store exposes the composite for a caller that needs a domain this engine
+// has no purpose-built method for — `bsctl model place` writes placements and
+// `bsctl geo trace-model` reads branches and placements directly, and adding
+// a pass-through method for each would just move the call up one layer.
+//
+// Not a general escape hatch: a caller reaching through it to write is
+// bypassing whatever validation and hooks a purpose-built method would have
+// applied.
+func (e *Engine) Store() store.Store { return e.store }
+
 // emit publishes a domain event, best effort.
 func (e *Engine) emit(ctx context.Context, stored model.NetworkModel) {
 	if e.bus == nil {

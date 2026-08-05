@@ -5,11 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
+	nmid "github.com/xraph/blackstart/extensions/networkmodel/id"
+	"github.com/xraph/blackstart/extensions/networkmodel/model"
 	"github.com/xraph/blackstart/extensions/networkmodel/viewer"
+	"github.com/xraph/blackstart/pkg/id"
 )
 
 // readPlacements loads bus coordinates from a CSV file.
@@ -114,4 +119,28 @@ func isNumeric(field string) bool {
 	_, err := strconv.ParseFloat(strings.TrimSpace(field), 64)
 
 	return err == nil
+}
+
+// placementsOf turns a parsed coordinate file into storable placements.
+//
+// Sorted by bus so two runs over one file write the same thing and a diff of
+// the result means something — Go map iteration is deliberately unordered.
+func placementsOf(in viewer.Placement, modelID id.ID) []model.Placement {
+	buses := slices.Sorted(maps.Keys(in))
+	out := make([]model.Placement, 0, len(buses))
+
+	for _, bus := range buses {
+		where := in[bus]
+
+		out = append(out, model.Placement{
+			ID:        nmid.NewPlacement(),
+			ModelID:   modelID,
+			Bus:       bus,
+			Lon:       where.Lon,
+			Lat:       where.Lat,
+			Elevation: where.Elevation,
+		})
+	}
+
+	return out
 }

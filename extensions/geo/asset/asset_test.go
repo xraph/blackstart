@@ -104,6 +104,10 @@ func TestOnlyABranchCarriesElectrically(t *testing.T) {
 		t.Error("a branch in a network model should carry electrically")
 	}
 
+	if !asset.CarriesElectrically(id.MustNew("br")) {
+		t.Error("a branch's own identifier should carry electrically")
+	}
+
 	if asset.CarriesElectrically(id.MustNew("circ")) {
 		t.Error("a circuit has no electrical parameters and must not be solvable")
 	}

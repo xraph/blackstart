@@ -94,8 +94,12 @@ func (p Provenance) PathIsReal() bool {
 // that runs a power flow or a contingency asks this before it starts, so the
 // refusal names the reason rather than surfacing as a missing branch deep in a
 // solver.
+//
+// Both a model identifier and a branch identifier pass. Phase 1 traced one
+// route per model, before a branch had identity of its own; a branch now
+// mints with its own prefix, and a route keyed by either must still be found.
 func CarriesElectrically(carrier id.ID) bool {
-	return carrier.Prefix() == nmid.Model
+	return carrier.Prefix() == nmid.Model || carrier.Prefix() == nmid.Branch
 }
 
 // Route is a path over the ground, and what it carries.
