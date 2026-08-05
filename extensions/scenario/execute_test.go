@@ -319,3 +319,61 @@ func TestExecuteRefusesARunThatWasNotClaimed(t *testing.T) {
 			f.screener.calls, f.simulator.calls)
 	}
 }
+
+// A stale copy of a claimed run does not execute.
+//
+// The argument is whatever a caller has been holding, and a run finished
+// elsewhere — or requeued after a timeout — still reads "running" in a
+// variable captured before that happened. Finish would refuse the write at
+// the end, but only after a sweep and a cascade had been recorded by two
+// other extensions with nothing pointing at them.
+func TestExecuteRefusesAStaleClaimedRun(t *testing.T) {
+	t.Parallel()
+
+	f := working()
+	e, store := engineWith(t, f)
+	manifest := executable(t, f)
+
+	defined, err := e.Define(t.Context(), scn.Scenario{Name: "derecho", Manifest: manifest})
+	if err != nil {
+		t.Fatalf("define: %v", err)
+	}
+
+	if _, err := e.Enqueue(t.Context(), defined.ID); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	claimed, err := store.Runs().Claim(t.Context())
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+
+	// Somebody else finished it. The caller's copy still says running.
+	finished := claimed
+	finished.Status = scn.StatusFailed
+	finished.Failure = &scn.Failure{Step: scn.StepCascade, Reason: "the worker was reaped"}
+	finished.FinishedAt = issued
+
+	if _, err := store.Runs().Finish(t.Context(), finished); err != nil {
+		t.Fatalf("finish: %v", err)
+	}
+
+	if _, err := e.Execute(t.Context(), claimed); err == nil {
+		t.Fatal("want an error: the stored run is no longer running")
+	}
+
+	if f.screener.calls != 0 || f.simulator.calls != 0 {
+		t.Errorf("a stale run still ran the pipeline: %d screens, %d cascades — "+
+			"both would have left an orphan child record", f.screener.calls,
+			f.simulator.calls)
+	}
+
+	stored, err := store.Runs().Get(t.Context(), claimed.ID)
+	if err != nil {
+		t.Fatalf("get run: %v", err)
+	}
+
+	if stored.Failure == nil || stored.Failure.Reason != "the worker was reaped" {
+		t.Errorf("the first outcome was overwritten: %+v", stored.Failure)
+	}
+}

@@ -21,6 +21,15 @@ import (
 // the run's own frozen manifest, which is what makes the stored result
 // citable.
 //
+// The run itself IS re-read, and that is not a contradiction — the manifest
+// is frozen against the scenario, not against the store. The argument is a
+// copy a caller has been holding, and a copy can be stale: a run finished
+// elsewhere, or requeued after a timeout, still reads "running" in a variable
+// captured before that happened. Trusting it would screen and cascade in
+// full, write a crun_… and a casc_… through two other extensions, and only
+// then be refused by Finish — leaving both child records orphaned with no
+// scenario run pointing at them.
+//
 // # Errors
 //
 // A pipeline failure is not an error: it is the run, stored failed, with its
@@ -29,11 +38,16 @@ import (
 // cannot turn into a stored fact and has to retry or report. A caller reads
 // Status to learn what happened; err answers a different question.
 func (e *Engine) Execute(ctx context.Context, in scn.Run) (scn.Run, error) {
+	in, err := e.store.Runs().Get(ctx, in.ID)
+	if err != nil {
+		return scn.Run{}, fmt.Errorf("scenario: reading the run to execute: %w", err)
+	}
+
 	if in.Status != scn.StatusRunning {
 		return scn.Run{}, fmt.Errorf(
-			"scenario: run %s is %q, not running; a run is executed after it is "+
-				"claimed, and the claim is what stops two workers from executing "+
-				"one scenario twice", in.ID, in.Status)
+			"scenario: run %s is %q in the store, not running; a run is executed "+
+				"after it is claimed, and the claim is what stops two workers from "+
+				"executing one scenario twice", in.ID, in.Status)
 	}
 
 	resolved, err := e.resolve(ctx, in.Manifest)
