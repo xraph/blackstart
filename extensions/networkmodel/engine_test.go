@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/xraph/blackstart/extensions/networkmodel"
+	"github.com/xraph/blackstart/extensions/networkmodel/store"
 	"github.com/xraph/blackstart/extensions/networkmodel/store/memory"
 	"github.com/xraph/blackstart/extensions/provenance"
 	provmemory "github.com/xraph/blackstart/extensions/provenance/store/memory"
@@ -39,6 +40,47 @@ func engine(t *testing.T, recorder provenance.Recorder, bus *hooks.Bus) *network
 	}
 
 	return e
+}
+
+// engineWithStore is engine, but also hands back the store underneath it —
+// needed by tests that must read back what the import wrote beside the
+// model row, such as its recorded branches.
+func engineWithStore(t *testing.T) (*networkmodel.Engine, store.Store) {
+	t.Helper()
+
+	s := memory.New()
+
+	e, err := networkmodel.NewEngine(s, nil, nil)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+
+	return e, s
+}
+
+const threeBusTwoBranches = `
+mpc.version = '2';
+mpc.baseMVA = 100;
+mpc.bus = [
+	1	3	0	0	0	0	1	1.06	0	138	1	1.06	0.94;
+	2	1	50	20	0	0	1	1.00	0	138	1	1.06	0.94;
+	3	1	30	10	0	0	1	1.00	0	138	1	1.06	0.94;
+];
+mpc.gen = [
+	1	80	0	100	-100	1.06	100	1	200	0;
+];
+mpc.branch = [
+	1	2	0.01	0.1	0.02	200	0	0	0	0	1;
+	2	3	0.01	0.1	0.02	200	0	0	0	0	1;
+];
+`
+
+// caseWithTwoBranches is a small case with two branches rather than the
+// single-branch two-bus fixture above, so a test asserting "one recorded
+// branch per canonical branch" cannot pass by accident on a network that
+// only ever had one.
+func caseWithTwoBranches(name string) networkmodel.ImportRequest {
+	return networkmodel.ImportRequest{Source: []byte(threeBusTwoBranches), Name: name}
 }
 
 // A real recorder over its in-memory store, not a fake. The chain this engine
@@ -225,5 +267,63 @@ func TestBuildingAModelEmitsADomainEvent(t *testing.T) {
 
 	if len(seen) != 1 || seen[0] != "networkmodel.built" {
 		t.Errorf("events %v", seen)
+	}
+}
+
+// An import gives every branch identity.
+//
+// The ordinals must be exactly the identifiers the canonical encoding uses,
+// because that is what the solver echoes back in a cascade event. An import
+// that minted its own numbering would produce rows nothing could look up.
+func TestImportRecordsABranchPerCanonicalBranch(t *testing.T) {
+	t.Parallel()
+
+	e, s := engineWithStore(t)
+
+	result, err := e.Import(t.Context(), caseWithTwoBranches("two-branch"))
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	got, err := s.Branches().ForModel(t.Context(), result.Model.ID)
+	if err != nil {
+		t.Fatalf("ForModel: %v", err)
+	}
+
+	if len(got) != result.Model.BranchCount {
+		t.Fatalf("recorded %d branches for a model of %d", len(got), result.Model.BranchCount)
+	}
+
+	if got[0].Ordinal != "branch-0" {
+		t.Errorf("first ordinal is %q, want branch-0", got[0].Ordinal)
+	}
+
+	if got[0].FromBus == "" || got[0].ToBus == "" {
+		t.Error("a recorded branch does not name its buses, so it can never be traced")
+	}
+}
+
+// The content hash is what every result cites. Recording identity beside the
+// blob must not move it — this is the one assertion here that protects
+// published results.
+func TestImportRecordingIdentityLeavesTheContentHashAlone(t *testing.T) {
+	t.Parallel()
+
+	e, _ := engineWithStore(t)
+
+	first, err := e.Import(t.Context(), caseWithTwoBranches("two-branch"))
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	// The same bytes, imported again, must be recognized as the same network.
+	second, err := e.Import(t.Context(), caseWithTwoBranches("two-branch-again"))
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	if first.Model.ContentHash != second.Model.ContentHash {
+		t.Errorf("content hash moved: %s then %s",
+			first.Model.ContentHash, second.Model.ContentHash)
 	}
 }

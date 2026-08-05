@@ -184,6 +184,30 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (ImportResult, er
 		return ImportResult{}, err
 	}
 
+	// Identity is written after the model row exists and before anything is
+	// emitted, so no consumer of the import event can observe a model whose
+	// branches are not there yet.
+	branches := make([]model.Branch, 0, len(parsed.Model.Branches))
+
+	for _, canonicalBranch := range parsed.Model.Branches {
+		branches = append(branches, model.Branch{
+			ID:      nmid.NewBranch(),
+			ModelID: stored.ID,
+			// Exactly the identifier the encoder writes and the solver echoes
+			// back in a cascade event. Minting a separate numbering here would
+			// produce rows nothing could look up.
+			Ordinal: canonicalBranch.ID,
+			FromBus: canonicalBranch.FromID,
+			ToBus:   canonicalBranch.ToID,
+			Alias:   parsed.Aliases[canonicalBranch.ID],
+		})
+	}
+
+	if err := e.store.Branches().PutAll(ctx, stored.ID, branches); err != nil {
+		return ImportResult{}, fmt.Errorf(
+			"networkmodel: recording the branches of %s: %w", stored.ID, err)
+	}
+
 	e.emit(ctx, stored)
 
 	return ImportResult{
