@@ -230,12 +230,31 @@ message Override {
   oneof change {
     BranchStatus branch_status = 1;
     BusInjection bus_injection = 2;
+    BranchRating branch_rating = 3;
   }
 }
 
 message BranchStatus {
   uint32 branch = 1;
   bool in_service = 2;
+}
+
+// One branch's long-term rating, replaced for this solve.
+//
+// A dynamic line rating is the same network under different weather, not a
+// different network: the impedances, the topology and every other branch are
+// unchanged, and only the limit the flow is judged against moves. That is an
+// override for exactly the reason a contingency is one.
+message BranchRating {
+  uint32 branch = 1;
+  // Long-term rating, VOLT-AMPERES, matching Branch.rating_va.
+  //
+  // Zero means unrated — the limit is unknown rather than zero — which is
+  // Branch.rating_va's convention and must stay that way here. A weather
+  // pipeline that could not derive a rating for a branch has to send no
+  // override at all rather than a zero, because a zero-rated branch reads as
+  // infinitely overloaded and would trip a whole network on the first screen.
+  double rating_va = 2;
 }
 
 message BusInjection {

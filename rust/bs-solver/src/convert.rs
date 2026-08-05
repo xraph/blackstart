@@ -151,6 +151,17 @@ pub fn apply_overrides(case: &mut Case, overrides: &[proto::Override]) {
                     bus.q_injection = injection.q_injection_var / s_base;
                 }
             }
+            // Normalized by the same `/ s_base` the model's own `rating_va`
+            // goes through above, so a rating that arrives as an override and
+            // the same rating baked into the uploaded model are the same
+            // number here. Zero passes through untouched because zero is what
+            // `Branch::rating` already means by unrated.
+            Some(proto::r#override::Change::BranchRating(rating)) => {
+                let s_base = case.base.s_base();
+                if let Some(branch) = case.branches.get_mut(rating.branch as usize) {
+                    branch.rating = rating.rating_va / s_base;
+                }
+            }
             None => {}
         }
     }
@@ -351,7 +362,9 @@ pub fn to_scheme(wire: Option<&proto::UflsScheme>) -> Scheme {
 // `bs-case`'s own constructor tests document.
 #[allow(clippy::float_cmp)]
 mod tests {
-    use super::{to_case, to_curve, to_distance, to_overcurrent, to_protection, to_scheme};
+    use super::{
+        apply_overrides, to_case, to_curve, to_distance, to_overcurrent, to_protection, to_scheme,
+    };
     use crate::proto;
 
     /// A minimal one-bus, zero-branch model, so `to_case` has something to
@@ -548,5 +561,84 @@ mod tests {
             1,
             "the band substitution must not touch the stages"
         );
+    }
+
+    /// A rating override lands in per unit, not in volt-amperes.
+    ///
+    /// The whole point of the override is that a weather-derived rating and a
+    /// rating uploaded inside the model become the same number once they are
+    /// in a `Case`. Skipping the `/ s_base` would leave a 478 MVA rating
+    /// sitting next to per-unit flows around 1.0, and every branch would read
+    /// as comfortably within a limit 478 million times its own flow.
+    ///
+    /// What would make this fail: `apply_overrides` assigning `rating_va`
+    /// directly, or converting with `v_base_v` instead of `s_base_va`.
+    #[test]
+    fn a_rating_override_is_normalized_against_the_power_base() {
+        let mut case = to_case(&two_bus_one_branch()).expect("a two-bus model converts");
+
+        apply_overrides(
+            &mut case,
+            &[proto::Override {
+                change: Some(proto::r#override::Change::BranchRating(
+                    proto::BranchRating {
+                        branch: 0,
+                        rating_va: 478.0e6,
+                    },
+                )),
+            }],
+        );
+
+        assert!((case.branches[0].rating - 4.78).abs() < 1e-9);
+    }
+
+    /// An override naming a branch the model does not have is ignored, the
+    /// same way an out-of-range status override already is: one bad index
+    /// from a client must not lose the sweep.
+    #[test]
+    fn a_rating_override_for_a_missing_branch_is_ignored() {
+        let mut case = to_case(&two_bus_one_branch()).expect("a two-bus model converts");
+        let before = case.branches[0].rating;
+
+        apply_overrides(
+            &mut case,
+            &[proto::Override {
+                change: Some(proto::r#override::Change::BranchRating(
+                    proto::BranchRating {
+                        branch: 99,
+                        rating_va: 478.0e6,
+                    },
+                )),
+            }],
+        );
+
+        assert_eq!(case.branches[0].rating, before);
+    }
+
+    /// A slack bus, a load bus, and one line between them, so the override
+    /// tests have a branch to aim at.
+    fn two_bus_one_branch() -> proto::NetworkModel {
+        let load = proto::Bus {
+            id: "l".to_owned(),
+            kind: proto::BusKind::Pq as i32,
+            ..slack_bus()
+        };
+
+        proto::NetworkModel {
+            branches: vec![proto::Branch {
+                id: "ln1".to_owned(),
+                from_bus: 0,
+                to_bus: 1,
+                r_ohm: 1.0,
+                x_ohm: 10.0,
+                b_shunt_s: 0.0,
+                rating_va: 100.0e6,
+                in_service: true,
+                tap: 1.0,
+                shift_rad: 0.0,
+            }],
+            buses: vec![slack_bus(), load],
+            ..minimal_model(slack_bus())
+        }
     }
 }

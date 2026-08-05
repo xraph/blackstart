@@ -1185,6 +1185,7 @@ type Override struct {
 	//
 	//	*Override_BranchStatus
 	//	*Override_BusInjection
+	//	*Override_BranchRating
 	Change        isOverride_Change `protobuf_oneof:"change"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1245,6 +1246,15 @@ func (x *Override) GetBusInjection() *BusInjection {
 	return nil
 }
 
+func (x *Override) GetBranchRating() *BranchRating {
+	if x != nil {
+		if x, ok := x.Change.(*Override_BranchRating); ok {
+			return x.BranchRating
+		}
+	}
+	return nil
+}
+
 type isOverride_Change interface {
 	isOverride_Change()
 }
@@ -1257,9 +1267,15 @@ type Override_BusInjection struct {
 	BusInjection *BusInjection `protobuf:"bytes,2,opt,name=bus_injection,json=busInjection,proto3,oneof"`
 }
 
+type Override_BranchRating struct {
+	BranchRating *BranchRating `protobuf:"bytes,3,opt,name=branch_rating,json=branchRating,proto3,oneof"`
+}
+
 func (*Override_BranchStatus) isOverride_Change() {}
 
 func (*Override_BusInjection) isOverride_Change() {}
+
+func (*Override_BranchRating) isOverride_Change() {}
 
 type BranchStatus struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1313,6 +1329,71 @@ func (x *BranchStatus) GetInService() bool {
 	return false
 }
 
+// One branch's long-term rating, replaced for this solve.
+//
+// A dynamic line rating is the same network under different weather, not a
+// different network: the impedances, the topology and every other branch are
+// unchanged, and only the limit the flow is judged against moves. That is an
+// override for exactly the reason a contingency is one.
+type BranchRating struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Branch uint32                 `protobuf:"varint,1,opt,name=branch,proto3" json:"branch,omitempty"`
+	// Long-term rating, VOLT-AMPERES, matching Branch.rating_va.
+	//
+	// Zero means unrated — the limit is unknown rather than zero — which is
+	// Branch.rating_va's convention and must stay that way here. A weather
+	// pipeline that could not derive a rating for a branch has to send no
+	// override at all rather than a zero, because a zero-rated branch reads as
+	// infinitely overloaded and would trip a whole network on the first screen.
+	RatingVa      float64 `protobuf:"fixed64,2,opt,name=rating_va,json=ratingVa,proto3" json:"rating_va,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BranchRating) Reset() {
+	*x = BranchRating{}
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BranchRating) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BranchRating) ProtoMessage() {}
+
+func (x *BranchRating) ProtoReflect() protoreflect.Message {
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BranchRating.ProtoReflect.Descriptor instead.
+func (*BranchRating) Descriptor() ([]byte, []int) {
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *BranchRating) GetBranch() uint32 {
+	if x != nil {
+		return x.Branch
+	}
+	return 0
+}
+
+func (x *BranchRating) GetRatingVa() float64 {
+	if x != nil {
+		return x.RatingVa
+	}
+	return 0
+}
+
 type BusInjection struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Bus   uint32                 `protobuf:"varint,1,opt,name=bus,proto3" json:"bus,omitempty"`
@@ -1325,7 +1406,7 @@ type BusInjection struct {
 
 func (x *BusInjection) Reset() {
 	*x = BusInjection{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[10]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1337,7 +1418,7 @@ func (x *BusInjection) String() string {
 func (*BusInjection) ProtoMessage() {}
 
 func (x *BusInjection) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[10]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1350,7 +1431,7 @@ func (x *BusInjection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BusInjection.ProtoReflect.Descriptor instead.
 func (*BusInjection) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{10}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *BusInjection) GetBus() uint32 {
@@ -1403,7 +1484,7 @@ type SolvePowerFlowRequest struct {
 
 func (x *SolvePowerFlowRequest) Reset() {
 	*x = SolvePowerFlowRequest{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[11]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1415,7 +1496,7 @@ func (x *SolvePowerFlowRequest) String() string {
 func (*SolvePowerFlowRequest) ProtoMessage() {}
 
 func (x *SolvePowerFlowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[11]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1428,7 +1509,7 @@ func (x *SolvePowerFlowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SolvePowerFlowRequest.ProtoReflect.Descriptor instead.
 func (*SolvePowerFlowRequest) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{11}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SolvePowerFlowRequest) GetContentHash() string {
@@ -1489,7 +1570,7 @@ type BusResult struct {
 
 func (x *BusResult) Reset() {
 	*x = BusResult{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[12]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1501,7 +1582,7 @@ func (x *BusResult) String() string {
 func (*BusResult) ProtoMessage() {}
 
 func (x *BusResult) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[12]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1514,7 +1595,7 @@ func (x *BusResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BusResult.ProtoReflect.Descriptor instead.
 func (*BusResult) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{12}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *BusResult) GetVMagnitudeV() float64 {
@@ -1557,7 +1638,7 @@ type BranchResult struct {
 
 func (x *BranchResult) Reset() {
 	*x = BranchResult{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[13]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1569,7 +1650,7 @@ func (x *BranchResult) String() string {
 func (*BranchResult) ProtoMessage() {}
 
 func (x *BranchResult) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[13]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1582,7 +1663,7 @@ func (x *BranchResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BranchResult.ProtoReflect.Descriptor instead.
 func (*BranchResult) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{13}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *BranchResult) GetPFlowW() float64 {
@@ -1624,7 +1705,7 @@ type SolvePowerFlowResponse struct {
 
 func (x *SolvePowerFlowResponse) Reset() {
 	*x = SolvePowerFlowResponse{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[14]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1636,7 +1717,7 @@ func (x *SolvePowerFlowResponse) String() string {
 func (*SolvePowerFlowResponse) ProtoMessage() {}
 
 func (x *SolvePowerFlowResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[14]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1649,7 +1730,7 @@ func (x *SolvePowerFlowResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SolvePowerFlowResponse.ProtoReflect.Descriptor instead.
 func (*SolvePowerFlowResponse) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{14}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *SolvePowerFlowResponse) GetBuses() []*BusResult {
@@ -1715,7 +1796,7 @@ type Contingency struct {
 
 func (x *Contingency) Reset() {
 	*x = Contingency{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[15]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1727,7 +1808,7 @@ func (x *Contingency) String() string {
 func (*Contingency) ProtoMessage() {}
 
 func (x *Contingency) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[15]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1740,7 +1821,7 @@ func (x *Contingency) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Contingency.ProtoReflect.Descriptor instead.
 func (*Contingency) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{15}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Contingency) GetId() string {
@@ -1778,7 +1859,7 @@ type ScreenContingenciesRequest struct {
 
 func (x *ScreenContingenciesRequest) Reset() {
 	*x = ScreenContingenciesRequest{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[16]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1790,7 +1871,7 @@ func (x *ScreenContingenciesRequest) String() string {
 func (*ScreenContingenciesRequest) ProtoMessage() {}
 
 func (x *ScreenContingenciesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[16]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1803,7 +1884,7 @@ func (x *ScreenContingenciesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenContingenciesRequest.ProtoReflect.Descriptor instead.
 func (*ScreenContingenciesRequest) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{16}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ScreenContingenciesRequest) GetContentHash() string {
@@ -1849,7 +1930,7 @@ type Violation struct {
 
 func (x *Violation) Reset() {
 	*x = Violation{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[17]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1861,7 +1942,7 @@ func (x *Violation) String() string {
 func (*Violation) ProtoMessage() {}
 
 func (x *Violation) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[17]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1874,7 +1955,7 @@ func (x *Violation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Violation.ProtoReflect.Descriptor instead.
 func (*Violation) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{17}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Violation) GetBranch() uint32 {
@@ -1930,7 +2011,7 @@ type ScreenContingenciesResponse struct {
 
 func (x *ScreenContingenciesResponse) Reset() {
 	*x = ScreenContingenciesResponse{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[18]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1942,7 +2023,7 @@ func (x *ScreenContingenciesResponse) String() string {
 func (*ScreenContingenciesResponse) ProtoMessage() {}
 
 func (x *ScreenContingenciesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[18]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1955,7 +2036,7 @@ func (x *ScreenContingenciesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenContingenciesResponse.ProtoReflect.Descriptor instead.
 func (*ScreenContingenciesResponse) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{18}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ScreenContingenciesResponse) GetContingency() *Contingency {
@@ -2002,7 +2083,7 @@ type UflsStage struct {
 
 func (x *UflsStage) Reset() {
 	*x = UflsStage{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[19]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2014,7 +2095,7 @@ func (x *UflsStage) String() string {
 func (*UflsStage) ProtoMessage() {}
 
 func (x *UflsStage) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[19]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2027,7 +2108,7 @@ func (x *UflsStage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UflsStage.ProtoReflect.Descriptor instead.
 func (*UflsStage) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{19}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *UflsStage) GetAtHz() float64 {
@@ -2070,7 +2151,7 @@ type UflsScheme struct {
 
 func (x *UflsScheme) Reset() {
 	*x = UflsScheme{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[20]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2082,7 +2163,7 @@ func (x *UflsScheme) String() string {
 func (*UflsScheme) ProtoMessage() {}
 
 func (x *UflsScheme) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[20]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2095,7 +2176,7 @@ func (x *UflsScheme) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UflsScheme.ProtoReflect.Descriptor instead.
 func (*UflsScheme) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{20}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *UflsScheme) GetStages() []*UflsStage {
@@ -2147,7 +2228,7 @@ type OvercurrentSettings struct {
 
 func (x *OvercurrentSettings) Reset() {
 	*x = OvercurrentSettings{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[21]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2159,7 +2240,7 @@ func (x *OvercurrentSettings) String() string {
 func (*OvercurrentSettings) ProtoMessage() {}
 
 func (x *OvercurrentSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[21]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2172,7 +2253,7 @@ func (x *OvercurrentSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OvercurrentSettings.ProtoReflect.Descriptor instead.
 func (*OvercurrentSettings) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{21}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *OvercurrentSettings) GetPickup() float64 {
@@ -2226,7 +2307,7 @@ type DistanceZone struct {
 
 func (x *DistanceZone) Reset() {
 	*x = DistanceZone{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[22]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2238,7 +2319,7 @@ func (x *DistanceZone) String() string {
 func (*DistanceZone) ProtoMessage() {}
 
 func (x *DistanceZone) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[22]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2251,7 +2332,7 @@ func (x *DistanceZone) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DistanceZone.ProtoReflect.Descriptor instead.
 func (*DistanceZone) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{22}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *DistanceZone) GetReach() float64 {
@@ -2282,7 +2363,7 @@ type DistanceSettings struct {
 
 func (x *DistanceSettings) Reset() {
 	*x = DistanceSettings{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[23]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2294,7 +2375,7 @@ func (x *DistanceSettings) String() string {
 func (*DistanceSettings) ProtoMessage() {}
 
 func (x *DistanceSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[23]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2307,7 +2388,7 @@ func (x *DistanceSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DistanceSettings.ProtoReflect.Descriptor instead.
 func (*DistanceSettings) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{23}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *DistanceSettings) GetZones() []*DistanceZone {
@@ -2338,7 +2419,7 @@ type ProtectionSettings struct {
 
 func (x *ProtectionSettings) Reset() {
 	*x = ProtectionSettings{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[24]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2350,7 +2431,7 @@ func (x *ProtectionSettings) String() string {
 func (*ProtectionSettings) ProtoMessage() {}
 
 func (x *ProtectionSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[24]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2363,7 +2444,7 @@ func (x *ProtectionSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProtectionSettings.ProtoReflect.Descriptor instead.
 func (*ProtectionSettings) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{24}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ProtectionSettings) GetOvercurrent() *OvercurrentSettings {
@@ -2392,7 +2473,7 @@ type BranchProtection struct {
 
 func (x *BranchProtection) Reset() {
 	*x = BranchProtection{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[25]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2404,7 +2485,7 @@ func (x *BranchProtection) String() string {
 func (*BranchProtection) ProtoMessage() {}
 
 func (x *BranchProtection) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[25]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2417,7 +2498,7 @@ func (x *BranchProtection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BranchProtection.ProtoReflect.Descriptor instead.
 func (*BranchProtection) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{25}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *BranchProtection) GetBranch() uint32 {
@@ -2480,7 +2561,7 @@ type SimulateCascadeRequest struct {
 
 func (x *SimulateCascadeRequest) Reset() {
 	*x = SimulateCascadeRequest{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[26]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2492,7 +2573,7 @@ func (x *SimulateCascadeRequest) String() string {
 func (*SimulateCascadeRequest) ProtoMessage() {}
 
 func (x *SimulateCascadeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[26]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2505,7 +2586,7 @@ func (x *SimulateCascadeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SimulateCascadeRequest.ProtoReflect.Descriptor instead.
 func (*SimulateCascadeRequest) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{26}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *SimulateCascadeRequest) GetContentHash() string {
@@ -2601,7 +2682,7 @@ type CascadeEvent struct {
 
 func (x *CascadeEvent) Reset() {
 	*x = CascadeEvent{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[27]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2613,7 +2694,7 @@ func (x *CascadeEvent) String() string {
 func (*CascadeEvent) ProtoMessage() {}
 
 func (x *CascadeEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[27]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2626,7 +2707,7 @@ func (x *CascadeEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CascadeEvent.ProtoReflect.Descriptor instead.
 func (*CascadeEvent) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{27}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *CascadeEvent) GetAtS() float64 {
@@ -2682,7 +2763,7 @@ type FrequencySample struct {
 
 func (x *FrequencySample) Reset() {
 	*x = FrequencySample{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[28]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2694,7 +2775,7 @@ func (x *FrequencySample) String() string {
 func (*FrequencySample) ProtoMessage() {}
 
 func (x *FrequencySample) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[28]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2707,7 +2788,7 @@ func (x *FrequencySample) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FrequencySample.ProtoReflect.Descriptor instead.
 func (*FrequencySample) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{28}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *FrequencySample) GetAtS() float64 {
@@ -2790,7 +2871,7 @@ type IslandState struct {
 
 func (x *IslandState) Reset() {
 	*x = IslandState{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[29]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2802,7 +2883,7 @@ func (x *IslandState) String() string {
 func (*IslandState) ProtoMessage() {}
 
 func (x *IslandState) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[29]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2815,7 +2896,7 @@ func (x *IslandState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IslandState.ProtoReflect.Descriptor instead.
 func (*IslandState) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{29}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *IslandState) GetBuses() []uint32 {
@@ -2916,7 +2997,7 @@ type SimulateCascadeResponse struct {
 
 func (x *SimulateCascadeResponse) Reset() {
 	*x = SimulateCascadeResponse{}
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[30]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2928,7 +3009,7 @@ func (x *SimulateCascadeResponse) String() string {
 func (*SimulateCascadeResponse) ProtoMessage() {}
 
 func (x *SimulateCascadeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[30]
+	mi := &file_blackstart_solver_v1_solver_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2941,7 +3022,7 @@ func (x *SimulateCascadeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SimulateCascadeResponse.ProtoReflect.Descriptor instead.
 func (*SimulateCascadeResponse) Descriptor() ([]byte, []int) {
-	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{30}
+	return file_blackstart_solver_v1_solver_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *SimulateCascadeResponse) GetOutcome() CascadeOutcome {
@@ -3072,15 +3153,19 @@ const file_blackstart_solver_v1_solver_proto_rawDesc = "" +
 	"\x16HasNetworkModelRequest\x12!\n" +
 	"\fcontent_hash\x18\x01 \x01(\tR\vcontentHash\"3\n" +
 	"\x17HasNetworkModelResponse\x12\x18\n" +
-	"\apresent\x18\x01 \x01(\bR\apresent\"\xaa\x01\n" +
+	"\apresent\x18\x01 \x01(\bR\apresent\"\xf5\x01\n" +
 	"\bOverride\x12I\n" +
 	"\rbranch_status\x18\x01 \x01(\v2\".blackstart.solver.v1.BranchStatusH\x00R\fbranchStatus\x12I\n" +
-	"\rbus_injection\x18\x02 \x01(\v2\".blackstart.solver.v1.BusInjectionH\x00R\fbusInjectionB\b\n" +
+	"\rbus_injection\x18\x02 \x01(\v2\".blackstart.solver.v1.BusInjectionH\x00R\fbusInjection\x12I\n" +
+	"\rbranch_rating\x18\x03 \x01(\v2\".blackstart.solver.v1.BranchRatingH\x00R\fbranchRatingB\b\n" +
 	"\x06change\"E\n" +
 	"\fBranchStatus\x12\x16\n" +
 	"\x06branch\x18\x01 \x01(\rR\x06branch\x12\x1d\n" +
 	"\n" +
-	"in_service\x18\x02 \x01(\bR\tinService\"l\n" +
+	"in_service\x18\x02 \x01(\bR\tinService\"C\n" +
+	"\fBranchRating\x12\x16\n" +
+	"\x06branch\x18\x01 \x01(\rR\x06branch\x12\x1b\n" +
+	"\trating_va\x18\x02 \x01(\x01R\bratingVa\"l\n" +
 	"\fBusInjection\x12\x10\n" +
 	"\x03bus\x18\x01 \x01(\rR\x03bus\x12\"\n" +
 	"\rp_injection_w\x18\x02 \x01(\x01R\vpInjectionW\x12&\n" +
@@ -3277,7 +3362,7 @@ func file_blackstart_solver_v1_solver_proto_rawDescGZIP() []byte {
 }
 
 var file_blackstart_solver_v1_solver_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_blackstart_solver_v1_solver_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
+var file_blackstart_solver_v1_solver_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_blackstart_solver_v1_solver_proto_goTypes = []any{
 	(BusKind)(0),                        // 0: blackstart.solver.v1.BusKind
 	(Method)(0),                         // 1: blackstart.solver.v1.Method
@@ -3297,27 +3382,28 @@ var file_blackstart_solver_v1_solver_proto_goTypes = []any{
 	(*HasNetworkModelResponse)(nil),     // 15: blackstart.solver.v1.HasNetworkModelResponse
 	(*Override)(nil),                    // 16: blackstart.solver.v1.Override
 	(*BranchStatus)(nil),                // 17: blackstart.solver.v1.BranchStatus
-	(*BusInjection)(nil),                // 18: blackstart.solver.v1.BusInjection
-	(*SolvePowerFlowRequest)(nil),       // 19: blackstart.solver.v1.SolvePowerFlowRequest
-	(*BusResult)(nil),                   // 20: blackstart.solver.v1.BusResult
-	(*BranchResult)(nil),                // 21: blackstart.solver.v1.BranchResult
-	(*SolvePowerFlowResponse)(nil),      // 22: blackstart.solver.v1.SolvePowerFlowResponse
-	(*Contingency)(nil),                 // 23: blackstart.solver.v1.Contingency
-	(*ScreenContingenciesRequest)(nil),  // 24: blackstart.solver.v1.ScreenContingenciesRequest
-	(*Violation)(nil),                   // 25: blackstart.solver.v1.Violation
-	(*ScreenContingenciesResponse)(nil), // 26: blackstart.solver.v1.ScreenContingenciesResponse
-	(*UflsStage)(nil),                   // 27: blackstart.solver.v1.UflsStage
-	(*UflsScheme)(nil),                  // 28: blackstart.solver.v1.UflsScheme
-	(*OvercurrentSettings)(nil),         // 29: blackstart.solver.v1.OvercurrentSettings
-	(*DistanceZone)(nil),                // 30: blackstart.solver.v1.DistanceZone
-	(*DistanceSettings)(nil),            // 31: blackstart.solver.v1.DistanceSettings
-	(*ProtectionSettings)(nil),          // 32: blackstart.solver.v1.ProtectionSettings
-	(*BranchProtection)(nil),            // 33: blackstart.solver.v1.BranchProtection
-	(*SimulateCascadeRequest)(nil),      // 34: blackstart.solver.v1.SimulateCascadeRequest
-	(*CascadeEvent)(nil),                // 35: blackstart.solver.v1.CascadeEvent
-	(*FrequencySample)(nil),             // 36: blackstart.solver.v1.FrequencySample
-	(*IslandState)(nil),                 // 37: blackstart.solver.v1.IslandState
-	(*SimulateCascadeResponse)(nil),     // 38: blackstart.solver.v1.SimulateCascadeResponse
+	(*BranchRating)(nil),                // 18: blackstart.solver.v1.BranchRating
+	(*BusInjection)(nil),                // 19: blackstart.solver.v1.BusInjection
+	(*SolvePowerFlowRequest)(nil),       // 20: blackstart.solver.v1.SolvePowerFlowRequest
+	(*BusResult)(nil),                   // 21: blackstart.solver.v1.BusResult
+	(*BranchResult)(nil),                // 22: blackstart.solver.v1.BranchResult
+	(*SolvePowerFlowResponse)(nil),      // 23: blackstart.solver.v1.SolvePowerFlowResponse
+	(*Contingency)(nil),                 // 24: blackstart.solver.v1.Contingency
+	(*ScreenContingenciesRequest)(nil),  // 25: blackstart.solver.v1.ScreenContingenciesRequest
+	(*Violation)(nil),                   // 26: blackstart.solver.v1.Violation
+	(*ScreenContingenciesResponse)(nil), // 27: blackstart.solver.v1.ScreenContingenciesResponse
+	(*UflsStage)(nil),                   // 28: blackstart.solver.v1.UflsStage
+	(*UflsScheme)(nil),                  // 29: blackstart.solver.v1.UflsScheme
+	(*OvercurrentSettings)(nil),         // 30: blackstart.solver.v1.OvercurrentSettings
+	(*DistanceZone)(nil),                // 31: blackstart.solver.v1.DistanceZone
+	(*DistanceSettings)(nil),            // 32: blackstart.solver.v1.DistanceSettings
+	(*ProtectionSettings)(nil),          // 33: blackstart.solver.v1.ProtectionSettings
+	(*BranchProtection)(nil),            // 34: blackstart.solver.v1.BranchProtection
+	(*SimulateCascadeRequest)(nil),      // 35: blackstart.solver.v1.SimulateCascadeRequest
+	(*CascadeEvent)(nil),                // 36: blackstart.solver.v1.CascadeEvent
+	(*FrequencySample)(nil),             // 37: blackstart.solver.v1.FrequencySample
+	(*IslandState)(nil),                 // 38: blackstart.solver.v1.IslandState
+	(*SimulateCascadeResponse)(nil),     // 39: blackstart.solver.v1.SimulateCascadeResponse
 }
 var file_blackstart_solver_v1_solver_proto_depIdxs = []int32{
 	0,  // 0: blackstart.solver.v1.Bus.kind:type_name -> blackstart.solver.v1.BusKind
@@ -3325,48 +3411,49 @@ var file_blackstart_solver_v1_solver_proto_depIdxs = []int32{
 	9,  // 2: blackstart.solver.v1.NetworkModel.branches:type_name -> blackstart.solver.v1.Branch
 	12, // 3: blackstart.solver.v1.PutNetworkModelRequest.header:type_name -> blackstart.solver.v1.PutNetworkModelHeader
 	17, // 4: blackstart.solver.v1.Override.branch_status:type_name -> blackstart.solver.v1.BranchStatus
-	18, // 5: blackstart.solver.v1.Override.bus_injection:type_name -> blackstart.solver.v1.BusInjection
-	1,  // 6: blackstart.solver.v1.SolvePowerFlowRequest.method:type_name -> blackstart.solver.v1.Method
-	16, // 7: blackstart.solver.v1.SolvePowerFlowRequest.overrides:type_name -> blackstart.solver.v1.Override
-	20, // 8: blackstart.solver.v1.SolvePowerFlowResponse.buses:type_name -> blackstart.solver.v1.BusResult
-	21, // 9: blackstart.solver.v1.SolvePowerFlowResponse.branches:type_name -> blackstart.solver.v1.BranchResult
-	16, // 10: blackstart.solver.v1.ScreenContingenciesRequest.overrides:type_name -> blackstart.solver.v1.Override
-	23, // 11: blackstart.solver.v1.ScreenContingenciesRequest.contingencies:type_name -> blackstart.solver.v1.Contingency
-	23, // 12: blackstart.solver.v1.ScreenContingenciesResponse.contingency:type_name -> blackstart.solver.v1.Contingency
-	2,  // 13: blackstart.solver.v1.ScreenContingenciesResponse.screenability:type_name -> blackstart.solver.v1.Screenability
-	25, // 14: blackstart.solver.v1.ScreenContingenciesResponse.violations:type_name -> blackstart.solver.v1.Violation
-	27, // 15: blackstart.solver.v1.UflsScheme.stages:type_name -> blackstart.solver.v1.UflsStage
-	3,  // 16: blackstart.solver.v1.OvercurrentSettings.curve:type_name -> blackstart.solver.v1.Curve
-	30, // 17: blackstart.solver.v1.DistanceSettings.zones:type_name -> blackstart.solver.v1.DistanceZone
-	29, // 18: blackstart.solver.v1.ProtectionSettings.overcurrent:type_name -> blackstart.solver.v1.OvercurrentSettings
-	31, // 19: blackstart.solver.v1.ProtectionSettings.distance:type_name -> blackstart.solver.v1.DistanceSettings
-	32, // 20: blackstart.solver.v1.BranchProtection.settings:type_name -> blackstart.solver.v1.ProtectionSettings
-	16, // 21: blackstart.solver.v1.SimulateCascadeRequest.overrides:type_name -> blackstart.solver.v1.Override
-	32, // 22: blackstart.solver.v1.SimulateCascadeRequest.protection:type_name -> blackstart.solver.v1.ProtectionSettings
-	33, // 23: blackstart.solver.v1.SimulateCascadeRequest.branch_protection:type_name -> blackstart.solver.v1.BranchProtection
-	28, // 24: blackstart.solver.v1.SimulateCascadeRequest.ufls:type_name -> blackstart.solver.v1.UflsScheme
-	4,  // 25: blackstart.solver.v1.CascadeEvent.kind:type_name -> blackstart.solver.v1.CascadeEventKind
-	5,  // 26: blackstart.solver.v1.IslandState.condition:type_name -> blackstart.solver.v1.IslandCondition
-	6,  // 27: blackstart.solver.v1.IslandState.verdict:type_name -> blackstart.solver.v1.AcVerdict
-	36, // 28: blackstart.solver.v1.IslandState.trace:type_name -> blackstart.solver.v1.FrequencySample
-	7,  // 29: blackstart.solver.v1.SimulateCascadeResponse.outcome:type_name -> blackstart.solver.v1.CascadeOutcome
-	35, // 30: blackstart.solver.v1.SimulateCascadeResponse.events:type_name -> blackstart.solver.v1.CascadeEvent
-	37, // 31: blackstart.solver.v1.SimulateCascadeResponse.islands:type_name -> blackstart.solver.v1.IslandState
-	11, // 32: blackstart.solver.v1.SolverService.PutNetworkModel:input_type -> blackstart.solver.v1.PutNetworkModelRequest
-	14, // 33: blackstart.solver.v1.SolverService.HasNetworkModel:input_type -> blackstart.solver.v1.HasNetworkModelRequest
-	19, // 34: blackstart.solver.v1.SolverService.SolvePowerFlow:input_type -> blackstart.solver.v1.SolvePowerFlowRequest
-	24, // 35: blackstart.solver.v1.SolverService.ScreenContingencies:input_type -> blackstart.solver.v1.ScreenContingenciesRequest
-	34, // 36: blackstart.solver.v1.SolverService.SimulateCascade:input_type -> blackstart.solver.v1.SimulateCascadeRequest
-	13, // 37: blackstart.solver.v1.SolverService.PutNetworkModel:output_type -> blackstart.solver.v1.PutNetworkModelResponse
-	15, // 38: blackstart.solver.v1.SolverService.HasNetworkModel:output_type -> blackstart.solver.v1.HasNetworkModelResponse
-	22, // 39: blackstart.solver.v1.SolverService.SolvePowerFlow:output_type -> blackstart.solver.v1.SolvePowerFlowResponse
-	26, // 40: blackstart.solver.v1.SolverService.ScreenContingencies:output_type -> blackstart.solver.v1.ScreenContingenciesResponse
-	38, // 41: blackstart.solver.v1.SolverService.SimulateCascade:output_type -> blackstart.solver.v1.SimulateCascadeResponse
-	37, // [37:42] is the sub-list for method output_type
-	32, // [32:37] is the sub-list for method input_type
-	32, // [32:32] is the sub-list for extension type_name
-	32, // [32:32] is the sub-list for extension extendee
-	0,  // [0:32] is the sub-list for field type_name
+	19, // 5: blackstart.solver.v1.Override.bus_injection:type_name -> blackstart.solver.v1.BusInjection
+	18, // 6: blackstart.solver.v1.Override.branch_rating:type_name -> blackstart.solver.v1.BranchRating
+	1,  // 7: blackstart.solver.v1.SolvePowerFlowRequest.method:type_name -> blackstart.solver.v1.Method
+	16, // 8: blackstart.solver.v1.SolvePowerFlowRequest.overrides:type_name -> blackstart.solver.v1.Override
+	21, // 9: blackstart.solver.v1.SolvePowerFlowResponse.buses:type_name -> blackstart.solver.v1.BusResult
+	22, // 10: blackstart.solver.v1.SolvePowerFlowResponse.branches:type_name -> blackstart.solver.v1.BranchResult
+	16, // 11: blackstart.solver.v1.ScreenContingenciesRequest.overrides:type_name -> blackstart.solver.v1.Override
+	24, // 12: blackstart.solver.v1.ScreenContingenciesRequest.contingencies:type_name -> blackstart.solver.v1.Contingency
+	24, // 13: blackstart.solver.v1.ScreenContingenciesResponse.contingency:type_name -> blackstart.solver.v1.Contingency
+	2,  // 14: blackstart.solver.v1.ScreenContingenciesResponse.screenability:type_name -> blackstart.solver.v1.Screenability
+	26, // 15: blackstart.solver.v1.ScreenContingenciesResponse.violations:type_name -> blackstart.solver.v1.Violation
+	28, // 16: blackstart.solver.v1.UflsScheme.stages:type_name -> blackstart.solver.v1.UflsStage
+	3,  // 17: blackstart.solver.v1.OvercurrentSettings.curve:type_name -> blackstart.solver.v1.Curve
+	31, // 18: blackstart.solver.v1.DistanceSettings.zones:type_name -> blackstart.solver.v1.DistanceZone
+	30, // 19: blackstart.solver.v1.ProtectionSettings.overcurrent:type_name -> blackstart.solver.v1.OvercurrentSettings
+	32, // 20: blackstart.solver.v1.ProtectionSettings.distance:type_name -> blackstart.solver.v1.DistanceSettings
+	33, // 21: blackstart.solver.v1.BranchProtection.settings:type_name -> blackstart.solver.v1.ProtectionSettings
+	16, // 22: blackstart.solver.v1.SimulateCascadeRequest.overrides:type_name -> blackstart.solver.v1.Override
+	33, // 23: blackstart.solver.v1.SimulateCascadeRequest.protection:type_name -> blackstart.solver.v1.ProtectionSettings
+	34, // 24: blackstart.solver.v1.SimulateCascadeRequest.branch_protection:type_name -> blackstart.solver.v1.BranchProtection
+	29, // 25: blackstart.solver.v1.SimulateCascadeRequest.ufls:type_name -> blackstart.solver.v1.UflsScheme
+	4,  // 26: blackstart.solver.v1.CascadeEvent.kind:type_name -> blackstart.solver.v1.CascadeEventKind
+	5,  // 27: blackstart.solver.v1.IslandState.condition:type_name -> blackstart.solver.v1.IslandCondition
+	6,  // 28: blackstart.solver.v1.IslandState.verdict:type_name -> blackstart.solver.v1.AcVerdict
+	37, // 29: blackstart.solver.v1.IslandState.trace:type_name -> blackstart.solver.v1.FrequencySample
+	7,  // 30: blackstart.solver.v1.SimulateCascadeResponse.outcome:type_name -> blackstart.solver.v1.CascadeOutcome
+	36, // 31: blackstart.solver.v1.SimulateCascadeResponse.events:type_name -> blackstart.solver.v1.CascadeEvent
+	38, // 32: blackstart.solver.v1.SimulateCascadeResponse.islands:type_name -> blackstart.solver.v1.IslandState
+	11, // 33: blackstart.solver.v1.SolverService.PutNetworkModel:input_type -> blackstart.solver.v1.PutNetworkModelRequest
+	14, // 34: blackstart.solver.v1.SolverService.HasNetworkModel:input_type -> blackstart.solver.v1.HasNetworkModelRequest
+	20, // 35: blackstart.solver.v1.SolverService.SolvePowerFlow:input_type -> blackstart.solver.v1.SolvePowerFlowRequest
+	25, // 36: blackstart.solver.v1.SolverService.ScreenContingencies:input_type -> blackstart.solver.v1.ScreenContingenciesRequest
+	35, // 37: blackstart.solver.v1.SolverService.SimulateCascade:input_type -> blackstart.solver.v1.SimulateCascadeRequest
+	13, // 38: blackstart.solver.v1.SolverService.PutNetworkModel:output_type -> blackstart.solver.v1.PutNetworkModelResponse
+	15, // 39: blackstart.solver.v1.SolverService.HasNetworkModel:output_type -> blackstart.solver.v1.HasNetworkModelResponse
+	23, // 40: blackstart.solver.v1.SolverService.SolvePowerFlow:output_type -> blackstart.solver.v1.SolvePowerFlowResponse
+	27, // 41: blackstart.solver.v1.SolverService.ScreenContingencies:output_type -> blackstart.solver.v1.ScreenContingenciesResponse
+	39, // 42: blackstart.solver.v1.SolverService.SimulateCascade:output_type -> blackstart.solver.v1.SimulateCascadeResponse
+	38, // [38:43] is the sub-list for method output_type
+	33, // [33:38] is the sub-list for method input_type
+	33, // [33:33] is the sub-list for extension type_name
+	33, // [33:33] is the sub-list for extension extendee
+	0,  // [0:33] is the sub-list for field type_name
 }
 
 func init() { file_blackstart_solver_v1_solver_proto_init() }
@@ -3382,18 +3469,19 @@ func file_blackstart_solver_v1_solver_proto_init() {
 	file_blackstart_solver_v1_solver_proto_msgTypes[8].OneofWrappers = []any{
 		(*Override_BranchStatus)(nil),
 		(*Override_BusInjection)(nil),
+		(*Override_BranchRating)(nil),
 	}
-	file_blackstart_solver_v1_solver_proto_msgTypes[18].OneofWrappers = []any{}
-	file_blackstart_solver_v1_solver_proto_msgTypes[21].OneofWrappers = []any{}
-	file_blackstart_solver_v1_solver_proto_msgTypes[27].OneofWrappers = []any{}
-	file_blackstart_solver_v1_solver_proto_msgTypes[29].OneofWrappers = []any{}
+	file_blackstart_solver_v1_solver_proto_msgTypes[19].OneofWrappers = []any{}
+	file_blackstart_solver_v1_solver_proto_msgTypes[22].OneofWrappers = []any{}
+	file_blackstart_solver_v1_solver_proto_msgTypes[28].OneofWrappers = []any{}
+	file_blackstart_solver_v1_solver_proto_msgTypes[30].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_blackstart_solver_v1_solver_proto_rawDesc), len(file_blackstart_solver_v1_solver_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   31,
+			NumMessages:   32,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
