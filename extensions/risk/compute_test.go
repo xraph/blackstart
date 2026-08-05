@@ -124,6 +124,56 @@ func TestANonFiniteHazardValueIsSkipped(t *testing.T) {
 	}
 }
 
+// TestAConductorProbabilityMatchesAKnownValue pins the conductor path to a
+// specific number, rather than only its shape. The bounds, monotonicity and
+// ice-raises-the-rate assertions in fragility/conductor_test.go all survive
+// each of the following, because none of them leaves [0,1], breaks
+// monotonicity, or makes ice matter less than dry: deleting `/metersPerKm` at
+// fragility/conductor.go:99 (a 1000x meters-to-kilometers error); changing the
+// ceiling constant 1e-3 -> 1.0 at conductor.go:33; swapping the wind and ice
+// scale constants at conductor.go:50 and :58; replacing the rate's exponential
+// approach with a linear stand-in; and changing conductorHours 1.0 -> 2.0 at
+// compute.go:54. This test runs the real pipeline — fixture span length 300 m,
+// conductorHours 1.0 — end to end, so a defect in any of those five spots
+// moves the stored number away from the value hand-computed below.
+//
+// The unit conversion this guards is easy to get wrong in a way that stays
+// invisible once stored: wind load arrives in N/m, ice load in kg/m, span
+// length in meters, and ConductorRate's own scale constants are per
+// kilometer-hour, so a meters/kilometers slip anywhere in that chain changes
+// the stored probability by three orders of magnitude without ever producing
+// an error, a NaN, or a value outside [0,1].
+func TestAConductorProbabilityMatchesAKnownValue(t *testing.T) {
+	const (
+		windLoadNPerM = 50.0
+		iceLoadKgPerM = 1.0
+		// wantProbability is 1 - exp(-lambda * (300/1000) * 1.0), where
+		// lambda = 1e-3 * (1 - exp(-(50/100 + 1/2))) = 1e-3 * (1 - exp(-1)) —
+		// hand-computed from fragility.ConductorRate and
+		// fragility.ConductorProbability's documented formulas, independent
+		// of this package's own code.
+		wantProbability = 0.00018961818784712925
+	)
+
+	w := newWorld(t).withHazard(map[hzstore.Quantity]float64{
+		hzstore.QuantityWindLoad: windLoadNPerM,
+		hzstore.QuantityIceLoad:  iceLoadKgPerM,
+	})
+
+	if _, err := w.engine(t).Compute(
+		t.Context(), risk.ComputeRequest{CycleID: w.cycle},
+	); err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+
+	got := firstConductorProbability(t, w)
+	if math.Abs(got-wantProbability) > 1e-12 {
+		t.Fatalf("conductor probability = %v, want %v (wind=%v N/m, ice=%v "+
+			"kg/m, length=300m, hours=1.0)", got, wantProbability,
+			windLoadNPerM, iceLoadKgPerM)
+	}
+}
+
 func TestProbabilityRisesWithTheStorm(t *testing.T) {
 	calm := probabilityUnder(t, 5.0)
 	storm := probabilityUnder(t, 60.0)
