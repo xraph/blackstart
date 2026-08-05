@@ -1,0 +1,161 @@
+// Package fragility is the mathematics that turns a wind or ice load into a
+// probability of failure.
+//
+// Pure arithmetic: no I/O, no storage, no clock, and no dependency on any
+// other extension. That is what makes a fragility curve testable against its
+// own properties — bounded, monotone, correct at its own median — rather than
+// only against a golden number nobody can independently check.
+//
+// Every curve in this package is cited in a comment beside its parameters.
+// Section 8 of the project spec treats a fragility function as literature
+// rather than a feed: a wrong number here is invisible once it is stored and
+// multiplied through a forecast, so nothing here is invented. Where the
+// literature does not defensibly cover a structure class, that class is
+// absent rather than approximated — see [Class].
+package fragility
+
+import "math"
+
+// Class is the closed set structure curves are indexed by.
+//
+// Portal (H-frame) structures are deliberately not a member. PNNL-33587's
+// fragility function catalog and the literature search conducted for this
+// package turned up open-access, national-laboratory-grade wind fragility
+// curves for lattice towers and for wood/steel poles, but none for
+// portal/H-frame transmission structures carrying a numeric median and
+// dispersion rather than only a shape. A plausible-looking entry would be
+// indistinguishable from a measured one once it is stored and multiplied
+// through a forecast — see the package doc — so the class is omitted rather
+// than approximated. [ByClass] reports false for it because it is not a
+// member of this type, not because of a runtime lookup miss.
+type Class string
+
+const (
+	// Lattice is a self-supporting steel lattice tower.
+	Lattice Class = "lattice"
+
+	// Pole is a single wood or steel shaft.
+	Pole Class = "pole"
+)
+
+// Curve is a lognormal fragility: P(fail | IM) = Φ((ln IM − ln θ)/β).
+type Curve struct {
+	Median     float64 // θ, in the intensity measure's own unit
+	Dispersion float64 // β, the logarithmic standard deviation
+	Source     string  // the citation, verbatim
+}
+
+// Probability evaluates the curve at an intensity measure.
+//
+// Zero and negative intensities return zero rather than evaluating: ln(0) is
+// negative infinity, and the NaN that follows would propagate silently through
+// every county-hour sum downstream instead of failing where it was produced.
+func (c Curve) Probability(intensity float64) float64 {
+	if intensity <= 0 {
+		return 0
+	}
+
+	// Φ(x) = ½·erfc(−x/√2); math.Erfc is the standard normal CDF written
+	// without a table, which is the whole of what a statistics dependency
+	// would buy for this one expression.
+	return 0.5 * math.Erfc(-(math.Log(intensity)-math.Log(c.Median))/(c.Dispersion*math.Sqrt2))
+}
+
+// Reference conductor used to convert a published median from wind speed to
+// wind load, for citations that report their fragility in speed rather than
+// in the load per meter this platform's hazard extension publishes.
+//
+// F/L = ½·ρ_air·C_d·D·V² is the same drag equation
+// extensions/hazard/mechanical.Wind uses; this package cannot import that
+// extension (it depends on nothing), so the equation is restated here rather
+// than shared.
+const (
+	// referenceConductorDiameterM is ACSR 795 kcmil 26/7 Drake, 28.14 mm —
+	// the same reference conductor extensions/hazard/conductor's library
+	// keys off IEEE 738's worked example, chosen here for the same reason:
+	// it is the conductor this codebase already treats as its standard
+	// worked example, not a value picked to make a conversion come out a
+	// particular way.
+	referenceConductorDiameterM = 0.02814
+
+	// referenceAirDensityKgPerM3 is ISO 2533 standard atmosphere at sea
+	// level, 15 C — the conventional reference density for a wind-load
+	// calculation that is not itself tied to a specific weather sample.
+	referenceAirDensityKgPerM3 = 1.225
+
+	// referenceDragCoefficient for a round stranded cylinder, matching
+	// extensions/hazard/mechanical's dragCoefficient.
+	referenceDragCoefficient = 1.0
+)
+
+// windLoadFromSpeed converts a wind speed in m/s to the transverse load, in
+// N/m, the reference conductor would see at that speed.
+func windLoadFromSpeed(speedMS float64) float64 {
+	return 0.5 * referenceAirDensityKgPerM3 * referenceDragCoefficient *
+		referenceConductorDiameterM * speedMS * speedMS
+}
+
+// library holds a fragility curve for a class only when a national-
+// laboratory or open-access source supplies a numeric median and dispersion;
+// see the [Class] doc for the class considered and rejected for want of one.
+var library = map[Class]Curve{
+	Lattice: {
+		// Liu, C., Yan, Z. (2022). "Fragility Analysis of Wind-Induced
+		// Collapse of a Transmission Tower Considering Corrosion." Buildings
+		// 12(10), 1500. https://doi.org/10.3390/buildings12101500
+		// (open access, CC BY).
+		//
+		// Section 3.4: for the standard-value model of a 220 kV, 30 m
+		// latticed transmission tower, the log-mean and log-standard
+		// deviation of the basic collapse wind speed from stripe analysis
+		// were 3.412 and 0.0397 respectively — median = e^3.412 ≈ 30.3 m/s.
+		// The paper reports the wind speed at the tower; converted here to
+		// the load a reference conductor sees at that speed via
+		// windLoadFromSpeed, because this platform's intensity measure is
+		// wind_load (N/m), not wind speed. 30.3 m/s → 15.85 N/m.
+		Median:     windLoadFromSpeed(30.326),
+		Dispersion: 0.0397,
+		Source: "Liu, C., Yan, Z. (2022). Fragility Analysis of Wind-Induced " +
+			"Collapse of a Transmission Tower Considering Corrosion. " +
+			"Buildings 12(10), 1500. https://doi.org/10.3390/buildings12101500 " +
+			"(sec. 3.4: log-mean 3.412, log-std 0.0397 for basic collapse wind " +
+			"speed, m/s; converted here to wind load via a reference conductor)",
+	},
+	Pole: {
+		// Mohammadi Darestani, Y., Shafieezadeh, A. (2019). "Multi-
+		// dimensional wind fragility functions for wood utility poles."
+		// Engineering Structures 183, 937-948.
+		// https://doi.org/10.1016/j.engstruct.2018.12.041 (open-access
+		// author manuscript via the NSF Public Access Repository,
+		// https://par.nsf.gov/servlets/purl/10098529).
+		//
+		// A Class 3 Southern Yellow Pine pole at 50 years, wind
+		// perpendicular to the conductors, 2 m² of conductor area — the
+		// same design point the paper itself uses for its Fig. 4b worked
+		// example. The paper states the median directly in that discussion:
+		// 176 mph (78.68 m/s). Dispersion is not stated for that figure, so
+		// it is computed here from the paper's own response-surface
+		// equation (22) and Table 16 GLM coefficients at the same design
+		// point (θ=90°, Ac=2 m², t=50): σ ≈ 0.2223. Re-deriving the median
+		// from the same table gives ≈176.6 mph, confirming the coefficients
+		// were read correctly. Converted from 78.68 m/s to 106.7 N/m via
+		// windLoadFromSpeed, for the same reason as Lattice above.
+		Median:     windLoadFromSpeed(78.679),
+		Dispersion: 0.2223,
+		Source: "Mohammadi Darestani, Y., Shafieezadeh, A. (2019). Multi-" +
+			"dimensional wind fragility functions for wood utility poles. " +
+			"Engineering Structures 183, 937-948. " +
+			"https://doi.org/10.1016/j.engstruct.2018.12.041 (Fig. 4b design " +
+			"point: Class 3 pole, age 50 yr, wind perpendicular to " +
+			"conductors, 2 m^2 conductor area; median 176 mph stated in " +
+			"text, dispersion 0.2223 computed from eq. 22 and Table 16; " +
+			"converted here to wind load via a reference conductor)",
+	},
+}
+
+// ByClass returns the wind curve for a structure class.
+func ByClass(c Class) (Curve, bool) {
+	curve, ok := library[c]
+
+	return curve, ok
+}
