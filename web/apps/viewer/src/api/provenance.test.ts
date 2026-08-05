@@ -105,6 +105,26 @@ describe("chainOfTrace", () => {
     expect(chainCompleteness(chain).missing).toContain("commit");
   });
 
+  it("labels the run by what was run, and digests it by its own result hash — not the solver version, which lives on the producer's model link instead", () => {
+    const chain = chainOfTrace(trace());
+    const run = chain.find((l) => l.kind === "run");
+
+    expect(run?.label).toBe("contingency run");
+    expect(run?.digest).toBe("bbbbbbbb…bbbb");
+  });
+
+  it("appends the seed to the run's label when the platform reports one, since the seed is what makes the run reproducible at all", () => {
+    const chain = chainOfTrace(trace({ run: { ...trace().run, seed: "42" } }));
+
+    expect(chain.find((l) => l.kind === "run")?.label).toBe("contingency run · seed 42");
+  });
+
+  it("omits the run's digest rather than emitting an empty one when the platform reports no result hash", () => {
+    const chain = chainOfTrace(trace({ run: { ...trace().run, resultHash: "" } }));
+
+    expect(chain.find((l) => l.kind === "run")?.digest).toBeUndefined();
+  });
+
   it("degrades a second network-role input rather than discarding it", () => {
     const chain = chainOfTrace(
       trace({
