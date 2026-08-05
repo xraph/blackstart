@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"time"
 
@@ -165,12 +166,17 @@ func WithClock(now func() time.Time) EngineOption {
 	}
 }
 
-// WithScalar overrides the scalar every probability is multiplied by.
-// Non-positive values are ignored: a zero scalar would zero every stored
-// probability regardless of the curve, which "uncalibrated" does not mean.
+// WithScalar overrides the scalar every probability is multiplied by. Values
+// outside (0, 1] are ignored — rejected at the option rather than clamped at
+// the write, so there is one place that decides what a valid scalar is.
+// Every curve and rate this package evaluates already returns a value in
+// [0, 1] (fragility bounds its own outputs), so keeping the scalar in that
+// same range is what keeps a stored "probability" a probability: zero would
+// zero every value regardless of the curve, and anything above 1 could push
+// a curve already near its ceiling past 1, which is not a probability either.
 func WithScalar(scalar float64) EngineOption {
 	return func(e *Engine) {
-		if scalar > 0 {
+		if scalar > 0 && scalar <= 1 {
 			e.scalar = scalar
 		}
 	}
@@ -343,6 +349,16 @@ func (e *Engine) computeSpan(
 
 	for _, at := range sortedTimes(byTime) {
 		load := byTime[at]
+		if !finite(load.wind, load.ice) {
+			// A NaN or infinite hazard row is not a load that happened to be
+			// small; storing the probability it produces would carry that
+			// silently through every downstream sum instead of failing where
+			// it was made. Skipped like any other moment with nothing to
+			// compute — see the "moment without temperature" precedent in
+			// extensions/hazard/compute.go.
+			continue
+		}
+
 		wind[at] = load.wind
 		probability := fragility.ConductorProbability(
 			load.wind, load.ice, span.LengthM, conductorHours) * e.scalar
@@ -375,7 +391,11 @@ func (e *Engine) computeStructure(
 	curve, ok := fragility.ByClass(class)
 	if !ok {
 		// ClassOf only ever names a member of fragility's own closed set, so
-		// this would be a bug in that package, not a fact about the structure.
+		// this would be a bug in fragility, not a fact about the structure —
+		// but it is still counted Unclassed, so the counters keep reconciling
+		// to the structure count rather than quietly falling short.
+		result.Unclassed++
+
 		return nil, false
 	}
 
@@ -445,6 +465,18 @@ func groupLoads(values []hzstore.SpanValue) map[time.Time]loads {
 	}
 
 	return out
+}
+
+// finite reports whether every value is a real, finite number — not NaN and
+// not infinite.
+func finite(values ...float64) bool {
+	for _, v := range values {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // sortedTimes orders a map's moments so a pass writes values in time order

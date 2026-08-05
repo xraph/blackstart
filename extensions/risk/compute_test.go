@@ -83,6 +83,47 @@ func TestASpanWithNoHazardIsCountedSeparately(t *testing.T) {
 	}
 }
 
+// TestANonFiniteHazardValueIsSkipped covers a NaN row rather than assuming
+// fragility's own non-positive guard is enough: fragility.Curve.Probability
+// and ConductorProbability both guard intensity <= 0, which NaN is not, so a
+// NaN hazard value would otherwise become a stored NaN probability that
+// propagates silently through every downstream sum.
+func TestANonFiniteHazardValueIsSkipped(t *testing.T) {
+	w := newWorld(t)
+
+	corrupt := w.issuedAt
+	clean := w.issuedAt.Add(time.Hour)
+
+	w.hazard.values[w.span] = []hzstore.SpanValue{
+		{SpanID: w.span, Quantity: hzstore.QuantityWindLoad, IssuedAt: w.issuedAt, ValidAt: corrupt, Value: math.NaN()},
+		{SpanID: w.span, Quantity: hzstore.QuantityIceLoad, IssuedAt: w.issuedAt, ValidAt: corrupt, Value: 0},
+		{SpanID: w.span, Quantity: hzstore.QuantityWindLoad, IssuedAt: w.issuedAt, ValidAt: clean, Value: 60},
+		{SpanID: w.span, Quantity: hzstore.QuantityIceLoad, IssuedAt: w.issuedAt, ValidAt: clean, Value: 0},
+	}
+
+	if _, err := w.engine(t).Compute(
+		t.Context(), risk.ComputeRequest{CycleID: w.cycle},
+	); err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+
+	values, err := w.store.Values().ForComponent(t.Context(), w.span,
+		[]rstore.Quantity{rstore.QuantityConductorFailure},
+		w.issuedAt, w.issuedAt, w.issuedAt.Add(2*time.Hour))
+	if err != nil {
+		t.Fatalf("ForComponent: %v", err)
+	}
+
+	if len(values) != 1 {
+		t.Fatalf("stored %d conductor rows, want 1 — the NaN hour skipped, "+
+			"the clean one kept", len(values))
+	}
+
+	if math.IsNaN(values[0].Probability) || values[0].ValidAt != clean {
+		t.Errorf("stored row is %+v, want the clean hour's finite probability", values[0])
+	}
+}
+
 func TestProbabilityRisesWithTheStorm(t *testing.T) {
 	calm := probabilityUnder(t, 5.0)
 	storm := probabilityUnder(t, 60.0)
@@ -102,6 +143,74 @@ func TestTheScalarScalesEveryValue(t *testing.T) {
 
 	if math.Abs(half-full/2) > 1e-9 {
 		t.Fatalf("scalar 0.5 gave %v, want half of %v", half, full)
+	}
+}
+
+// TestTheScalarIsRecordedOnTheRow proves the second half of the scalar
+// requirement that TestTheScalarScalesEveryValue does not: not just that the
+// multiplication happened, but that the row says what multiplied it. A
+// probability computed under an implicit 1.0 and one computed under a fitted
+// 0.7 are not comparable unless the stored row can tell them apart.
+func TestTheScalarIsRecordedOnTheRow(t *testing.T) {
+	const scalar = 0.5
+
+	w := newWorld(t).withHazard(icyLoading())
+
+	e, err := risk.NewEngine(w.store, nil,
+		risk.WithCompute(w.hazard, w.weather, w.geometry, w.recorder),
+		risk.WithClock(issuance),
+		risk.WithScalar(scalar))
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+
+	if _, err := e.Compute(t.Context(), risk.ComputeRequest{CycleID: w.cycle}); err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+
+	spanValues, err := w.store.Values().ForComponent(t.Context(), w.span,
+		[]rstore.Quantity{rstore.QuantityConductorFailure},
+		w.issuedAt, w.issuedAt, w.issuedAt.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("ForComponent(span): %v", err)
+	}
+
+	if len(spanValues) == 0 {
+		t.Fatal("the pass wrote no conductor probability")
+	}
+
+	if spanValues[0].Scalar != scalar {
+		t.Errorf("the conductor row carries scalar %v, want %v",
+			spanValues[0].Scalar, scalar)
+	}
+
+	structureValues, err := w.store.Values().ForComponent(t.Context(),
+		w.geometry.structures[0].ID, []rstore.Quantity{rstore.QuantityStructureFailure},
+		w.issuedAt, w.issuedAt, w.issuedAt.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("ForComponent(structure): %v", err)
+	}
+
+	if len(structureValues) == 0 {
+		t.Fatal("the pass wrote no structure probability")
+	}
+
+	if structureValues[0].Scalar != scalar {
+		t.Errorf("the structure row carries scalar %v, want %v",
+			structureValues[0].Scalar, scalar)
+	}
+}
+
+// TestScalarOutsideZeroOneIsIgnored proves WithScalar's own bound: a scalar
+// this package could not have produced from a bounded curve is rejected
+// rather than stored, so a probability written under it can never exceed 1.
+func TestScalarOutsideZeroOneIsIgnored(t *testing.T) {
+	rejected := probabilityWithScalar(t, 2.0)
+	accepted := probabilityWithScalar(t, 1.0)
+
+	if math.Abs(rejected-accepted) > 1e-9 {
+		t.Errorf("WithScalar(2.0) gave %v, want it ignored in favor of the "+
+			"default %v", rejected, accepted)
 	}
 }
 
@@ -137,10 +246,15 @@ func TestAStructureBetweenTwoSpansTakesTheHigherLoad(t *testing.T) {
 		routes: []geoasset.Route{{
 			ID: route, CarrierID: gid.NewCircuit(), Provenance: geoasset.Surveyed,
 		}},
+		// The storm span is written first (Sequence 1, processed before the
+		// calm span at Sequence 2 in structureLoad's [ordinal, ordinal+1]
+		// walk) so that only a real max — not an unconditional last-write —
+		// keeps the higher value: a last-wins bug would let the calm span's
+		// later write silently overwrite the storm's.
 		spans: map[id.ID][]geoasset.Span{
 			route: {
-				{ID: calmSpan, RouteID: route, Sequence: 1, LengthM: 300},
-				{ID: stormSpan, RouteID: route, Sequence: 2, LengthM: 300},
+				{ID: stormSpan, RouteID: route, Sequence: 1, LengthM: 300},
+				{ID: calmSpan, RouteID: route, Sequence: 2, LengthM: 300},
 			},
 		},
 		structures: []geoasset.Structure{
