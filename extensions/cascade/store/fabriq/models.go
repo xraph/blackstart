@@ -46,6 +46,12 @@ type runRow struct {
 	SolverVersion string `grove:"solver_version,notnull"`
 	Outcome       string `grove:"outcome,notnull"`
 
+	// SBaseVA carries no notnull tag for the same reason LoadLost below does
+	// not: a base of zero is what run.CascadeRun.SBaseVA's own comment and
+	// engine.go's divide already treat as "the model did not state one"
+	// rather than a value fabriq should refuse to store.
+	SBaseVA float64 `grove:"s_base_va"`
+
 	// LoadLost, Steps and Elapsed carry no notnull tag. A cascade that shed
 	// nothing is the ordinary good case, and fabriq's notnull is stricter than
 	// the column's — it refuses a zero value outright where NOT NULL DEFAULT
@@ -88,6 +94,7 @@ func fromDomain(in run.CascadeRun) (runRow, error) {
 		ModelHash:     in.ModelHash,
 		SolverVersion: in.SolverVersion,
 		Outcome:       string(in.Outcome),
+		SBaseVA:       in.SBaseVA,
 		LoadLost:      in.LoadLost,
 		Steps:         int64(in.Steps),
 		Elapsed:       in.Elapsed,
@@ -111,6 +118,7 @@ func (r runRow) toDomain() (run.CascadeRun, error) {
 		ModelHash:     r.ModelHash,
 		SolverVersion: r.SolverVersion,
 		Outcome:       run.Outcome(r.Outcome),
+		SBaseVA:       r.SBaseVA,
 		LoadLost:      r.LoadLost,
 		Steps:         uint32(max(0, r.Steps)),
 		Elapsed:       r.Elapsed,

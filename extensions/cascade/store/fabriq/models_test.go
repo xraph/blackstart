@@ -25,6 +25,7 @@ func aRun() run.CascadeRun {
 		ModelHash:     "sha256:abc123",
 		SolverVersion: "0.1.0-test",
 		Outcome:       run.OutcomeTruncated,
+		SBaseVA:       100e6,
 		Events: []run.Event{
 			{At: 0, Kind: run.EventOverload, Element: "branch:14", Detail: "118%"},
 			{At: 2.5, Kind: run.EventTrip, Element: "branch:14"},
@@ -83,6 +84,13 @@ func TestRunRoundTrips(t *testing.T) {
 		t.Errorf("load %v steps %v elapsed %v, want %v %v %v",
 			got.LoadLost, got.Steps, got.Elapsed,
 			want.LoadLost, want.Steps, want.Elapsed)
+	}
+
+	// The base LoadLost, Balance and Shed are stored per unit of. Without
+	// it, this run's own per-unit numbers cannot be interpreted at all —
+	// see SBaseVA's own comment.
+	if got.SBaseVA != want.SBaseVA {
+		t.Errorf("s_base_va round-tripped as %v, wrote %v", got.SBaseVA, want.SBaseVA)
 	}
 
 	if len(got.Events) != len(want.Events) {
@@ -254,7 +262,8 @@ func TestAStoredIdentifierOfTheWrongTypeIsRefused(t *testing.T) {
 func TestEveryTaggedColumnExistsInTheSchema(t *testing.T) {
 	t.Parallel()
 
-	ddl := strings.Join(tables(), "\n") + "\n" + strings.Join(initiatingColumn(), "\n")
+	ddl := strings.Join(tables(), "\n") + "\n" + strings.Join(initiatingColumn(), "\n") +
+		"\n" + strings.Join(sBaseColumn(), "\n")
 
 	for field := range reflect.TypeFor[runRow]().Fields() {
 		tag := field.Tag.Get("grove")
