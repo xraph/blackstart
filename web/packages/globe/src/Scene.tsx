@@ -3,7 +3,7 @@ import { Canvas } from "@react-three/fiber";
 import { Controls } from "./Controls";
 import { Globe } from "./Globe";
 import { Network, type Selection } from "./Network";
-import { Routes, type RoutePolyline } from "./Routes";
+import { Routes, type RoutePolyline, type Rgba } from "./Routes";
 import type { ViewerModel } from "./model";
 
 interface SceneProps {
@@ -18,6 +18,9 @@ interface SceneProps {
    */
   routes?: readonly RoutePolyline[] | undefined;
 
+  /** The colour a span is drawn in. Omitted, routes draw in one colour. */
+  colorOf?: ((spanId: string) => Rgba) | undefined;
+
   onSelect?: ((selection: Selection | null) => void) | undefined;
   onSelectRoute?: ((route: RoutePolyline) => void) | undefined;
 }
@@ -31,7 +34,13 @@ interface SceneProps {
  * to. Leaving near at the default 0.1 would clip the surface away as soon as
  * the camera approached it.
  */
-export function Scene({ model, routes, onSelect, onSelectRoute }: SceneProps): React.JSX.Element {
+export function Scene({
+  model,
+  routes,
+  colorOf,
+  onSelect,
+  onSelectRoute,
+}: SceneProps): React.JSX.Element {
   return (
     <Canvas
       camera={{ position: [-1.4, -2.2, 1.4], near: 0.001, far: 100, fov: 40 }}
@@ -48,7 +57,7 @@ export function Scene({ model, routes, onSelect, onSelectRoute }: SceneProps): R
       <Globe />
       <Network model={model} onSelect={onSelect} />
       {routes !== undefined && routes.length > 0 && (
-        <Routes routes={routes} onSelect={onSelectRoute} />
+        <Routes routes={routes} colorOf={colorOf} onSelect={onSelectRoute} />
       )}
     </Canvas>
   );

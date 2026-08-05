@@ -3,6 +3,23 @@ import { useMemo } from "react";
 import { toEcefArray, type Geodetic } from "./wgs84";
 
 /**
+ * One span of a conductor route: the stretch between two structures.
+ *
+ * The span is the unit rather than the route because everything measured
+ * about a conductor is measured per span. A 200 km line passes through
+ * several weather systems at once, ice is local, and a conductor breaks
+ * between two structures — so a rating belongs to a span, and a renderer that
+ * can only address a whole route cannot draw one.
+ */
+export interface RouteSpan {
+  /** The span identifier, which hazard values are keyed by. */
+  id: string;
+
+  /** The path this span follows, in order. */
+  points: readonly Geodetic[];
+}
+
+/**
  * One conductor route, as the surveyed or inferred path its spans follow.
  *
  * A polyline rather than a pair of endpoints. A branch drawn straight between
@@ -24,12 +41,12 @@ export interface RoutePolyline {
    */
   carrierId: string;
 
-  /**
-   * The path, in order. Longitude, latitude and elevation per point, matching
-   * the order the platform's geometry is stored and served in.
-   */
-  points: readonly Geodetic[];
+  /** The spans, in order along the conductor. */
+  spans: readonly RouteSpan[];
 }
+
+/** Red, green, blue and alpha, each 0 to 1. */
+export type Rgba = readonly [number, number, number, number];
 
 export interface RoutesProps {
   routes: readonly RoutePolyline[];
@@ -44,46 +61,82 @@ export interface RoutesProps {
    */
   lift?: number;
 
+  /**
+   * The colour a span is drawn in.
+   *
+   * Omitted, every route draws in one colour and this package stays useful to
+   * a viewer with no platform to ask for values.
+   */
+  colorOf?: ((spanId: string) => Rgba) | undefined;
+
   onSelect?: ((route: RoutePolyline) => void) | undefined;
 }
 
 const DEFAULT_LIFT = 0.0016;
 
+/** Brighter than the schematic branches underneath, because where a route exists it is truer. */
+const DEFAULT_COLOR = "#6ea8ff";
+
 /**
- * The vertex buffer for a set of routes, and the segment-to-route index.
+ * Every span that is long enough to draw, paired with the route it belongs to.
+ *
+ * One pass, so the segment and colour buffers cannot disagree about which
+ * spans are in the geometry — a colour buffer built from a different set of
+ * spans than the positions is silently misaligned, and paints each span with
+ * its neighbour's value.
+ */
+function drawableSpans(
+  routes: readonly RoutePolyline[],
+): { span: RouteSpan; routeIndex: number }[] {
+  const out: { span: RouteSpan; routeIndex: number }[] = [];
+
+  routes.forEach((route, routeIndex) => {
+    for (const span of route.spans) {
+      if (span.points.length >= 2) out.push({ span, routeIndex });
+    }
+  });
+
+  return out;
+}
+
+/**
+ * The vertex buffer for a set of routes, and the segment-to-owner indexes.
  *
  * Separate from the component so the arithmetic is testable without a WebGL
  * context. A polyline built with the wrong vertex pairing still renders — it
  * renders the wrong shape — so this is worth asserting directly rather than
  * through "it mounted".
+ *
+ * Segments are emitted within a span and never across two. A segment bridging
+ * the end of one span and the start of the next belongs to neither, so no
+ * value could colour it, and it would draw as an uncoloured gap through an
+ * otherwise rated line.
  */
 export function buildRouteSegments(
   routes: readonly RoutePolyline[],
   lift: number,
-): { positions: Float32Array; segmentRoute: Int32Array } {
-  let segmentCount = 0;
+): { positions: Float32Array; segmentRoute: Int32Array; segmentSpan: string[] } {
+  const spans = drawableSpans(routes);
 
-  for (const route of routes) {
-    if (route.points.length >= 2) segmentCount += route.points.length - 1;
-  }
+  let segmentCount = 0;
+  for (const { span } of spans) segmentCount += span.points.length - 1;
 
   const positions = new Float32Array(segmentCount * 6);
   const segmentRoute = new Int32Array(segmentCount);
+  const segmentSpan: string[] = new Array<string>(segmentCount);
 
   let segment = 0;
   const scale = 1 + lift;
 
-  routes.forEach((route, routeIndex) => {
-    if (route.points.length < 2) return;
-
-    // Converted once per route rather than once per segment: every interior
+  for (const { span, routeIndex } of spans) {
+    // Converted once per span rather than once per segment: every interior
     // point is shared by two segments, and converting twice would double the
     // geodetic maths for no benefit. Passed through rather than rebuilt —
     // copying the objects would re-declare an optional elevation as an
     // explicit undefined, which exactOptionalPropertyTypes rejects.
-    const ecef = toEcefArray(route.points);
+    const ecef = toEcefArray(span.points);
 
-    for (let i = 0; i < route.points.length - 1; i++) {
+    for (let i = 0; i < span.points.length - 1; i++) {
       for (const end of [i, i + 1]) {
         const base = segment * 6 + (end === i ? 0 : 3);
 
@@ -93,11 +146,57 @@ export function buildRouteSegments(
       }
 
       segmentRoute[segment] = routeIndex;
+      segmentSpan[segment] = span.id;
       segment += 1;
     }
-  });
+  }
 
-  return { positions, segmentRoute };
+  return { positions, segmentRoute, segmentSpan };
+}
+
+/**
+ * The per-vertex colour buffer, in the same order the positions are built.
+ *
+ * Four components rather than three. Colour carries the quantity being drawn
+ * and alpha carries how much the value is to be trusted — a rating from a
+ * surveyed conductor assignment and one assumed from the voltage class are
+ * different claims, and three components would flatten them into one map.
+ *
+ * Both vertices of a segment take the same colour: a segment whose ends differ
+ * is drawn as a gradient, which reads as a value changing along a span that
+ * has exactly one.
+ */
+export function buildRouteColors(
+  routes: readonly RoutePolyline[],
+  colorOf: (spanId: string) => Rgba,
+): Float32Array {
+  const spans = drawableSpans(routes);
+
+  let segmentCount = 0;
+  for (const { span } of spans) segmentCount += span.points.length - 1;
+
+  const colors = new Float32Array(segmentCount * 8);
+
+  let segment = 0;
+
+  for (const { span } of spans) {
+    const [r, g, b, a] = colorOf(span.id);
+
+    for (let i = 0; i < span.points.length - 1; i++) {
+      for (const vertex of [0, 1]) {
+        const base = segment * 8 + vertex * 4;
+
+        colors[base] = r;
+        colors[base + 1] = g;
+        colors[base + 2] = b;
+        colors[base + 3] = a;
+      }
+
+      segment += 1;
+    }
+  }
+
+  return colors;
 }
 
 /**
@@ -111,11 +210,17 @@ export function buildRouteSegments(
 export function Routes({
   routes,
   lift = DEFAULT_LIFT,
+  colorOf,
   onSelect,
 }: RoutesProps): React.JSX.Element | null {
   const { positions, segmentRoute } = useMemo(
     () => buildRouteSegments(routes, lift),
     [routes, lift],
+  );
+
+  const colors = useMemo(
+    () => (colorOf === undefined ? null : buildRouteColors(routes, colorOf)),
+    [routes, colorOf],
   );
 
   if (positions.length === 0) return null;
@@ -134,10 +239,13 @@ export function Routes({
     >
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        {colors !== null && <bufferAttribute attach="attributes-color" args={[colors, 4]} />}
       </bufferGeometry>
-      {/* Brighter than the schematic branches underneath, because where a
-          route exists it is the more truthful of the two. */}
-      <lineBasicMaterial color="#6ea8ff" transparent opacity={0.9} />
+      {colors === null ? (
+        <lineBasicMaterial color={DEFAULT_COLOR} transparent opacity={0.9} />
+      ) : (
+        <lineBasicMaterial vertexColors transparent />
+      )}
     </lineSegments>
   );
 }

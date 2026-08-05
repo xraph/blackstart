@@ -31,7 +31,7 @@ func TestAssignmentRoundTrips(t *testing.T) {
 		t.Errorf("read back %+v, wrote %+v", got, want)
 	}
 
-	byBranch, err := s.Assignments().ForBranch(t.Context(), branch)
+	byBranch, err := s.Assignments().ForCarrier(t.Context(), branch)
 	if err != nil {
 		t.Fatalf("ForBranch: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestASecondAssignmentReplacesTheFirst(t *testing.T) {
 		t.Fatalf("Put: %v", err)
 	}
 
-	got, err := s.Assignments().ForBranch(t.Context(), branch)
+	got, err := s.Assignments().ForCarrier(t.Context(), branch)
 	if err != nil {
 		t.Fatalf("ForBranch: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestAnUnassignedBranchIsNotFound(t *testing.T) {
 
 	s := memory.New()
 
-	_, err := s.Assignments().ForBranch(t.Context(), id.MustNew("brch"))
+	_, err := s.Assignments().ForCarrier(t.Context(), id.MustNew("brch"))
 	if !errors.Is(err, bserr.ErrNotFound) {
 		t.Fatalf("ForBranch error = %v, want bserr.ErrNotFound", err)
 	}
@@ -128,7 +128,7 @@ func TestDeletingAnAssignmentLeavesTheBranchUnrated(t *testing.T) {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	if _, err := s.Assignments().ForBranch(t.Context(), branch); !errors.Is(err, bserr.ErrNotFound) {
+	if _, err := s.Assignments().ForCarrier(t.Context(), branch); !errors.Is(err, bserr.ErrNotFound) {
 		t.Errorf("ForBranch after Delete: %v, want bserr.ErrNotFound", err)
 	}
 

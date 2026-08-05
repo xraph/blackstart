@@ -40,9 +40,7 @@ describe("polylineOfSpans", () => {
     const line = polylineOfSpans("rt_1", "br_1", scrambled);
 
     expect(line).not.toBeNull();
-    expect(line?.points.map((p) => Number(p.lon.toFixed(1)))).toEqual([
-      -101.0, -101.1, -101.1, -101.2, -101.2, -101.3,
-    ]);
+    expect(line?.spans.map((s) => s.id)).toEqual(["span_0", "span_1", "span_2"]);
   });
 
   it("returns null for a route with too few points to be a line", () => {
@@ -50,8 +48,8 @@ describe("polylineOfSpans", () => {
     expect(polylineOfSpans("rt_1", "nmdl_1", [span(0, [[-101, 34]])])).toBeNull();
   });
 
-  it("keeps every point, including the duplicates where spans meet", () => {
-    // Adjacent spans share a structure, so the joining point appears twice.
+  it("keeps each span's own points, including the structure two spans share", () => {
+    // Adjacent spans share a structure, so the joining point appears in both.
     // Deduplicating would be tidier and would also silently shorten the path
     // if two spans genuinely met at different coordinates.
     const line = polylineOfSpans("rt_1", "nmdl_1", [
@@ -65,7 +63,31 @@ describe("polylineOfSpans", () => {
       ]),
     ]);
 
-    expect(line?.points).toHaveLength(4);
+    expect(line?.spans.map((s) => s.points.length)).toEqual([2, 2]);
+  });
+
+  it("keeps the span identifier, because that is what a value is keyed by", () => {
+    // Flattening the spans away loses the only key a hazard rating has.
+    const line = polylineOfSpans("rt_1", "nmdl_1", [
+      span(0, [
+        [-101.0, 34.0],
+        [-101.1, 34.1],
+      ]),
+    ]);
+
+    expect(line?.spans[0]?.id).toBe("span_0");
+  });
+
+  it("drops a span too short to draw without dropping the route", () => {
+    const line = polylineOfSpans("rt_1", "nmdl_1", [
+      span(0, [[-101.0, 34.0]]),
+      span(1, [
+        [-101.1, 34.1],
+        [-101.2, 34.2],
+      ]),
+    ]);
+
+    expect(line?.spans.map((s) => s.id)).toEqual(["span_1"]);
   });
 
   it("carries the identifiers a click needs to report", () => {

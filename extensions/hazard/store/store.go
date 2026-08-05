@@ -35,7 +35,7 @@ import (
 type Store interface {
 	store.Lifecycle
 
-	// Assignments reads and writes which conductor each branch is.
+	// Assignments reads and writes which conductor each carrier is strung with.
 	Assignments() AssignmentStore
 
 	// Computations reads and writes passes of the models over a weather cycle.
@@ -194,32 +194,32 @@ func ParseValueKey(key string) (id.ID, Quantity, time.Time, error) {
 	return spanID, quantity, issuedAt, nil
 }
 
-// AssignmentStore holds which conductor each branch is strung with.
+// AssignmentStore holds which conductor each carrier is strung with.
 type AssignmentStore interface {
-	// Put writes an assignment, replacing any the branch already had.
+	// Put writes an assignment, replacing any the carrier already had.
 	//
 	// Replace rather than create, because a survey correcting an assumption is
 	// the normal case and the second write is the whole point. One assignment
-	// per branch: two would leave nothing to say which one a rating used.
+	// per carrier: two would leave nothing to say which one a rating used.
 	Put(ctx context.Context, in conductor.Assignment) error
 
 	// Get reads one assignment.
 	Get(ctx context.Context, want id.ID) (conductor.Assignment, error)
 
-	// ForBranch finds the assignment of a branch.
+	// ForCarrier finds the assignment of a carrier.
 	//
 	// The lookup the compute engine makes once per span, by way of the span's
 	// route. Its absence is not an error the engine reports — it is a span
 	// counted unrated, which is why this returns bserr.ErrNotFound rather than
 	// an empty assignment.
-	ForBranch(ctx context.Context, branch id.ID) (conductor.Assignment, error)
+	ForCarrier(ctx context.Context, carrier id.ID) (conductor.Assignment, error)
 
 	// List returns assignments.
 	List(ctx context.Context, p store.Page) ([]conductor.Assignment, error)
 
 	// Delete removes an assignment.
 	//
-	// A branch with no assignment is a branch with no rating, which is a
+	// A carrier with no assignment is a carrier with no rating, which is a
 	// meaningful state: better an absent rating than one conditioned on a
 	// conductor somebody has decided is wrong.
 	Delete(ctx context.Context, want id.ID) error
@@ -249,7 +249,7 @@ type Computation struct {
 	// Spans is how many spans produced values, and Unrated how many were
 	// skipped for want of a conductor assignment.
 	//
-	// Both counts, not a ratio. A pass that rated nothing because no branch is
+	// Both counts, not a ratio. A pass that rated nothing because no carrier is
 	// assigned and a pass that rated nothing because the cycle was empty are
 	// different failures, and one number cannot tell them apart.
 	Spans   int `json:"spans"`

@@ -16,6 +16,24 @@ describe("console search params", () => {
     expect(temporalOf(s).knowledgeTime).toBe("2019-05-18T00:00Z");
   });
 
+  it("defaults the drawn layer to the rating, which is the phase's headline", () => {
+    expect(consoleSearch.parse({ valid: "2026-08-02T22:00Z" }).layer).toBe("ampacity");
+  });
+
+  it("carries which layer is drawn, because a screenshot has to be reproducible", () => {
+    const s = consoleSearch.parse({ valid: "2026-08-02T22:00Z", layer: "loading" });
+    expect(s.layer).toBe("loading");
+  });
+
+  it("refuses a layer the console cannot draw rather than falling back to one it can", () => {
+    // A URL naming the clouds layer is asking for something this build does
+    // not have. Quietly showing ampacity instead answers a question nobody
+    // asked, under a link that says otherwise.
+    expect(consoleSearch.safeParse({ valid: "2026-08-02T22:00Z", layer: "clouds" }).success).toBe(
+      false,
+    );
+  });
+
   it("rejects a non-UTC instant rather than silently reinterpreting it", () => {
     expect(consoleSearch.safeParse({ valid: "2026-08-02T22:00+02:00" }).success).toBe(false);
   });

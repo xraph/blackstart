@@ -427,7 +427,7 @@ export class RESTClient extends Client {
   public readonly hazard = {
     assignments: {
       /**
-       * Which conductor each branch is strung with
+       * Which conductor each carrier is strung with
        * Every assignment carries a basis. A surveyed assignment and one assumed from the voltage class are different claims, and a rating conditioned on the second is indicative rather than authoritative.
        */
       list: async (limit?: number | undefined, after?: string | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.assignmentsResponse> => {

@@ -13,7 +13,7 @@ export type Codec =
   | { kind: 'passthrough' };
 
 export const CODECS: Record<string, Codec> = {
-  "Assignment": {"kind": "object", "fields": {"basis": {"ts": "basis"}, "branch_id": {"ts": "branchId"}, "conductor_code": {"ts": "conductorCode"}, "id": {"ts": "id"}, "note": {"ts": "note"}}, "required": ["basis", "branch_id", "conductor_code", "id"]},
+  "Assignment": {"kind": "object", "fields": {"basis": {"ts": "basis"}, "carrier_id": {"ts": "carrierId"}, "conductor_code": {"ts": "conductorCode"}, "id": {"ts": "id"}, "note": {"ts": "note"}}, "required": ["basis", "carrier_id", "conductor_code", "id"]},
   "Branch": {"kind": "object", "fields": {"EquipmentID": {"ts": "equipmentId"}, "From": {"ts": "from"}, "Kind": {"ts": "kind"}, "To": {"ts": "to"}}, "required": ["EquipmentID", "From", "Kind", "To"]},
   "Bus": {"kind": "object", "fields": {"Nodes": {"ts": "nodes", "codec": "Bus.Nodes"}, "Number": {"ts": "number"}, "VoltageLevelID": {"ts": "voltageLevelId"}}, "required": ["Nodes", "Number", "VoltageLevelID"]},
   "Bus.Nodes": {"kind": "array"},

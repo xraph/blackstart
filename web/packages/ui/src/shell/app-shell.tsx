@@ -67,12 +67,22 @@ export function TopBar({
   clock,
   initials,
   onSignOut,
+  aside,
 }: {
   readonly contexts: readonly TopBarContext[];
   readonly clock: string;
   readonly initials: string;
   /** Turns the identity badge into a sign-out control. Omitted, it stays text. */
   readonly onSignOut?: () => void;
+  /**
+   * Chrome to sit before the clock — the theme switcher, in this console.
+   *
+   * A slot rather than a `theme` prop, because the shell has no business
+   * knowing what a theme is. It knows there is a bar with things on the right
+   * of it, which is the only thing that keeps this file from accumulating one
+   * prop per control anybody wants there.
+   */
+  readonly aside?: ReactNode;
 }): ReactElement {
   /* The badge, with or without an action on it. Same box either way — the bar
    * is 36px tall and a button that changed its metrics would move the clock. */
@@ -95,6 +105,9 @@ export function TopBar({
       ))}
       <span className="flex-1" />
       <AdvisoryChip className="mx-2.5" />
+      {aside !== undefined && (
+        <span className="flex h-full items-center border-l border-line px-2.5">{aside}</span>
+      )}
       <span className="flex h-full items-center border-l border-line px-3 font-mono text-[11px] tabular text-fg-2">
         {clock}
       </span>

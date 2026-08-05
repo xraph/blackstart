@@ -117,7 +117,7 @@ func (e *Engine) Assign(ctx context.Context, in conductor.Assignment) error {
 
 	e.emit(ctx, "hazard.conductor.assigned", map[string]any{
 		"assignment_id":  in.ID.String(),
-		"branch_id":      in.BranchID.String(),
+		"carrier_id":     in.CarrierID.String(),
 		"conductor_code": in.ConductorCode,
 		"basis":          in.Basis.String(),
 	})
@@ -132,11 +132,11 @@ func (e *Engine) Assignment(
 	return e.store.Assignments().Get(ctx, want)
 }
 
-// AssignmentForBranch finds what a branch is strung with.
-func (e *Engine) AssignmentForBranch(
-	ctx context.Context, branch id.ID,
+// AssignmentForCarrier finds what a carrier is strung with.
+func (e *Engine) AssignmentForCarrier(
+	ctx context.Context, carrier id.ID,
 ) (conductor.Assignment, error) {
-	return e.store.Assignments().ForBranch(ctx, branch)
+	return e.store.Assignments().ForCarrier(ctx, carrier)
 }
 
 // Assignments lists assignments.

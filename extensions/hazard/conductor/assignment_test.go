@@ -73,7 +73,7 @@ func TestBasisIsRequired(t *testing.T) {
 
 	assignment := conductor.Assignment{
 		ID:            hid.NewAssignment(),
-		BranchID:      id.MustNew("brch"),
+		CarrierID:     id.MustNew("brch"),
 		ConductorCode: "drake",
 	}
 
@@ -87,7 +87,7 @@ func TestValidAssignmentValidates(t *testing.T) {
 
 	assignment := conductor.Assignment{
 		ID:            hid.NewAssignment(),
-		BranchID:      id.MustNew("brch"),
+		CarrierID:     id.MustNew("brch"),
 		ConductorCode: "drake",
 		Basis:         conductor.Surveyed,
 	}
@@ -102,14 +102,14 @@ func TestAssignmentRejectsBadRows(t *testing.T) {
 
 	valid := conductor.Assignment{
 		ID:            hid.NewAssignment(),
-		BranchID:      id.MustNew("brch"),
+		CarrierID:     id.MustNew("brch"),
 		ConductorCode: "drake",
 		Basis:         conductor.Surveyed,
 	}
 
 	for name, mutate := range map[string]func(*conductor.Assignment){
 		"no id":           func(a *conductor.Assignment) { a.ID = id.Nil },
-		"no branch":       func(a *conductor.Assignment) { a.BranchID = id.Nil },
+		"no carrier":      func(a *conductor.Assignment) { a.CarrierID = id.Nil },
 		"no code":         func(a *conductor.Assignment) { a.ConductorCode = "" },
 		"unknown basis":   func(a *conductor.Assignment) { a.Basis = "vibes" },
 		"unknown code":    func(a *conductor.Assignment) { a.ConductorCode = "drakee" },

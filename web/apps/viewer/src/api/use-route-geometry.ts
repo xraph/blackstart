@@ -46,23 +46,31 @@ export interface RouteGeometry {
  * a route assembled out of order draws as a star burst rather than a line —
  * which looks like a rendering bug and is a data-ordering one.
  *
- * Returns null for a route with too few points to be a line at all, rather
- * than a degenerate one-point polyline the renderer would silently skip.
+ * Spans are kept as spans rather than flattened into one point list. The span
+ * id is the only key a hazard value has, so flattening loses the ability to
+ * colour a rating at all — and the flattened form also manufactured a segment
+ * between the last point of one span and the first of the next, which belongs
+ * to neither.
+ *
+ * Returns null for a route with no span long enough to be a line, rather than
+ * a degenerate polyline the renderer would silently skip.
  */
 export function polylineOfSpans(
   id: string,
   carrierId: string,
   spans: readonly Span[],
 ): RoutePolyline | null {
-  const ordered = [...spans].sort((a, b) => a.sequence - b.sequence);
+  const drawable = [...spans]
+    .sort((a, b) => a.sequence - b.sequence)
+    .filter((span) => span.geometry.length >= 2)
+    .map((span) => ({
+      id: span.id,
+      points: span.geometry.map((p) => ({ lon: p.lon, lat: p.lat, elevation: p.elevation })),
+    }));
 
-  const points = ordered.flatMap((span) =>
-    span.geometry.map((p) => ({ lon: p.lon, lat: p.lat, elevation: p.elevation })),
-  );
+  if (drawable.length === 0) return null;
 
-  if (points.length < 2) return null;
-
-  return { id, carrierId, points };
+  return { id, carrierId, spans: drawable };
 }
 
 export function useRouteGeometry(limit: number = DEFAULT_ROUTE_LIMIT): RouteGeometry {

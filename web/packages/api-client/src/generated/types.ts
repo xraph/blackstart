@@ -11,7 +11,7 @@ export enum ConnectionState {
 
 export interface Assignment {
   basis: string;
-  branchId: string;
+  carrierId: string;
   conductorCode: string;
   id: string;
   note?: string;

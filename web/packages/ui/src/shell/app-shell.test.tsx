@@ -32,4 +32,20 @@ describe("TopBar", () => {
 
     expect(onSignOut).toHaveBeenCalledOnce();
   });
+
+  // A slot rather than a `theme` prop: the shell has no business knowing what
+  // a theme is, and one prop per control anybody wants in the bar is how this
+  // file would grow ten of them.
+  it("renders chrome handed to it without knowing what it is", () => {
+    render(
+      <TopBar
+        contexts={[]}
+        clock="18:14:07 Z"
+        initials="RR"
+        aside={<button type="button">Colour theme</button>}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Colour theme" })).toBeTruthy();
+  });
 });

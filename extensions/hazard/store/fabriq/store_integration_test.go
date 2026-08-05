@@ -73,7 +73,7 @@ func harness(t *testing.T) *hzfabriq.Store {
 func anAssignment(branch id.ID) conductor.Assignment {
 	return conductor.Assignment{
 		ID:            hid.NewAssignment(),
-		BranchID:      branch,
+		CarrierID:     branch,
 		ConductorCode: "drake",
 		Basis:         conductor.Surveyed,
 		Note:          "surveyed 2026-07",
@@ -100,7 +100,7 @@ func TestAssignmentRoundTrip(t *testing.T) {
 		t.Errorf("read back %+v, wrote %+v", got, want)
 	}
 
-	byBranch, err := s.Assignments().ForBranch(ctx, branch)
+	byBranch, err := s.Assignments().ForCarrier(ctx, branch)
 	if err != nil {
 		t.Fatalf("ForBranch: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestOneConductorPerBranch(t *testing.T) {
 		t.Fatalf("second Put: %v", err)
 	}
 
-	got, err := s.Assignments().ForBranch(ctx, branch)
+	got, err := s.Assignments().ForCarrier(ctx, branch)
 	if err != nil {
 		t.Fatalf("ForBranch: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestOneConductorPerBranch(t *testing.T) {
 func TestUnassignedBranchIsNotFound(t *testing.T) {
 	s := harness(t)
 
-	_, err := s.Assignments().ForBranch(context.Background(), id.MustNew("brch"))
+	_, err := s.Assignments().ForCarrier(context.Background(), id.MustNew("brch"))
 	if !errors.Is(err, bserr.ErrNotFound) {
 		t.Fatalf("ForBranch error = %v, want bserr.ErrNotFound", err)
 	}

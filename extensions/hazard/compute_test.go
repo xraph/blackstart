@@ -88,18 +88,19 @@ func TestAnUnassignedSpanIsCountedUnrated(t *testing.T) {
 	}
 }
 
-// A route may carry a branch in a network model or a real circuit, and a
-// circuit has no electrical parameters by design — so it has no conductor
-// assignment and no rating, and nothing is missing when it does not.
+// A route may carry a branch in a network model or a real circuit, and both
+// are made of conductor hanging in the same weather. IEEE 738 does not ask
+// which model an element came from, so a circuit with a conductor assigned
+// rates exactly as a branch does.
 //
-// Worth a test of its own rather than folding into the unassigned case,
-// because in ordinary data the two are indistinguishable: asking ForBranch for
-// a circuit identifier misses, and a miss is reported unrated too. Identical
-// output, different reason. So this test builds the one arrangement where the
-// reason shows — an assignment the lookup *would* find — and asserts the span
-// is still unrated. Delete that setup and the test passes with no guard at
-// all, which is how it was first written.
-func TestASpanOnACircuitIsCountedUnrated(t *testing.T) {
+// This test used to assert the opposite. A guard in conductorFor returned
+// early for any circuit, because asking ForBranch with a circuit identifier
+// missed, and that miss read as "nobody assigned a conductor yet" — a category
+// error indistinguishable from a gap in the record. That reasoning was right
+// while assignments keyed on branches. Keyed on carriers, a circuit without an
+// assignment is simply an unassigned carrier, so the miss means what it says
+// and there is no longer a category to confuse.
+func TestASpanOnAnAssignedCircuitIsRated(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld(t).withWeather(icyWeather())
@@ -107,16 +108,11 @@ func TestASpanOnACircuitIsCountedUnrated(t *testing.T) {
 	circuit := id.MustNew(gid.Circuit)
 	w.geometry.routes = []geoasset.Route{{ID: w.route, CarrierID: circuit}}
 
-	// An assignment stored against the circuit's own identifier, so the
-	// lookup would *succeed* if it happened. Without this the test passes
-	// either way — a missing guard reaches ForBranch, misses, and reports the
-	// same unrated span for the wrong reason. This is what makes the guard
-	// observable: reachable, and it must still not be reached.
 	if err := w.store.Assignments().Put(t.Context(), conductor.Assignment{
 		ID:            hid.NewAssignment(),
-		BranchID:      circuit,
+		CarrierID:     circuit,
 		ConductorCode: "drake",
-		Basis:         conductor.Surveyed,
+		Basis:         conductor.AssumedByVoltage,
 	}); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
@@ -127,12 +123,34 @@ func TestASpanOnACircuitIsCountedUnrated(t *testing.T) {
 		t.Fatalf("Compute: %v", err)
 	}
 
-	if got.Unrated != 1 || got.Spans != 0 {
-		t.Errorf("counted %d unrated and %d rated, want 1 and 0", got.Unrated, got.Spans)
+	if got.Spans != 1 || got.Unrated != 0 {
+		t.Errorf("counted %d rated and %d unrated, want 1 and 0", got.Spans, got.Unrated)
 	}
 
-	if got.Values != 0 {
-		t.Errorf("a span on a circuit produced %d values", got.Values)
+	if got.Values == 0 {
+		t.Error("an assigned circuit produced no values")
+	}
+}
+
+// The concern the old guard protected, kept: a circuit nobody has assigned a
+// conductor to is unrated, and is counted as such rather than failing the pass.
+func TestASpanOnAnUnassignedCircuitIsCountedUnrated(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t).withWeather(icyWeather())
+
+	w.geometry.routes = []geoasset.Route{
+		{ID: w.route, CarrierID: id.MustNew(gid.Circuit)},
+	}
+
+	got, err := w.engine(t).Compute(
+		t.Context(), hazard.ComputeRequest{CycleID: w.weather.cycle.ID})
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+
+	if got.Unrated != 1 || got.Spans != 0 {
+		t.Errorf("counted %d unrated and %d rated, want 1 and 0", got.Unrated, got.Spans)
 	}
 }
 

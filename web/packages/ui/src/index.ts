@@ -21,12 +21,14 @@ export * from "./lib/palette";
 
 export * from "./instrument/quantity";
 export * from "./instrument/identity";
+export * from "./instrument/measure";
 export * from "./instrument/risk";
 export * from "./instrument/sparkline";
 export * from "./instrument/status";
 export * from "./instrument/provenance";
 
 export * from "./shell/app-shell";
+export * from "./shell/theme";
 export * from "./shell/time-axis";
 export * from "./shell/responsive";
 

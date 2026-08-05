@@ -61,7 +61,12 @@ describe("identity", () => {
 
     const session = await signIn({ email: "op@test", password: "pw" }, PK);
 
-    expect(session).toEqual({ userId: "ausr_1", email: "op@test" });
+    expect(session).toEqual({
+      userId: "ausr_1",
+      email: "op@test",
+      firstName: "",
+      lastName: "",
+    });
   });
 
   it("signs up against the platform's own registration path", async () => {
@@ -72,6 +77,64 @@ describe("identity", () => {
     const [url] = callOf(fetchMock);
     expect(url).toBe("/identity/v1/signup");
     expect(session.email).toBe("op@test");
+  });
+
+  // Authsome models first_name and last_name as first-class fields on the
+  // signup body, not as custom form fields. Sending them under those exact
+  // snake_case keys is the whole contract — camelCase would be silently
+  // dropped by `omitempty` binding and the account would simply have no name.
+  it("registers with the operator's name under the platform's own keys", async () => {
+    const fetchMock = stubFetch(201, AUTH_BODY);
+
+    await signUp(
+      { email: "new@test", password: "pw", firstName: "Rex", lastName: "Raphael" },
+      PK,
+    );
+
+    const [, init] = callOf(fetchMock);
+    const body = JSON.parse((init as RequestInit).body as string) as Record<string, string>;
+
+    expect(body["first_name"]).toBe("Rex");
+    expect(body["last_name"]).toBe("Raphael");
+  });
+
+  // A blank string is a name the account then has, and it would render as
+  // whitespace in the identity badge rather than falling back to the address.
+  it("omits a name it was not given rather than sending an empty one", async () => {
+    const fetchMock = stubFetch(201, AUTH_BODY);
+
+    await signUp({ email: "new@test", password: "pw", firstName: "  ", lastName: "" }, PK);
+
+    const [, init] = callOf(fetchMock);
+    const body = JSON.parse((init as RequestInit).body as string) as Record<string, string>;
+
+    expect("first_name" in body).toBe(false);
+    expect("last_name" in body).toBe(false);
+  });
+
+  it("reads the name back off the user the platform returns", async () => {
+    stubFetch(201, {
+      ...AUTH_BODY,
+      user: { id: "ausr_1", email: "op@test", first_name: "Rex", last_name: "Raphael" },
+    });
+
+    const session = await signUp({ email: "new@test", password: "pw" }, PK);
+
+    expect(session.firstName).toBe("Rex");
+    expect(session.lastName).toBe("Raphael");
+  });
+
+  // Sign-in takes no name, and must not start sending one just because the
+  // shared helper learned how.
+  it("keeps the sign-in body to a credential", async () => {
+    const fetchMock = stubFetch(200, AUTH_BODY);
+
+    await signIn({ email: "op@test", password: "pw" }, PK);
+
+    const [, init] = callOf(fetchMock);
+    const body = JSON.parse((init as RequestInit).body as string) as Record<string, string>;
+
+    expect(Object.keys(body).sort()).toEqual(["email", "password"]);
   });
 
   it("carries the platform's own reason for a refusal", async () => {
@@ -110,7 +173,12 @@ describe("me", () => {
     const [url, init] = callOf(fetchMock);
     expect(url).toBe("/identity/v1/me");
     expect(init.method).toBe("GET");
-    expect(session).toEqual({ userId: "ausr_7", email: "op@test" });
+    expect(session).toEqual({
+      userId: "ausr_7",
+      email: "op@test",
+      firstName: "",
+      lastName: "",
+    });
   });
 
   it("answers null when nobody is signed in", async () => {

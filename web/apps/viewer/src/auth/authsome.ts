@@ -30,11 +30,56 @@ const IDENTITY = "/identity/v1";
 export interface Session {
   readonly userId: string;
   readonly email: string;
+
+  /**
+   * The operator's name, empty where the account has none.
+   *
+   * Carried because the console attributes things to people — a run, a
+   * dismissed contingency — and an email prefix is a poor name to put in a
+   * report somebody else reads. Empty rather than absent: Authsome always
+   * serialises both fields, and an account registered before the form asked
+   * for them simply has them blank.
+   */
+  readonly firstName: string;
+  readonly lastName: string;
+}
+
+/**
+ * What to call the operator, in one string.
+ *
+ * Falls back to the email rather than rendering an empty badge or the word
+ * "Unknown": the address is the one thing every account has, and it is what
+ * they typed to get here.
+ */
+export function displayName(session: Session): string {
+  const full = [session.firstName, session.lastName].filter((p) => p !== "").join(" ");
+
+  return full === "" ? session.email : full;
 }
 
 export interface Credentials {
   readonly email: string;
   readonly password: string;
+}
+
+/**
+ * What registering an operator carries beyond a credential.
+ *
+ * first_name and last_name are first-class on Authsome's signup body, not
+ * custom fields — so they go on the wire under those names rather than into
+ * `metadata`. Metadata is validated against an app's active signup FormConfig,
+ * and this deployment publishes none; a name sent that way would be stored
+ * unvalidated under a key nothing else reads.
+ *
+ * Both optional at the contract, and optional here for the same reason: a
+ * deployment that has not asked for names should not be made to invent them.
+ * The screen requires them because a console where every run is attributed to
+ * an email prefix is worse to operate, which is a product decision and belongs
+ * there rather than in this file.
+ */
+export interface Registration extends Credentials {
+  readonly firstName?: string;
+  readonly lastName?: string;
 }
 
 /**
@@ -60,6 +105,8 @@ export class IdentityError extends Error {
 interface WireUser {
   id?: string;
   email?: string;
+  first_name?: string;
+  last_name?: string;
 }
 
 /** Sign-in and sign-up wrap the user; `/me` returns one bare. */
@@ -94,13 +141,18 @@ function sessionOf(status: number, user: WireUser | undefined): Session {
     throw new IdentityError(status, "identity returned no user", "no_user");
   }
 
-  return { userId: user.id, email: user.email ?? "" };
+  return {
+    userId: user.id,
+    email: user.email ?? "",
+    firstName: user.first_name ?? "",
+    lastName: user.last_name ?? "",
+  };
 }
 
 async function authenticate(
   path: string,
   publishableKey: string,
-  credentials: Credentials,
+  body: Record<string, string>,
 ): Promise<Session> {
   const response = await fetch(`${IDENTITY}${path}`, {
     method: "POST",
@@ -108,7 +160,7 @@ async function authenticate(
       "Content-Type": "application/json",
       "X-Publishable-Key": publishableKey,
     },
-    body: JSON.stringify(credentials),
+    body: JSON.stringify(body),
   });
 
   const payload = await bodyOf(response);
@@ -119,7 +171,10 @@ async function authenticate(
 }
 
 export function signIn(credentials: Credentials, publishableKey: string): Promise<Session> {
-  return authenticate("/signin", publishableKey, credentials);
+  return authenticate("/signin", publishableKey, {
+    email: credentials.email,
+    password: credentials.password,
+  });
 }
 
 /**
@@ -131,8 +186,22 @@ export function signIn(credentials: Credentials, publishableKey: string): Promis
  * That asymmetry is Authsome's, and the login screen says so rather than
  * letting it read as a broken password.
  */
-export function signUp(credentials: Credentials, publishableKey: string): Promise<Session> {
-  return authenticate("/signup", publishableKey, credentials);
+export function signUp(registration: Registration, publishableKey: string): Promise<Session> {
+  const body: Record<string, string> = {
+    email: registration.email,
+    password: registration.password,
+  };
+
+  // Omitted rather than sent empty. Both fields are `omitempty` on Authsome's
+  // side, and a blank string is a name the account then has — it would show in
+  // the identity badge as whitespace rather than falling back to the email.
+  const first = registration.firstName?.trim() ?? "";
+  const last = registration.lastName?.trim() ?? "";
+
+  if (first !== "") body["first_name"] = first;
+  if (last !== "") body["last_name"] = last;
+
+  return authenticate("/signup", publishableKey, body);
 }
 
 /**
