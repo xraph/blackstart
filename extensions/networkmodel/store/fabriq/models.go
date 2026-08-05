@@ -25,11 +25,17 @@ const (
 	// created it, and 0002, which drops it — an applied migration is history
 	// and must keep describing what it actually did.
 	BlobTable = "blackstart_networkmodel_blob"
+
+	BranchTable    = "blackstart_networkmodel_branch"
+	PlacementTable = "blackstart_networkmodel_placement"
 )
 
 // Entity names as registered with Fabriq.
 const (
 	ModelEntity = "networkmodel_model"
+
+	BranchEntity    = "networkmodel_branch"
+	PlacementEntity = "networkmodel_placement"
 )
 
 // modelRow is the persistence shape of a network model.

@@ -58,6 +58,12 @@ func (s *Store) Models() model.Store { return (*models)(s) }
 // Blobs returns the blob store.
 func (s *Store) Blobs() store.BlobStore { return (*blobs)(s) }
 
+// Branches returns the branch store.
+func (s *Store) Branches() model.BranchStore { return (*branches)(s) }
+
+// Placements returns the placement store.
+func (s *Store) Placements() model.PlacementStore { return (*placements)(s) }
+
 type models Store
 
 func (s *models) Create(ctx context.Context, in model.NetworkModel) (model.NetworkModel, error) {
