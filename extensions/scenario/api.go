@@ -9,6 +9,7 @@ import (
 	scn "github.com/xraph/blackstart/extensions/scenario/scenario"
 	"github.com/xraph/blackstart/pkg/apiauth"
 	"github.com/xraph/blackstart/pkg/httperr"
+	pkgstore "github.com/xraph/blackstart/pkg/store"
 )
 
 // --- Request DTOs ---
@@ -32,6 +33,26 @@ type defineScenarioRequest struct {
 }
 
 // --- Response DTOs ---
+
+type getScenarioRequest struct {
+	ID string `path:"id" description:"Scenario identifier (scn_…)"`
+}
+
+type listScenariosRequest struct {
+	Limit int `query:"limit" description:"Maximum results, most recently created first" optional:"true"`
+}
+
+// Every collection wrapper on this surface carries a name unique across the
+// whole repository, not merely across this package. Forge keys an OpenAPI
+// component by bare Go type name, so a second `scenariosResponse` anywhere in
+// the tree would land on the same component as this one whatever label either
+// endpoint passes to WithResponseSchema — which has already happened twice
+// here with `runsResponse`, and hid three distinct bugs the second time.
+// scn.ScenarioRun carries its own prefix for the same reason; see that type's
+// comment.
+type scenariosResponse struct {
+	Scenarios []scn.Scenario `json:"scenarios"`
+}
 
 // --- Controller ---
 
@@ -113,6 +134,25 @@ func (c *Controller) Routes(router forge.Router) error {
 		forge.WithResponseSchema(http.StatusBadRequest, "The manifest is not reproducible", nil),
 	))
 
+	check(router.GET("/scenarios", c.List,
+		forge.WithName("scenario.scenarios.list"),
+		forge.WithSummary("List scenarios"),
+		forge.WithDescription("Defined scenarios, most recently created first."),
+		forge.WithTags("Scenario"),
+		forge.WithRequestSchema(listScenariosRequest{}),
+		forge.WithResponseSchema(http.StatusOK, "Scenarios", scenariosResponse{}),
+	))
+
+	check(router.GET("/scenarios/:id", c.Get,
+		forge.WithName("scenario.scenarios.get"),
+		forge.WithSummary("Get a scenario"),
+		forge.WithDescription("One scenario and the manifest it currently binds."),
+		forge.WithTags("Scenario"),
+		forge.WithRequestSchema(getScenarioRequest{}),
+		forge.WithResponseSchema(http.StatusOK, "Scenario", scn.Scenario{}),
+		forge.WithResponseSchema(http.StatusNotFound, "No such scenario", nil),
+	))
+
 	return firstErr
 }
 
@@ -149,4 +189,58 @@ func (c *Controller) Define(ctx forge.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, stored)
+}
+
+// List returns defined scenarios, most recently created first.
+func (c *Controller) List(ctx forge.Context) error {
+	var req listScenariosRequest
+	if err := ctx.BindRequest(&req); err != nil {
+		return forge.BadRequest(err.Error())
+	}
+
+	found, err := c.engine.List(ctx.Request().Context(), bound(req.Limit))
+	if err != nil {
+		return httperr.From(err)
+	}
+
+	return ctx.JSON(http.StatusOK, scenariosResponse{Scenarios: found})
+}
+
+// Get returns one scenario.
+func (c *Controller) Get(ctx forge.Context) error {
+	var req getScenarioRequest
+	if err := ctx.BindRequest(&req); err != nil {
+		return forge.BadRequest(err.Error())
+	}
+
+	want, err := scnid.ParseScenario(req.ID)
+	if err != nil {
+		return forge.BadRequest(err.Error())
+	}
+
+	found, err := c.engine.Get(ctx.Request().Context(), want)
+	if err != nil {
+		return httperr.From(err)
+	}
+
+	return ctx.JSON(http.StatusOK, found)
+}
+
+// bound turns a requested limit into one the stores may be given.
+//
+// Both list stores document that a limit of zero or less returns EVERYTHING,
+// and they mean it — the clamp they used to apply was removed on the grounds
+// that a caller who asked for everything and silently received the newest
+// fifty of sixty cannot tell it happened, so the bound belongs at the caller
+// that knows what it wants. This surface is that caller, and what it wants is
+// never everything: an HTTP list endpoint that can be made to page an
+// unbounded result set is one request away from holding a whole table in
+// memory. An absent or non-positive limit becomes the default and an
+// over-large one is clamped, so zero can never reach a store from here.
+//
+// pkgstore.Page rather than two constants of this package's own, because
+// every other paged surface in the platform already normalizes through it and
+// a second pair of numbers would be a second answer to the same question.
+func bound(limit int) int {
+	return pkgstore.Page{Limit: limit}.Normalize().Limit
 }

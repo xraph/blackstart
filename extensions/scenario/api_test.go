@@ -15,10 +15,12 @@ import (
 
 	"github.com/xraph/forge"
 
+	scnid "github.com/xraph/blackstart/extensions/scenario/id"
 	scn "github.com/xraph/blackstart/extensions/scenario/scenario"
 	scnstore "github.com/xraph/blackstart/extensions/scenario/store"
 	"github.com/xraph/blackstart/extensions/scenario/store/memory"
 	"github.com/xraph/blackstart/pkg/id"
+	pkgstore "github.com/xraph/blackstart/pkg/store"
 )
 
 // --- A store that remembers what limit it was given ---
@@ -257,5 +259,119 @@ func TestDefiningAnswersWithTheStoredScenario(t *testing.T) {
 
 	if got.Manifest.ModelHash != validManifest().ModelHash {
 		t.Errorf("model hash %q, want %q", got.Manifest.ModelHash, validManifest().ModelHash)
+	}
+}
+
+// define stores a scenario straight through the engine, for the tests whose
+// subject is a later endpoint.
+func (s *surface) define(t *testing.T) scn.Scenario {
+	t.Helper()
+
+	stored, err := s.engine.Define(t.Context(), scn.Scenario{
+		Name:     "storm",
+		Manifest: validManifest(),
+	})
+	if err != nil {
+		t.Fatalf("Define: %v", err)
+	}
+
+	return stored
+}
+
+// --- Reading one ---
+
+// A defined scenario reads back with the manifest it binds, because the
+// manifest is the whole point of the record: a caller queueing a run needs to
+// see what that run will execute.
+func TestGettingADefinedScenarioReturnsIt(t *testing.T) {
+	s := newSurface(t)
+	defined := s.define(t)
+
+	rec := s.do(http.MethodGet, "/api/v1/scenario/scenarios/"+defined.ID.String(), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var got scn.Scenario
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding the response: %v; body: %s", err, rec.Body.String())
+	}
+
+	if got.ID != defined.ID {
+		t.Errorf("read back %s, want %s", got.ID, defined.ID)
+	}
+
+	if got.Manifest.WeatherCycle != defined.Manifest.WeatherCycle {
+		t.Errorf("weather cycle %q, want %q",
+			got.Manifest.WeatherCycle, defined.Manifest.WeatherCycle)
+	}
+}
+
+// A scenario nobody defined is a 404 rather than a 500: the request was well
+// formed and the answer is that there is no such thing.
+func TestGettingAScenarioNobodyDefinedIsNotFound(t *testing.T) {
+	s := newSurface(t)
+
+	rec := s.do(http.MethodGet,
+		"/api/v1/scenario/scenarios/"+scnid.NewScenario().String(), "")
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status %d, want 404; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- Bounding the list ---
+
+// The scenario list may never ask a store for everything.
+//
+// Both stores document that a limit of zero or less returns EVERYTHING — the
+// clamp they used to apply was deliberately removed, on the grounds that the
+// bound belongs at the caller that knows what it wants. This surface is that
+// caller. A controller that forwarded an absent limit would hand a store a
+// zero, and one unbounded request would page a whole table into memory. The
+// run list is held to the same rule, in api_runs_test.go.
+func TestListingScenariosNeverAsksAStoreForEverything(t *testing.T) {
+	for _, query := range []string{"", "?limit=0", "?limit=-1", "?limit=999999"} {
+		s := newSurface(t)
+		defined := s.define(t)
+
+		rec := s.do(http.MethodGet, "/api/v1/scenario/scenarios"+query, "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("listing%s: status %d; body: %s", query, rec.Code, rec.Body.String())
+		}
+
+		assertBounded(t, query, s.store.scenarioLimits)
+
+		// The bound must not have cost the caller the answer: a limit clamped
+		// so hard that a one-scenario store came back empty would satisfy
+		// every assertion above.
+		var got scenariosResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("decoding the listing: %v", err)
+		}
+
+		if len(got.Scenarios) != 1 || got.Scenarios[0].ID != defined.ID {
+			t.Errorf("listing%s returned %d scenarios, want the one that was defined",
+				query, len(got.Scenarios))
+		}
+	}
+}
+
+// assertBounded is the rule both list endpoints are held to: the store was
+// asked exactly once, for a positive number no larger than the maximum.
+func assertBounded(t *testing.T, query string, seen []int) {
+	t.Helper()
+
+	if len(seen) != 1 {
+		t.Fatalf("the store was asked %d times for %q", len(seen), query)
+	}
+
+	if seen[0] <= 0 {
+		t.Errorf("%q reached the store as %d, which means everything", query, seen[0])
+	}
+
+	if seen[0] > pkgstore.MaxPageLimit {
+		t.Errorf("%q reached the store as %d, over the maximum of %d",
+			query, seen[0], pkgstore.MaxPageLimit)
 	}
 }
