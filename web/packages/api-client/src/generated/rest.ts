@@ -846,6 +846,31 @@ export class RESTClient extends Client {
         return this.request<types.scenarioRunsResponse>(config);
       },
 
+      /**
+       * List runs across every scenario
+       * Every recorded run, most recent first, whatever scenario it belongs to. This is what a run index reads; a single scenario's history is /scenarios/{id}/runs.
+       */
+      recent: async (limit?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.scenarioRunsResponse> => {
+        let __path = `/api/v1/scenario/runs`;
+        const queryParams: Record<string, any> = {};
+        if (limit !== undefined) {
+          queryParams['limit'] = limit;
+        }
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "scenarioRunsResponse",
+        };
+
+        return this.request<types.scenarioRunsResponse>(config);
+      },
+
     },
 
     scenarios: {

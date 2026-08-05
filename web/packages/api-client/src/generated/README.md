@@ -36,6 +36,12 @@ const client = new Client({
 
 This API supports the following authentication methods:
 
+### apiKey
+
+- **Type**: apiKey
+- **Location**: header
+- **Header Name**: apiKey
+
 ### bearerAuth
 
 - **Type**: http
@@ -43,17 +49,11 @@ This API supports the following authentication methods:
 - **Bearer Format**: JWT
 - **Usage**: Pass the token in the `Authorization` header as `Bearer <token>`
 
-### apiKey
-
-- **Type**: apiKey
-- **Location**: header
-- **Header Name**: apiKey
-
 
 ## API Overview
 
-- **Total Endpoints**: 48
-- **REST Endpoints**: 48
+- **Total Endpoints**: 49
+- **REST Endpoints**: 49
 
 ### Servers
 
