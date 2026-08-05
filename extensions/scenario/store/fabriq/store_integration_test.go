@@ -788,3 +788,81 @@ func TestFinishRefusesARunThatDoesNotExist(t *testing.T) {
 		t.Fatalf("Finish error = %v, want bserr.ErrNotFound", err)
 	}
 }
+
+// Finish cannot move the frozen manifest, and here that means it cannot
+// rewrite the manifest column.
+//
+// Finish writes a whole row from an argument a caller has been holding.
+// Today that argument is always Claim's output, but a retry endpoint or a
+// stuck-run reaper would hand back something else, and a manifest arriving
+// that way would replace the frozen one — leaving a row that is internally
+// consistent and still looks citable. The memory store enforces the same
+// rule; this is the half that has to survive a JSONB round trip.
+func TestFinishCannotMoveTheFrozenManifest(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	claimed := aClaimedRun(t, s, "sha256:frozen")
+
+	tampered := claimed
+	tampered.Manifest.ModelHash = "sha256:a-different-network"
+	tampered.Manifest.Seed = 999
+	tampered.ScenarioID = sid.NewScenario()
+	tampered.QueuedAt = claimed.QueuedAt.Add(72 * time.Hour)
+	tampered.Status = scenario.StatusComplete
+	tampered.SweepRunID = crid.NewRun()
+	tampered.CascadeRunID = cid.NewRun()
+	tampered.FinishedAt = createdAt.Add(time.Minute)
+
+	returned, err := s.Runs().Finish(ctx, tampered)
+	if err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+
+	got, err := s.Runs().Get(ctx, claimed.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if got.Manifest.ModelHash != claimed.Manifest.ModelHash ||
+		got.Manifest.Seed != claimed.Manifest.Seed {
+		t.Errorf("the stored manifest moved to %+v, want the frozen %+v",
+			got.Manifest, claimed.Manifest)
+	}
+
+	if got.ScenarioID != claimed.ScenarioID {
+		t.Errorf("the run now belongs to scenario %s, want %s",
+			got.ScenarioID, claimed.ScenarioID)
+	}
+
+	if !got.QueuedAt.Equal(claimed.QueuedAt) {
+		t.Errorf("the queue time moved to %v", got.QueuedAt)
+	}
+
+	// What Finish returns is what the store now holds, not the argument it
+	// was handed — a caller acting on the return value must not be looking at
+	// a manifest the database rejected.
+	if returned.Manifest.ModelHash != got.Manifest.ModelHash {
+		t.Errorf("Finish returned manifest %q while storing %q",
+			returned.Manifest.ModelHash, got.Manifest.ModelHash)
+	}
+
+	if got.Status != scenario.StatusComplete || got.SweepRunID != tampered.SweepRunID {
+		t.Errorf("Finish did not record the outcome: %+v", got)
+	}
+}
+
+// Finish is not a way back into the queue. Writing a queued status over a run
+// that already produced an answer would hand it to a second worker to execute
+// again. The memory store refuses it too; both delegate to Run.Finishable,
+// and store parity is the thing this plan has already been burned on.
+func TestFinishRefusesANonTerminalStatus(t *testing.T) {
+	s := harness(t)
+
+	claimed := aClaimedRun(t, s, "sha256:not-terminal")
+	claimed.Status = scenario.StatusQueued
+
+	if _, err := s.Runs().Finish(context.Background(), claimed); !errors.Is(err, bserr.ErrInvalid) {
+		t.Fatalf("Finish error = %v, want bserr.ErrInvalid", err)
+	}
+}

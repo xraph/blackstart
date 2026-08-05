@@ -343,11 +343,26 @@ func (s *runs) Finish(ctx context.Context, in scenario.Run) (scenario.Run, error
 		return scenario.Run{}, err
 	}
 
+	// The frozen fields are copied from the row that was just read, never
+	// from the argument.
+	//
+	// Finish rewrites the whole record, manifest column included, and its
+	// caller hands back a run it has been holding. Today that is always
+	// Claim's own output, but a retry endpoint, an HTTP-supplied run body or
+	// a stuck-run reaper would each hand back something else — and a manifest
+	// arriving that way would silently replace the frozen one, leaving a
+	// record that is internally consistent and still looks citable. Nothing
+	// would detect it. The memory store carries the same three fields forward
+	// for the same reason.
+	row.ScenarioID, row.Manifest, row.QueuedAt = current.ScenarioID, current.Manifest, current.QueuedAt
+
 	version := current.Version
 
 	if err := s.base.Update(ctx, RunEntity, in.ID, row, &version); err != nil {
 		return scenario.Run{}, err
 	}
 
-	return in, nil
+	// Mapped back from the row that was written rather than returning the
+	// argument, so what the caller receives is what the store now holds.
+	return row.toDomain()
 }

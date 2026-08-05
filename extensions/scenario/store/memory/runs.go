@@ -167,6 +167,22 @@ func (s *runs) Finish(_ context.Context, in scenario.Run) (scenario.Run, error) 
 			bserr.ErrConflict, in.ID, existing.Status)
 	}
 
+	// The frozen fields come from the stored run, never from the argument.
+	//
+	// Finish writes a whole record, and its caller hands back a run it has
+	// been holding. Today that is always Claim's own output, but a retry
+	// endpoint, an HTTP-supplied run body or a stuck-run reaper would each
+	// hand back something else — and a manifest arriving that way would
+	// silently replace the frozen one, leaving a record that is internally
+	// consistent and still looks citable. That is the second route by which a
+	// frozen manifest can move, and the worse of the two: nothing detects it.
+	//
+	// Which scenario a run belongs to and when it was queued are frozen for
+	// the same reason. Neither is an outcome of executing.
+	in.ScenarioID = existing.ScenarioID
+	in.Manifest = existing.Manifest
+	in.QueuedAt = existing.QueuedAt
+
 	s.runs[in.ID] = in
 
 	return in, nil

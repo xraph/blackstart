@@ -448,3 +448,63 @@ func TestClaimIsAtomicUnderConcurrency(t *testing.T) {
 		t.Errorf("Claim after every run was taken: got err=%v, want ErrNotFound", err)
 	}
 }
+
+// Finish cannot move the frozen manifest.
+//
+// It writes a whole record from an argument a caller has been holding. Today
+// that argument is always Claim's output, but a retry endpoint or a stuck-run
+// reaper would hand back something else, and a manifest arriving that way
+// would replace the frozen one — leaving a record that is internally
+// consistent and still looks citable. Which scenario the run belongs to and
+// when it was queued are frozen for the same reason: neither is an outcome of
+// executing.
+func TestFinishCannotMoveTheFrozenManifest(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	ctx := context.Background()
+
+	claimed := aClaimedRun(t, s)
+
+	tampered := claimed
+	tampered.Manifest.ModelHash = "sha256:a-different-network"
+	tampered.Manifest.Seed = 999
+	tampered.ScenarioID = scnid.NewScenario()
+	tampered.QueuedAt = claimed.QueuedAt.Add(72 * time.Hour)
+	tampered.Status = scenario.StatusComplete
+	tampered.SweepRunID = scnid.NewRun()
+	tampered.CascadeRunID = scnid.NewRun()
+	tampered.FinishedAt = time.Now().UTC()
+
+	if _, err := s.Runs().Finish(ctx, tampered); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+
+	stored, err := s.Runs().Get(ctx, claimed.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if stored.Manifest.ModelHash != claimed.Manifest.ModelHash {
+		t.Errorf("the stored manifest moved to %q, want the frozen %q",
+			stored.Manifest.ModelHash, claimed.Manifest.ModelHash)
+	}
+
+	if stored.Manifest.Seed != claimed.Manifest.Seed {
+		t.Errorf("the stored seed moved to %d", stored.Manifest.Seed)
+	}
+
+	if stored.ScenarioID != claimed.ScenarioID {
+		t.Errorf("the run now belongs to scenario %s, want %s",
+			stored.ScenarioID, claimed.ScenarioID)
+	}
+
+	if !stored.QueuedAt.Equal(claimed.QueuedAt) {
+		t.Errorf("the queue time moved to %v", stored.QueuedAt)
+	}
+
+	// The outcome, by contrast, is exactly what Finish is for.
+	if stored.Status != scenario.StatusComplete || stored.SweepRunID != tampered.SweepRunID {
+		t.Errorf("Finish did not record the outcome: %+v", stored)
+	}
+}
