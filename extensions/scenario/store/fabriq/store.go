@@ -352,9 +352,14 @@ func (s *runs) Finish(ctx context.Context, in scenario.ScenarioRun) (scenario.Sc
 	// a stuck-run reaper would each hand back something else — and a manifest
 	// arriving that way would silently replace the frozen one, leaving a
 	// record that is internally consistent and still looks citable. Nothing
-	// would detect it. The memory store carries the same three fields forward
+	// would detect it. The memory store carries the same four fields forward
 	// for the same reason.
+	//
+	// StartedAt is among them because Claim stamps it: it is an outcome of
+	// being claimed, not of executing, and a caller handing back a zero would
+	// blank the claim time on a record that still reads perfectly consistent.
 	row.ScenarioID, row.Manifest, row.QueuedAt = current.ScenarioID, current.Manifest, current.QueuedAt
+	row.StartedAt = current.StartedAt
 
 	version := current.Version
 

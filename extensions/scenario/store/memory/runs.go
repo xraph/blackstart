@@ -177,11 +177,15 @@ func (s *runs) Finish(_ context.Context, in scenario.ScenarioRun) (scenario.Scen
 	// consistent and still looks citable. That is the second route by which a
 	// frozen manifest can move, and the worse of the two: nothing detects it.
 	//
-	// Which scenario a run belongs to and when it was queued are frozen for
-	// the same reason. Neither is an outcome of executing.
+	// Which scenario a run belongs to, when it was queued and when it was
+	// claimed are frozen for the same reason. None of the three is an outcome
+	// of executing: StartedAt is stamped by Claim, and taking it from the
+	// caller would let a reaper or a retry hand back a zero and blank the
+	// claim time on a record that still reads perfectly consistent.
 	in.ScenarioID = existing.ScenarioID
 	in.Manifest = existing.Manifest
 	in.QueuedAt = existing.QueuedAt
+	in.StartedAt = existing.StartedAt
 
 	s.runs[in.ID] = in
 

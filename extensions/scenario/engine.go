@@ -23,6 +23,17 @@ import (
 // renamed is the same scenario, and moving its creation time forward would
 // erase the only evidence of how long the binding has existed.
 func (e *Engine) Define(ctx context.Context, in scn.Scenario) (scn.Scenario, error) {
+	// Normalized on the way in, the way both stores already normalize every
+	// row timestamp. ValidAt is the one instant a caller supplies, and it is
+	// the field the manifest's identity rests on: the Fabriq store round-trips
+	// it through a JSON column, which renders a named zone as a fixed offset,
+	// so the same scenario defined at 14:00 America/New_York comes back from
+	// one store carrying a zone the other's copy does not. Nothing at runtime
+	// notices — the rating lookup compares with Equal, which is
+	// zone-independent — but it is the last behavioral difference between the
+	// two stores, and reflect.DeepEqual is how store parity gets checked.
+	in.Manifest.ValidAt = in.Manifest.ValidAt.UTC()
+
 	if err := in.Manifest.Validate(); err != nil {
 		return scn.Scenario{}, err
 	}

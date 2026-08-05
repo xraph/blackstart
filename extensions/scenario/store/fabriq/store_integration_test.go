@@ -796,8 +796,12 @@ func TestFinishRefusesARunThatDoesNotExist(t *testing.T) {
 // Today that argument is always Claim's output, but a retry endpoint or a
 // stuck-run reaper would hand back something else, and a manifest arriving
 // that way would replace the frozen one — leaving a row that is internally
-// consistent and still looks citable. The memory store enforces the same
-// rule; this is the half that has to survive a JSONB round trip.
+// consistent and still looks citable. Which scenario the run belongs to, when
+// it was queued and when it was claimed are frozen for the same reason: none
+// of the three is an outcome of executing, and a reaper building a terminal
+// run from the id and the outcome hands back a zero StartedAt — not a wrong
+// time but no time at all. The memory store enforces the same rule; this is
+// the half that has to survive a JSONB round trip.
 func TestFinishCannotMoveTheFrozenManifest(t *testing.T) {
 	s := harness(t)
 	ctx := context.Background()
@@ -809,6 +813,7 @@ func TestFinishCannotMoveTheFrozenManifest(t *testing.T) {
 	tampered.Manifest.Seed = 999
 	tampered.ScenarioID = sid.NewScenario()
 	tampered.QueuedAt = claimed.QueuedAt.Add(72 * time.Hour)
+	tampered.StartedAt = time.Time{}
 	tampered.Status = scenario.StatusComplete
 	tampered.SweepRunID = crid.NewRun()
 	tampered.CascadeRunID = cid.NewRun()
@@ -837,6 +842,11 @@ func TestFinishCannotMoveTheFrozenManifest(t *testing.T) {
 
 	if !got.QueuedAt.Equal(claimed.QueuedAt) {
 		t.Errorf("the queue time moved to %v", got.QueuedAt)
+	}
+
+	if !got.StartedAt.Equal(claimed.StartedAt) {
+		t.Errorf("the claim time is now %v, want the stamped %v; a run that was "+
+			"claimed and finished cannot have no start", got.StartedAt, claimed.StartedAt)
 	}
 
 	// What Finish returns is what the store now holds, not the argument it

@@ -455,9 +455,14 @@ func TestClaimIsAtomicUnderConcurrency(t *testing.T) {
 // that argument is always Claim's output, but a retry endpoint or a stuck-run
 // reaper would hand back something else, and a manifest arriving that way
 // would replace the frozen one — leaving a record that is internally
-// consistent and still looks citable. Which scenario the run belongs to and
-// when it was queued are frozen for the same reason: neither is an outcome of
-// executing.
+// consistent and still looks citable. Which scenario the run belongs to, when
+// it was queued and when it was claimed are frozen for the same reason: none
+// of the three is an outcome of executing.
+//
+// The claim time is the one a caller is most likely to get wrong by accident
+// rather than by tampering — a reaper building a terminal run from the id and
+// the outcome hands back a zero StartedAt, which is not a wrong time but no
+// time at all.
 func TestFinishCannotMoveTheFrozenManifest(t *testing.T) {
 	t.Parallel()
 
@@ -471,6 +476,7 @@ func TestFinishCannotMoveTheFrozenManifest(t *testing.T) {
 	tampered.Manifest.Seed = 999
 	tampered.ScenarioID = scnid.NewScenario()
 	tampered.QueuedAt = claimed.QueuedAt.Add(72 * time.Hour)
+	tampered.StartedAt = time.Time{}
 	tampered.Status = scenario.StatusComplete
 	tampered.SweepRunID = scnid.NewRun()
 	tampered.CascadeRunID = scnid.NewRun()
@@ -501,6 +507,11 @@ func TestFinishCannotMoveTheFrozenManifest(t *testing.T) {
 
 	if !stored.QueuedAt.Equal(claimed.QueuedAt) {
 		t.Errorf("the queue time moved to %v", stored.QueuedAt)
+	}
+
+	if !stored.StartedAt.Equal(claimed.StartedAt) {
+		t.Errorf("the claim time is now %v, want the stamped %v; a run that was "+
+			"claimed and finished cannot have no start", stored.StartedAt, claimed.StartedAt)
 	}
 
 	// The outcome, by contrast, is exactly what Finish is for.

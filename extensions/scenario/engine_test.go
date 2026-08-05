@@ -55,10 +55,14 @@ func engineWithFakes(t *testing.T) (*Engine, scnstore.Store) {
 // A run freezes its manifest. Editing the scenario afterwards must not reach
 // a run that already exists.
 //
-// This is THE reproducibility invariant. If the engine re-read the scenario
-// during Execute — or stored a pointer rather than a copy — then a stored run
-// would describe inputs it was not computed from, and "same manifest, same
-// result" would be a claim nobody could check.
+// The reproducibility invariant is what these two tests are about, but this
+// is not the one that guards it — TestEnqueueFreezesTheBranchListToo below
+// is. Manifest is a value and ModelHash a scalar, so the copy this test
+// asserts is one the compiler already makes: nothing an implementer could
+// plausibly write would fail here. It is kept because it is the readable
+// statement of the rule, and because a future Manifest holding a pointer or a
+// map would break here first — but the mutation that has to fail is the
+// shallow copy, and only the test below catches that.
 func TestEnqueueFreezesTheManifest(t *testing.T) {
 	t.Parallel()
 
@@ -138,6 +142,61 @@ func TestEnqueueFreezesTheBranchListToo(t *testing.T) {
 	if stored.Manifest.Branches[0] != "nmdl_one" {
 		t.Errorf("the run's branch list followed the scenario: got %q, want the frozen %q",
 			stored.Manifest.Branches[0], "nmdl_one")
+	}
+}
+
+// The manifest's valid time is stored in UTC whatever zone it arrived in, and
+// the run's frozen copy inherits that.
+//
+// The instant is unchanged; only its zone is. Nothing at runtime compares
+// these with anything but Equal, so the reason is store parity: the Fabriq
+// store round-trips a manifest through a JSON column, which renders a named
+// zone as a fixed offset, and two stores holding the same scenario would then
+// disagree under reflect.DeepEqual on the one field the manifest's identity
+// rests on.
+func TestDefineNormalizesTheValidTimeToUTC(t *testing.T) {
+	t.Parallel()
+
+	e, store := engineWithFakes(t)
+
+	// A named zone, not a fixed offset: the fixed offset is what survives the
+	// JSON round trip, so a fixture built from one could not tell the two
+	// stores apart.
+	zone, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("loading the zone: %v", err)
+	}
+
+	manifest := validManifest()
+	manifest.ValidAt = valid.In(zone)
+
+	defined, err := e.Define(t.Context(), scn.Scenario{Name: "derecho", Manifest: manifest})
+	if err != nil {
+		t.Fatalf("define: %v", err)
+	}
+
+	if defined.Manifest.ValidAt.Location() != time.UTC {
+		t.Errorf("Define answered with a valid time in %v", defined.Manifest.ValidAt.Location())
+	}
+
+	if !defined.Manifest.ValidAt.Equal(valid) {
+		t.Errorf("normalizing moved the instant to %v, want %v",
+			defined.Manifest.ValidAt, valid)
+	}
+
+	queued, err := e.Enqueue(t.Context(), defined.ID)
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	stored, err := store.Runs().Get(t.Context(), queued.ID)
+	if err != nil {
+		t.Fatalf("get run: %v", err)
+	}
+
+	if stored.Manifest.ValidAt.Location() != time.UTC {
+		t.Errorf("the frozen manifest's valid time is in %v",
+			stored.Manifest.ValidAt.Location())
 	}
 }
 
