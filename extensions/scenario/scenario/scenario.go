@@ -125,6 +125,20 @@ func (m Manifest) Validate() error {
 			bserr.ErrInvalid)
 	}
 
+	// The enum itself, before the branch list that depends on it. Everything
+	// downstream tests for PolicyExplicit and treats "not that" as PolicyAll,
+	// so a typo does not fail — it screens every in-service branch and stores
+	// a manifest whose 30-entry branch list describes a run that did not
+	// happen. Nothing later can catch it: by then the two readings are
+	// indistinguishable.
+	if m.Policy != PolicyAll && m.Policy != PolicyExplicit {
+		return fmt.Errorf(
+			"%w: policy %q is neither %q nor %q; an unrecognized policy is read as "+
+				"%q everywhere downstream, so accepting one would record a branch "+
+				"list against a run that screened the whole network",
+			bserr.ErrInvalid, m.Policy, PolicyAll, PolicyExplicit, PolicyAll)
+	}
+
 	if m.Policy == PolicyExplicit && len(m.Branches) == 0 {
 		return fmt.Errorf(
 			"%w: explicit policy needs a branch list; empty would silently "+

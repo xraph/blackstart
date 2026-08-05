@@ -212,6 +212,33 @@ func TestDefiningAnExplicitPolicyWithNoBranchesIsRefused(t *testing.T) {
 	}
 }
 
+// A mistyped policy is refused at the door, with the branch list that makes
+// it look deliberate.
+//
+// End to end through Define rather than against Validate alone, because the
+// controller binds the policy straight from the body: this is the exact
+// request that used to be accepted, screen every one of the model's in-service
+// branches, cascade the worst, complete, and leave a citable record whose
+// thirty-entry branch list describes a run that did not happen.
+//
+//nolint:misspell // the misspelling of "explicit" is the input under test
+func TestDefiningAMistypedPolicyIsRefused(t *testing.T) {
+	s := newSurface(t)
+
+	rec := s.do(http.MethodPost, "/api/v1/scenario/scenarios",
+		`{"name":"storm","manifest":{"model_hash":"sha256:abc","weather_cycle":"wxc_1",`+
+			`"valid_at":"2026-08-03T18:00:00Z","policy":"explict",`+
+			`"branches":["br_one","br_two"]}}`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400; body: %s", rec.Code, rec.Body.String())
+	}
+
+	if !strings.Contains(rec.Body.String(), "explict") {
+		t.Errorf("the rejection does not quote the offending value: %s", rec.Body.String())
+	}
+}
+
 // An identifier of another type is refused rather than treated as a scenario
 // nobody has defined — which is how a mistyped id becomes a second scenario.
 func TestDefiningAgainstAnIdentifierOfAnotherTypeIsRefused(t *testing.T) {

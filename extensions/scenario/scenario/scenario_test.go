@@ -3,6 +3,7 @@ package scenario_test
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,6 +59,40 @@ func TestAnExplicitPolicyNeedsBranches(t *testing.T) {
 
 	if err := m.Validate(); err == nil {
 		t.Fatal("want an error naming the empty branch list, got nil")
+	}
+}
+
+// A policy that is neither declared value is refused by name.
+//
+// The typo is the dangerous input, not the obviously absurd one: everything
+// downstream asks "is this explicit?" and reads anything else as "screen
+// every in-service branch". So "explict" with a thirty-branch list passes
+// every other check in this method, screens the whole network, and stores a
+// manifest describing a run that did not happen. An absent policy is the same
+// failure with an emptier spelling — absent means unknown here, not "all".
+//
+//nolint:misspell // the misspelling of "explicit" is the input under test
+func TestAPolicyMustBeOneOfTheTwoDeclaredValues(t *testing.T) {
+	t.Parallel()
+
+	for _, policy := range []scenario.Policy{"explict", "", "ALL", "none"} {
+		m := validManifest()
+		m.Policy = policy
+		m.Branches = []string{"br_one", "br_two"}
+
+		err := m.Validate()
+		if err == nil {
+			t.Errorf("policy %q was accepted; it is read as %q downstream",
+				policy, scenario.PolicyAll)
+
+			continue
+		}
+
+		// Named, because the whole point is that the author cannot see the
+		// difference between their typo and the value they meant.
+		if !strings.Contains(err.Error(), string(policy)) {
+			t.Errorf("the refusal of %q does not quote it: %v", policy, err)
+		}
 	}
 }
 
