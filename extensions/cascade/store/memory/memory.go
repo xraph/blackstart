@@ -4,7 +4,7 @@
 // a hand-written double per test, so it has to behave like the real store in
 // the ways the engine depends on: the same errors, the same append-only rule,
 // and the same ordering. Mirrors extensions/contingency/store/memory exactly,
-// substituting run.Run for sweep.Run.
+// substituting run.CascadeRun for sweep.Run.
 package memory
 
 import (
@@ -23,7 +23,7 @@ import (
 type Store struct {
 	mu sync.RWMutex
 
-	runs map[id.ID]run.Run
+	runs map[id.ID]run.CascadeRun
 
 	// order preserves insertion sequence, so a list can be built without
 	// depending on map iteration — which Go deliberately randomizes, and
@@ -33,7 +33,7 @@ type Store struct {
 
 // New builds an empty store.
 func New() *Store {
-	return &Store{runs: map[id.ID]run.Run{}}
+	return &Store{runs: map[id.ID]run.CascadeRun{}}
 }
 
 // Migrate is a no-op: there is no schema to create.
@@ -54,16 +54,16 @@ type runs Store
 // Create records a run, rejecting a duplicate identifier rather than
 // overwriting: runs are append-only, and an overwrite would replace results
 // someone may already have cited.
-func (s *runs) Create(_ context.Context, in run.Run) (run.Run, error) {
+func (s *runs) Create(_ context.Context, in run.CascadeRun) (run.CascadeRun, error) {
 	if err := in.Validate(); err != nil {
-		return run.Run{}, err
+		return run.CascadeRun{}, err
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, exists := s.runs[in.ID]; exists {
-		return run.Run{}, fmt.Errorf(
+		return run.CascadeRun{}, fmt.Errorf(
 			"%w: run %s already exists; runs are append-only", bserr.ErrConflict, in.ID)
 	}
 
@@ -74,13 +74,13 @@ func (s *runs) Create(_ context.Context, in run.Run) (run.Run, error) {
 }
 
 // Get retrieves one run.
-func (s *runs) Get(_ context.Context, runID id.ID) (run.Run, error) {
+func (s *runs) Get(_ context.Context, runID id.ID) (run.CascadeRun, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	found, ok := s.runs[runID]
 	if !ok {
-		return run.Run{}, fmt.Errorf("%w: run %s", bserr.ErrNotFound, runID)
+		return run.CascadeRun{}, fmt.Errorf("%w: run %s", bserr.ErrNotFound, runID)
 	}
 
 	return found, nil
@@ -91,11 +91,11 @@ func (s *runs) Get(_ context.Context, runID id.ID) (run.Run, error) {
 // A limit of zero or less returns everything, which is what a CLI wants.
 func (s *runs) ListByModel(
 	_ context.Context, modelHash string, limit int,
-) ([]run.Run, error) {
+) ([]run.CascadeRun, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var out []run.Run
+	var out []run.CascadeRun
 
 	for _, key := range s.order {
 		if found := s.runs[key]; found.ModelHash == modelHash {
@@ -108,7 +108,7 @@ func (s *runs) ListByModel(
 	// Ties on StartedAt break on identifier, which is chronologically
 	// sortable, so two runs recorded in the same instant still order
 	// reproducibly.
-	slices.SortStableFunc(out, func(left, right run.Run) int {
+	slices.SortStableFunc(out, func(left, right run.CascadeRun) int {
 		if by := right.StartedAt.Compare(left.StartedAt); by != 0 {
 			return by
 		}

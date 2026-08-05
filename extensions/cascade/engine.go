@@ -119,9 +119,9 @@ func (r Request) Validate() error {
 //
 // The run is stored before it is returned, so a caller acting on the outcome
 // can always point at the record behind it.
-func (e *Engine) Simulate(ctx context.Context, in Request) (run.Run, error) {
+func (e *Engine) Simulate(ctx context.Context, in Request) (run.CascadeRun, error) {
 	if err := in.Validate(); err != nil {
-		return run.Run{}, err
+		return run.CascadeRun{}, err
 	}
 
 	started := e.now().UTC()
@@ -139,7 +139,7 @@ func (e *Engine) Simulate(ctx context.Context, in Request) (run.Run, error) {
 
 	response, err := e.simulator.Simulate(ctx, in.Model, request)
 	if err != nil {
-		return run.Run{}, fmt.Errorf("cascade: simulating: %w", err)
+		return run.CascadeRun{}, fmt.Errorf("cascade: simulating: %w", err)
 	}
 
 	built := fromWire(response, in.Model)
@@ -149,7 +149,7 @@ func (e *Engine) Simulate(ctx context.Context, in Request) (run.Run, error) {
 
 	stored, err := e.store.Runs().Create(ctx, built)
 	if err != nil {
-		return run.Run{}, fmt.Errorf("cascade: recording the run: %w", err)
+		return run.CascadeRun{}, fmt.Errorf("cascade: recording the run: %w", err)
 	}
 
 	e.emit(ctx, stored)
@@ -158,14 +158,14 @@ func (e *Engine) Simulate(ctx context.Context, in Request) (run.Run, error) {
 }
 
 // Get retrieves a recorded run.
-func (e *Engine) Get(ctx context.Context, runID id.ID) (run.Run, error) {
+func (e *Engine) Get(ctx context.Context, runID id.ID) (run.CascadeRun, error) {
 	return e.store.Runs().Get(ctx, runID)
 }
 
 // ListByModel returns what is known about one network, most recent first.
 func (e *Engine) ListByModel(
 	ctx context.Context, modelHash string, limit int,
-) ([]run.Run, error) {
+) ([]run.CascadeRun, error) {
 	return e.store.Runs().ListByModel(ctx, modelHash, limit)
 }
 
@@ -174,7 +174,7 @@ func (e *Engine) ListByModel(
 // The per-unit boundary on the read path. The base comes from the model
 // simulated, not a constant, so two models on different bases cannot be
 // confused. ID, StartedAt and FinishedAt are the caller's to fill in.
-func fromWire(response *solverv1.SimulateCascadeResponse, model *solverv1.NetworkModel) run.Run {
+func fromWire(response *solverv1.SimulateCascadeResponse, model *solverv1.NetworkModel) run.CascadeRun {
 	sBase := model.GetSBaseVa()
 
 	events := make([]run.Event, len(response.GetEvents()))
@@ -187,7 +187,7 @@ func fromWire(response *solverv1.SimulateCascadeResponse, model *solverv1.Networ
 		islands[index] = islandFromWire(wire, sBase)
 	}
 
-	return run.Run{
+	return run.CascadeRun{
 		ModelHash:     response.GetModelHash(),
 		SolverVersion: response.GetSolverVersion(),
 		Outcome:       run.Outcome(outcomeTable[response.GetOutcome()]),
@@ -322,7 +322,7 @@ func divide(value, base float64) float64 {
 
 // emit publishes a domain event, best effort and out of transaction: a
 // subscriber that fails must not undo a simulation that succeeded.
-func (e *Engine) emit(ctx context.Context, stored run.Run) {
+func (e *Engine) emit(ctx context.Context, stored run.CascadeRun) {
 	if e.bus == nil {
 		return
 	}

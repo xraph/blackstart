@@ -49,7 +49,7 @@ func model() *solverv1.NetworkModel {
 }
 
 // settledResponse is the minimum a response needs to be storable: a run
-// without a model hash or a solver version fails run.Run.Validate, so every
+// without a model hash or a solver version fails run.CascadeRun.Validate, so every
 // fake response a happy-path test uses has to carry both.
 func settledResponse() *solverv1.SimulateCascadeResponse {
 	return &solverv1.SimulateCascadeResponse{

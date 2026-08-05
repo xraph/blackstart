@@ -15,12 +15,12 @@ import (
 // than a runtime one, so a method dropped in a refactor fails the build.
 var _ store.Store = (*Store)(nil)
 
-func aRun() run.Run {
+func aRun() run.CascadeRun {
 	at := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
 	frequency, nadir, rocof := 59.4, 58.1, -1.8
 	first := uint32(0)
 
-	return run.Run{
+	return run.CascadeRun{
 		ID:            cid.NewRun(),
 		ModelHash:     "sha256:abc123",
 		SolverVersion: "0.1.0-test",
@@ -165,7 +165,7 @@ func TestAbsentPointersStayAbsent(t *testing.T) {
 func TestASettledRunWithZeroesRoundTrips(t *testing.T) {
 	t.Parallel()
 
-	want := run.Run{
+	want := run.CascadeRun{
 		ID:            cid.NewRun(),
 		ModelHash:     "sha256:quiet",
 		SolverVersion: "0.1.0-test",

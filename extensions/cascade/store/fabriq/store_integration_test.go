@@ -61,11 +61,11 @@ func harness(t *testing.T) *cscfabriq.Store {
 	return s
 }
 
-func aRun(modelHash string, at time.Time) run.Run {
+func aRun(modelHash string, at time.Time) run.CascadeRun {
 	frequency, nadir, rocof := 59.4, 58.1, -1.8
 	first := uint32(0)
 
-	return run.Run{
+	return run.CascadeRun{
 		ID:            cid.NewRun(),
 		ModelHash:     modelHash,
 		SolverVersion: "0.1.0-test",
@@ -174,7 +174,7 @@ func TestASettledRunStores(t *testing.T) {
 	s := harness(t)
 	ctx := context.Background()
 
-	want := run.Run{
+	want := run.CascadeRun{
 		ID:            cid.NewRun(),
 		ModelHash:     "sha256:quiet",
 		SolverVersion: "0.1.0-test",

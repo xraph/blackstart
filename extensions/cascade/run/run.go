@@ -153,8 +153,14 @@ type Island struct {
 	Trace []Sample `json:"trace,omitempty"`
 }
 
-// Run is one execution of a cascade simulation.
-type Run struct {
+// CascadeRun is one execution of a cascade simulation.
+//
+// Named CascadeRun rather than the bare Run its sibling packages once shared:
+// Forge keys an OpenAPI component by Go type, not by the label passed to
+// WithResponseSchema, so cascade's and contingency's identically-named Run
+// types collided under one schema regardless of what either endpoint called
+// it. Renaming the type is what a relabelling could not do.
+type CascadeRun struct {
 	// ID identifies this run.
 	ID id.ID `json:"id"`
 
@@ -205,7 +211,7 @@ type Run struct {
 }
 
 // Validate reports whether a run is coherent enough to store.
-func (r Run) Validate() error {
+func (r CascadeRun) Validate() error {
 	if r.ID.IsZero() {
 		return fmt.Errorf("%w: a run needs an identifier", bserr.ErrInvalid)
 	}
@@ -233,11 +239,11 @@ func (r Run) Validate() error {
 // produced.
 type Store interface {
 	// Create records a run.
-	Create(ctx context.Context, in Run) (Run, error)
+	Create(ctx context.Context, in CascadeRun) (CascadeRun, error)
 
 	// Get retrieves one by identifier.
-	Get(ctx context.Context, runID id.ID) (Run, error)
+	Get(ctx context.Context, runID id.ID) (CascadeRun, error)
 
 	// ListByModel returns runs for one network, most recent first.
-	ListByModel(ctx context.Context, modelHash string, limit int) ([]Run, error)
+	ListByModel(ctx context.Context, modelHash string, limit int) ([]CascadeRun, error)
 }

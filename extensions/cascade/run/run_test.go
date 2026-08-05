@@ -11,10 +11,10 @@ import (
 	"github.com/xraph/blackstart/pkg/id"
 )
 
-func validRun(t *testing.T) run.Run {
+func validRun(t *testing.T) run.CascadeRun {
 	t.Helper()
 
-	return run.Run{
+	return run.CascadeRun{
 		ID:            cid.NewRun(),
 		ModelHash:     "abc123",
 		SolverVersion: "0.1.0-test",
@@ -27,18 +27,18 @@ func validRun(t *testing.T) run.Run {
 // A run that cannot name what it simulated, or what produced it, cannot be
 // reproduced — Validate is the store's only gate against recording one.
 func TestARunNeedsAnIdentifierAModelAndAVersion(t *testing.T) {
-	cases := map[string]func(run.Run) run.Run{
-		"no identifier": func(r run.Run) run.Run {
+	cases := map[string]func(run.CascadeRun) run.CascadeRun{
+		"no identifier": func(r run.CascadeRun) run.CascadeRun {
 			r.ID = id.Nil
 
 			return r
 		},
-		"no model hash": func(r run.Run) run.Run {
+		"no model hash": func(r run.CascadeRun) run.CascadeRun {
 			r.ModelHash = ""
 
 			return r
 		},
-		"no solver version": func(r run.Run) run.Run {
+		"no solver version": func(r run.CascadeRun) run.CascadeRun {
 			r.SolverVersion = ""
 
 			return r

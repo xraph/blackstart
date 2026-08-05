@@ -26,7 +26,7 @@ type listCascadeRunsRequest struct {
 // --- Response DTOs ---
 
 type cascadeRunsResponse struct {
-	Runs []run.Run `json:"runs"`
+	Runs []run.CascadeRun `json:"runs"`
 }
 
 type islandsResponse struct {
@@ -100,7 +100,7 @@ func (c *Controller) Routes(router forge.Router) error {
 				"in simulated time."),
 		forge.WithTags("Cascade"),
 		forge.WithRequestSchema(getCascadeRunRequest{}),
-		forge.WithResponseSchema(http.StatusOK, "CascadeRun", run.Run{}),
+		forge.WithResponseSchema(http.StatusOK, "CascadeRun", run.CascadeRun{}),
 		forge.WithResponseSchema(http.StatusNotFound, "No such run", nil),
 	))
 
