@@ -400,15 +400,34 @@ mod tests {
     };
     use crate::proto;
 
-    /// A minimal one-bus, zero-branch model, so `to_case` has something to
-    /// convert without every test needing to restate a whole network.
+    /// A minimal model, so `to_case` has something to convert without every
+    /// test needing to restate a whole network.
+    ///
+    /// One bus and one branch rather than one bus alone. Every impedance in
+    /// the model divides by `z_base`, which is derived from the voltage base,
+    /// so a zero-branch fixture cannot see a voltage read from the wrong
+    /// place at all — and the voltage base is the one thing this module must
+    /// never get from a bus. The branch's ends are both bus 0 for the same
+    /// reason `slack_bus` is reused everywhere: the network need not be
+    /// solvable for a conversion to be checked, only complete.
     fn minimal_model(bus: proto::Bus) -> proto::NetworkModel {
         proto::NetworkModel {
             name: "t".to_owned(),
             s_base_va: 100e6,
             v_base_v: 138_000.0,
             buses: vec![bus],
-            branches: vec![],
+            branches: vec![proto::Branch {
+                id: "b".to_owned(),
+                from_bus: 0,
+                to_bus: 0,
+                r_ohm: 19.044,
+                x_ohm: 190.44,
+                b_shunt_s: 0.001,
+                rating_va: 100e6,
+                in_service: true,
+                tap: 1.0,
+                shift_rad: 0.0,
+            }],
         }
     }
 
@@ -422,8 +441,12 @@ mod tests {
             v_angle_rad: 0.0,
             q_min_var: None,
             q_max_var: None,
-            g_shunt_s: 0.0,
-            b_shunt_s: 0.0,
+            // Non-zero, because a shunt admittance is the one bus quantity
+            // that multiplies by `z_base` rather than dividing by a power
+            // base — so a zero here would make the bus blind to a wrong
+            // voltage base, which is the error most worth catching.
+            g_shunt_s: 0.005,
+            b_shunt_s: 0.01,
             p_min_w: None,
             p_max_w: None,
             inertia_h_s: None,
@@ -469,6 +492,14 @@ mod tests {
     /// The value chosen is deliberately absurd: at 13.8 kV against the
     /// model's 138 kV, a conversion that read it would put the slack's
     /// voltage at 10.0 per unit rather than 1.0.
+    ///
+    /// Every quantity derived from a voltage is compared, not just the
+    /// voltage. `z_base` is `v_base²/s_base`, so a bus's nominal voltage
+    /// reaching it would move every impedance by a factor of 100 and every
+    /// admittance by the same in the other direction — and an assertion on
+    /// `v_magnitude` alone would not notice, because that division would
+    /// still be by the model base. Impedance is the wider door, and it is the
+    /// one the module docs warn about.
     #[test]
     fn a_buses_nominal_voltage_does_not_enter_the_per_unit_conversion() {
         let plain = to_case(&minimal_model(slack_bus())).expect("a minimal model converts");
@@ -482,6 +513,18 @@ mod tests {
         assert_eq!(stated.buses[0].v_magnitude, plain.buses[0].v_magnitude);
         assert_eq!(stated.buses[0].v_magnitude, 1.0);
         assert_eq!(stated.base.v_base(), plain.base.v_base());
+
+        // Everything that passes through the impedance base.
+        assert_eq!(stated.buses[0].g_shunt, plain.buses[0].g_shunt);
+        assert_eq!(stated.buses[0].b_shunt, plain.buses[0].b_shunt);
+        assert_eq!(stated.branches[0].r, plain.branches[0].r);
+        assert_eq!(stated.branches[0].x, plain.branches[0].x);
+        assert_eq!(stated.branches[0].b, plain.branches[0].b);
+
+        // And against a figure computed by hand rather than against this
+        // implementation's own output, so both sides moving together cannot
+        // pass: z_base = 138000²/100e6 = 190.44 Ω, and 19.044 Ω is 0.1 pu.
+        assert_eq!(stated.branches[0].r, 0.1);
     }
 
     /// An absent `OvercurrentSettings` disables the element outright: a
