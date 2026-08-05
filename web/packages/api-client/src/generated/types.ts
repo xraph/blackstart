@@ -62,6 +62,15 @@ export interface Circuit {
   voltageKv: number;
 }
 
+export interface ComponentValue {
+  componentId: string;
+  issuedAt: string;
+  probability: number;
+  quantity: string;
+  scalar: number;
+  validAt: string;
+}
+
 export interface Computation {
   computedAt: string;
   cycleId: string;
@@ -284,7 +293,6 @@ export interface Scenario {
 }
 
 export interface ScenarioRun {
-  baseVoltageFallback?: number;
   branchCount?: number;
   cascadeRunId?: string;
   failure?: Failure;
@@ -418,19 +426,6 @@ export interface encodingResponse {
   sizeBytes: number;
 }
 
-export interface extentResponse {
-  area: {
-  elevation: number;
-  lat: number;
-  lon: number;
-}[][];
-  halfWidthM: number;
-  resolved: number;
-  runId: string;
-  unresolved: string[];
-  untraced: number;
-}
-
 export interface feedsResponse {
   feeds: Feed[];
 }
@@ -490,6 +485,12 @@ export interface scenarioRunsResponse {
 
 export interface scenariosResponse {
   scenarios: Scenario[];
+}
+
+export interface seriesResponse {
+  componentId: string;
+  issuedAt: string;
+  values: ComponentValue[];
 }
 
 export interface solutionsResponse {

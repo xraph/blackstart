@@ -34,8 +34,6 @@ import * as types from './types';
  * `queryClient.invalidateQueries({ queryKey: ['networkmodel'] })`.
  */
 export const queryKeys = {
-  cascadeRunsExtent: (id: string, halfWidthM?: number | undefined) =>
-    ['cascade', 'runs', 'extent', { id, halfWidthM }] as const,
   cascadeRunsGet: (id: string) =>
     ['cascade', 'runs', 'get', { id }] as const,
   cascadeRunsIslands: (id: string) =>
@@ -98,12 +96,12 @@ export const queryKeys = {
     ['provenance', 'models', 'get', { id }] as const,
   provenanceRunsTrace: (id: string) =>
     ['provenance', 'runs', 'trace', { id }] as const,
+  riskComponentsSeries: (id: string, issued?: string, from?: string, to?: string) =>
+    ['risk', 'components', 'series', { id, issued, from, to }] as const,
   scenarioRunsGet: (id: string) =>
     ['scenario', 'runs', 'get', { id }] as const,
   scenarioRunsList: (id: string, limit?: number | undefined) =>
     ['scenario', 'runs', 'list', { id, limit }] as const,
-  scenarioRunsRecent: (limit?: number | undefined) =>
-    ['scenario', 'runs', 'recent', { limit }] as const,
   scenarioScenariosGet: (id: string) =>
     ['scenario', 'scenarios', 'get', { id }] as const,
   scenarioScenariosList: (limit?: number | undefined) =>
@@ -129,20 +127,6 @@ export const queryKeys = {
   weatherStationsObservations: (id: string, field?: string | undefined, from?: string, to?: string) =>
     ['weather', 'stations', 'observations', { id, field, from, to }] as const,
 } as const;
-
-/** The corridor area within half_width_m (default 500, in meters on each side of a traced route) of every branch the run tripped. Corridors that overlap are returned whole rather than merged, so this is corridor area, not a single figure of distinct ground — see shape.Cover. */
-export function useCascadeRunsExtent(
-  client: RESTClient,
-  id: string,
-  halfWidthM?: number | undefined,
-  options?: Omit<UseQueryOptions<types.extentResponse, Error>, 'queryKey' | 'queryFn'>,
-) {
-  return useQuery({
-    queryKey: queryKeys.cascadeRunsExtent(id, halfWidthM),
-    queryFn: ({ signal }) => client.cascade.runs.extent(id, halfWidthM, { signal }),
-    ...options,
-  });
-}
 
 /** One recorded simulation, with every event in the order it happened in simulated time. */
 export function useCascadeRunsGet(
@@ -566,6 +550,22 @@ export function useProvenanceRunsTrace(
   });
 }
 
+/** Per-hour P(failure): a span's conductor probability or a structure's, whichever the identifier names. Issuance is a parameter rather than inferred, the same reason hazard's span endpoints require it — a window this API guessed would give the same request a different answer tomorrow. */
+export function useRiskComponentsSeries(
+  client: RESTClient,
+  id: string,
+  issued?: string,
+  from?: string,
+  to?: string,
+  options?: Omit<UseQueryOptions<types.seriesResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.riskComponentsSeries(id, issued, from, to),
+    queryFn: ({ signal }) => client.risk.components.series(id, issued, from, to, { signal }),
+    ...options,
+  });
+}
+
 /** Freezes a copy of the scenario's manifest into a new run and returns it queued. A worker claims and executes it; poll the run for its status and, once complete, the sweep and cascade it produced. */
 export function useScenarioRunsEnqueue(
   client: RESTClient,
@@ -600,19 +600,6 @@ export function useScenarioRunsList(
   return useQuery({
     queryKey: queryKeys.scenarioRunsList(id, limit),
     queryFn: ({ signal }) => client.scenario.runs.list(id, limit, { signal }),
-    ...options,
-  });
-}
-
-/** Every recorded run, most recent first, whatever scenario it belongs to. This is what a run index reads; a single scenario's history is /scenarios/{id}/runs. */
-export function useScenarioRunsRecent(
-  client: RESTClient,
-  limit?: number | undefined,
-  options?: Omit<UseQueryOptions<types.scenarioRunsResponse, Error>, 'queryKey' | 'queryFn'>,
-) {
-  return useQuery({
-    queryKey: queryKeys.scenarioRunsRecent(limit),
-    queryFn: ({ signal }) => client.scenario.runs.recent(limit, { signal }),
     ...options,
   });
 }

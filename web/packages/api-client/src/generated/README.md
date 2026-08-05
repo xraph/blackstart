@@ -52,13 +52,13 @@ This API supports the following authentication methods:
 
 ## API Overview
 
-- **Total Endpoints**: 49
-- **REST Endpoints**: 49
+- **Total Endpoints**: 48
+- **REST Endpoints**: 48
 
 ### Servers
 
-- **http://localhost:8080**: Development server
-- **http://localhost:8080**: This instance
+- **http://localhost:8099**: Development server
+- **http://localhost:8099**: This instance
 
 ## License
 
