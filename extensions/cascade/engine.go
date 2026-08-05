@@ -44,9 +44,34 @@ type Engine struct {
 	simulator Simulator
 	bus       *hooks.Bus
 
+	// The extent half. All optional: a deployment that only simulates and
+	// reads back runs needs none of them, and an engine that demanded a
+	// model, branch or geometry reader to answer Simulate or Get would make
+	// the read path depend on collaborators it has no use for.
+	models   Models
+	branches Branches
+	geo      Geo
+
 	// now is injectable so a test can pin the times a run records without
 	// sleeping or comparing against a moving target.
 	now func() time.Time
+}
+
+// EngineOption configures the engine.
+//
+// Named for the engine because the extension already has an Option, and two
+// types called the same thing in one package would make every call site ask
+// which one it meant.
+type EngineOption func(*Engine)
+
+// WithExtent supplies what Extent needs: a model reader, a branch reader and
+// a geometry reader.
+//
+// All three or none — Extent needs every one of them to get from a run's
+// model hash to a tripped branch's corridor, and a partial set would fail on
+// the first call rather than at construction.
+func WithExtent(m Models, b Branches, g Geo) EngineOption {
+	return func(e *Engine) { e.models, e.branches, e.geo = m, b, g }
 }
 
 // NewEngine builds the engine.
@@ -56,7 +81,7 @@ type Engine struct {
 // reading what the solver said rather than configuring a second, possibly
 // stale source of truth into the engine. The bus may be nil — a CLI
 // invocation has no interest in domain events.
-func NewEngine(s store.Store, simulator Simulator, bus *hooks.Bus) (*Engine, error) {
+func NewEngine(s store.Store, simulator Simulator, bus *hooks.Bus, opts ...EngineOption) (*Engine, error) {
 	if s == nil {
 		return nil, errors.New("cascade: engine needs a store")
 	}
@@ -65,12 +90,18 @@ func NewEngine(s store.Store, simulator Simulator, bus *hooks.Bus) (*Engine, err
 		return nil, errors.New("cascade: engine needs a simulator")
 	}
 
-	return &Engine{
+	e := &Engine{
 		store:     s,
 		simulator: simulator,
 		bus:       bus,
 		now:       time.Now,
-	}, nil
+	}
+
+	for _, opt := range opts {
+		opt(e)
+	}
+
+	return e, nil
 }
 
 // Request is one cascade simulation to run.
