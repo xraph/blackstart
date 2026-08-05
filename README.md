@@ -179,7 +179,7 @@ model version, the code commit, and the dataset versions it was computed from.
 What does not exist yet: outage-history ingest, the risk model, and the backtest
 harness. Cascade simulation and playback exist; the operator console renders a hazard
 layer — ampacity and mechanical loading over the network, with quantized severity
-coloring — covering 216 rated spans as of today.
+coloring — covering 216 rated spans as of 2026-08-05.
 
 | Phase | Scope | State |
 |---|---|---|
