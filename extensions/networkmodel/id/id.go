@@ -15,12 +15,25 @@ const (
 	// is megabytes where the record is bytes, and one row would drag the
 	// encoding through every listing.
 	Blob id.Prefix = "nmblob"
+
+	// Branch is one branch of a network model, given identity so that a
+	// cascade event naming "branch-3" resolves to something with geometry.
+	//
+	// Beside the canonical blob and never inside it: the content hash covers
+	// physics, and a hash that moved because the platform started recording
+	// names would invalidate every result citing it for no physical reason.
+	Branch id.Prefix = "br"
+
+	// Placement is where one bus sits on the earth.
+	Placement id.Prefix = "nmplc"
 )
 
 //nolint:gochecknoinits // prefix registration is init-time by design
 func init() {
 	id.MustRegister(Model, Owner, "NetworkModel")
 	id.MustRegister(Blob, Owner, "NetworkModelBlob")
+	id.MustRegister(Branch, Owner, "NetworkModelBranch")
+	id.MustRegister(Placement, Owner, "NetworkModelPlacement")
 }
 
 // NewModel mints a network-model identifier.
@@ -28,6 +41,12 @@ func NewModel() id.ID { return id.MustNew(Model) }
 
 // NewBlob mints a blob identifier.
 func NewBlob() id.ID { return id.MustNew(Blob) }
+
+// NewBranch mints a branch identifier.
+func NewBranch() id.ID { return id.MustNew(Branch) }
+
+// NewPlacement mints a placement identifier.
+func NewPlacement() id.ID { return id.MustNew(Placement) }
 
 // ParseModel reads a network-model identifier, rejecting any other type.
 func ParseModel(s string) (id.ID, error) { return id.ParseWithPrefix(s, Model) }
