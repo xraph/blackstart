@@ -26,8 +26,8 @@ func (s *assignments) Put(_ context.Context, in conductor.Assignment) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// One assignment per branch. The Fabriq store enforces this with a unique
-	// index on (tenant_id, branch_id); here it is an explicit sweep, because a
+	// One assignment per carrier. The Fabriq store enforces this with a unique
+	// index on (tenant_id, carrier_id); here it is an explicit sweep, because a
 	// memory store that quietly allowed two would let every engine test pass
 	// against a rule production does not have.
 	for existing, got := range s.assignments {
@@ -55,19 +55,19 @@ func (s *assignments) Get(_ context.Context, want id.ID) (conductor.Assignment, 
 }
 
 func (s *assignments) ForCarrier(
-	_ context.Context, branch id.ID,
+	_ context.Context, carrier id.ID,
 ) (conductor.Assignment, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	for _, found := range s.assignments {
-		if found.CarrierID == branch {
+		if found.CarrierID == carrier {
 			return found, nil
 		}
 	}
 
 	return conductor.Assignment{}, fmt.Errorf(
-		"%w: no conductor assigned to branch %s", bserr.ErrNotFound, branch)
+		"%w: no conductor assigned to carrier %s", bserr.ErrNotFound, carrier)
 }
 
 func (s *assignments) List(

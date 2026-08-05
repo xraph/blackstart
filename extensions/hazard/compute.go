@@ -7,7 +7,6 @@ import (
 	"time"
 
 	geoasset "github.com/xraph/blackstart/extensions/geo/asset"
-	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/hazard/conductor"
 	hid "github.com/xraph/blackstart/extensions/hazard/id"
 	"github.com/xraph/blackstart/extensions/hazard/store"
@@ -44,8 +43,8 @@ type Weather interface {
 
 // Geometry is the part of the geo extension a computation needs.
 //
-// Route by identifier is what makes span → route → branch a traversal: a span
-// carries its route, a route carries its branch, and the branch is what an
+// Route by identifier is what makes span → route → carrier a traversal: a span
+// carries its route, a route carries its carrier, and the carrier is what an
 // assignment is keyed by. Satisfied by *geo.Engine.
 type Geometry interface {
 	Routes(ctx context.Context, limit int) ([]geoasset.Route, error)
@@ -220,7 +219,7 @@ type spanOutcome struct {
 	// offered.
 	covered, total int
 
-	// unrated marks a span whose branch has no conductor assignment. Distinct
+	// unrated marks a span whose carrier has no conductor assignment. Distinct
 	// from a span that produced nothing for want of weather: one is a gap in
 	// the asset record and the other a gap in the forecast domain, and a single
 	// count would let a network nobody has surveyed look like bad weather.
@@ -289,7 +288,7 @@ func (e *Engine) computeSpan(
 // conductorFor resolves span → route → carrier → assignment → conductor.
 //
 // Reports false, with no error, in two cases that are not the same thing. A
-// branch with no assignment is a gap in the asset record. A route carrying a
+// carrier with no assignment is a gap in the asset record. A route carrying a
 // *circuit* has no assignment to gap: a circuit is a line somebody built, it
 // carries no electrical parameters by design, and nothing is missing when it
 // has no conductor. Both come back unrated because that is what an unrated
@@ -308,15 +307,15 @@ func (e *Engine) conductorFor(
 			"hazard: reading route %s for span %s: %w", span.RouteID, span.ID, err)
 	}
 
-	// Asked before the lookup rather than after it misses. ForCarrier given a
-	// circuit identifier would return not-found, which the branch below reads
-	// as "nobody assigned a conductor yet" — a category error wearing the
-	// costume of a gap in the record, and indistinguishable from one in every
-	// count and report downstream.
-	if gid.IsCircuit(route.CarrierID) {
-		return conductor.Conductor{}, false, nil
-	}
-
+	// No check on what kind of carrier this is. There used to be one: a circuit
+	// returned early, because asking for its assignment missed and that miss
+	// read as "nobody assigned a conductor yet" — a category error wearing the
+	// costume of a gap in the record. That was right while assignments keyed on
+	// branches. Keyed on carriers, an unassigned circuit *is* an unassigned
+	// carrier, so the miss below means exactly what it says.
+	//
+	// A circuit and a branch are both real conductor hanging in the same
+	// weather, and IEEE 738 does not ask which model an element came from.
 	assignment, err := e.store.Assignments().ForCarrier(ctx, route.CarrierID)
 	if err != nil {
 		if errors.Is(err, bserr.ErrNotFound) {
@@ -329,7 +328,7 @@ func (e *Engine) conductorFor(
 	which, err := conductor.ByCode(assignment.ConductorCode)
 	if err != nil {
 		return conductor.Conductor{}, false, fmt.Errorf(
-			"hazard: assignment %s on branch %s: %w",
+			"hazard: assignment %s on carrier %s: %w",
 			assignment.ID, route.CarrierID, err)
 	}
 

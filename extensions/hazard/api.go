@@ -124,7 +124,7 @@ func (c *Controller) Routes(router forge.Router) error {
 
 	check(router.GET("/assignments", c.ListAssignments,
 		forge.WithName("hazard.assignments.list"),
-		forge.WithSummary("Which conductor each branch is strung with"),
+		forge.WithSummary("Which conductor each carrier is strung with"),
 		forge.WithDescription(
 			"Every assignment carries a basis. A surveyed assignment and one "+
 				"assumed from the voltage class are different claims, and a "+

@@ -51,7 +51,7 @@ func assignmentFromModel(m assignmentModel) (conductor.Assignment, error) {
 			"hazard: stored assignment id %q: %w", m.ID, err)
 	}
 
-	branchID, err := id.Parse(m.CarrierID)
+	carrierID, err := id.Parse(m.CarrierID)
 	if err != nil {
 		return conductor.Assignment{}, fmt.Errorf(
 			"hazard: stored carrier id %q: %w", m.CarrierID, err)
@@ -59,7 +59,7 @@ func assignmentFromModel(m assignmentModel) (conductor.Assignment, error) {
 
 	return conductor.Assignment{
 		ID:            assignmentID,
-		CarrierID:     branchID,
+		CarrierID:     carrierID,
 		ConductorCode: m.ConductorCode,
 		Basis:         conductor.Basis(m.Basis),
 		Note:          m.Note,
@@ -110,20 +110,20 @@ func (s *assignmentStore) Get(
 }
 
 func (s *assignmentStore) ForCarrier(
-	ctx context.Context, branch id.ID,
+	ctx context.Context, carrier id.ID,
 ) (conductor.Assignment, error) {
 	var rows []assignmentModel
 
 	if err := s.base.Query(ctx, &rows,
 		`SELECT * FROM `+AssignmentTable+`
 		 WHERE tenant_id = current_setting('app.tenant_id', true)
-		   AND carrier_id = $1`, branch.String()); err != nil {
+		   AND carrier_id = $1`, carrier.String()); err != nil {
 		return conductor.Assignment{}, err
 	}
 
 	if len(rows) == 0 {
 		return conductor.Assignment{}, fmt.Errorf(
-			"%w: no conductor assigned to branch %s", bserr.ErrNotFound, branch)
+			"%w: no conductor assigned to carrier %s", bserr.ErrNotFound, carrier)
 	}
 
 	return assignmentFromModel(rows[0])
