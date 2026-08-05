@@ -85,7 +85,28 @@ type Manifest struct {
 	// PolicyExplicit.
 	Branches []string `json:"branches,omitempty"`
 
-	// Seed is the random seed for reproducibility.
+	// Seed is the random seed a run would be reproducible under.
+	//
+	// RECORDED, NOT YET APPLIED, for the same reason HazardConfig above is and
+	// with the same consequence: two scenarios differing only in this field
+	// produce byte-identical sweeps and cascades, while each record claims a
+	// distinct seed binding. A reader comparing them would conclude the result
+	// is seed-insensitive, when the seed was never an input to it.
+	//
+	// Nothing reads it because there is nothing yet for it to fix. The screen
+	// and the cascade are deterministic given a model and a set of overrides —
+	// no crate under rust/ draws a random number — so the pipeline's
+	// reproducibility rests on the frozen manifest, not on a seed. Honoring
+	// this field needs two things that do not exist: something stochastic to
+	// seed, and a seed on the wire. proto/blackstart/solver/v1/solver.proto has
+	// no such field, and neither contingency.Request nor cascade.Request
+	// accepts one, so there is nowhere to put it even if a run wanted to.
+	//
+	// It is kept rather than dropped because the manifest is where that pin
+	// belongs the day a stochastic step arrives — a Monte Carlo outage draw is
+	// the obvious one — and removing it would have to be undone. Until then a
+	// manifest that over-claims is the failure this whole extension exists to
+	// prevent.
 	Seed int64 `json:"seed"`
 }
 

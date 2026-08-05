@@ -96,6 +96,31 @@ func (e *Engine) Execute(ctx context.Context, in scn.ScenarioRun) (scn.ScenarioR
 	// Read from the cascade's own record rather than configured into this
 	// engine: a run states what produced it, and a second source of truth for
 	// the solver version is one that can be stale.
+	//
+	// # This version cannot be checked, and that is a known hole
+	//
+	// A solver binary predating the BranchRating override — oneof member 3 —
+	// decodes it into `change: None` and discards it silently
+	// (rust/bs-solver/src/convert.rs). A rolling deploy that leaves one pod a
+	// version behind therefore produces a run that rated 1,847 branches,
+	// recorded weather_rated: 1847, and screened and cascaded entirely on
+	// nameplate ratings: "a cascade computed on static ratings while claiming a
+	// weather binding", which §4.2 exists to forbid, reached through version
+	// skew instead of missing data. ratingGap cannot see it — it counts what
+	// this extension emitted, not what the solver applied.
+	//
+	// A minimum-version assertion here would be the cheap guard, and it cannot
+	// work: SOLVER_VERSION is CARGO_PKG_VERSION and rust/Cargo.toml has read
+	// version = "0.0.0" since the workspace was initialized. Every solver ever
+	// built reports the same string, so no comparison — minimum, equality
+	// between the screen's version and the cascade's, or any other — can
+	// separate a binary that applies rating overrides from one that drops
+	// them. A guard that cannot fire is worse than none: it reads as coverage.
+	//
+	// Closing this needs the contract to grow a way to ask, which is a platform
+	// change and raised as one: either a capabilities RPC, or the solver
+	// echoing how many overrides it applied so a run can compare that against
+	// what it sent. Until one exists, this is documented rather than defended.
 	in.SolverVersion = simulated.SolverVersion
 	in.Status = scn.StatusComplete
 	in.FinishedAt = e.now().UTC()

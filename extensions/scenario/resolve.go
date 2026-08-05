@@ -108,6 +108,11 @@ func (e *Engine) resolve(ctx context.Context, m scn.Manifest) (resolvedManifest,
 // result this platform can produce — worse than no answer, because it looks
 // like an answer.
 //
+// It counts what this extension emitted, not what the solver applied, so it
+// cannot see a solver that accepted the overrides and dropped them. Execute's
+// comment at the SolverVersion assignment says why that hole is documented
+// rather than guarded.
+//
 // Two errors, because there are two causes and they need different fixes. A
 // message covering both would send a reader to look at the weather when the
 // problem is that their model's branch identifiers do not exist in the asset
