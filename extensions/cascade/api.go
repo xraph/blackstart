@@ -9,8 +9,15 @@ import (
 
 	cid "github.com/xraph/blackstart/extensions/cascade/id"
 	"github.com/xraph/blackstart/extensions/cascade/run"
+	"github.com/xraph/blackstart/extensions/geo/shape"
 	"github.com/xraph/blackstart/pkg/httperr"
 )
+
+// defaultExtentHalfWidthM is what a request that names no half_width_m gets,
+// documented here once and echoed in the WithDescription text below so the
+// generated client states it too — a caller reading only the response would
+// otherwise have to guess whether a bare number was requested or assumed.
+const defaultExtentHalfWidthM = 500
 
 // --- Request DTOs ---
 
@@ -32,6 +39,27 @@ type cascadeRunsResponse struct {
 type islandsResponse struct {
 	RunID   string       `json:"run_id"`
 	Islands []run.Island `json:"islands"`
+}
+
+type getCascadeExtentRequest struct {
+	ID string `path:"id" description:"Run identifier (casc_…)"`
+
+	HalfWidthM float64 `query:"half_width_m" description:"Corridor half-width in meters on each side of a traced route; defaults to 500" optional:"true"`
+}
+
+// extentResponse is the ground a cascade run's tripped branches covered.
+//
+// Area is corridor area, not distinct ground: shape.Cover, which built it,
+// deliberately does not merge corridors that overlap, so summing the
+// polygons here would overstate what was actually affected. See
+// cascade.ExtentResult.
+type extentResponse struct {
+	RunID      string             `json:"run_id"`
+	Area       shape.MultiPolygon `json:"area"`
+	HalfWidthM float64            `json:"half_width_m"`
+	Resolved   int                `json:"resolved"`
+	Untraced   int                `json:"untraced"`
+	Unresolved []string           `json:"unresolved"`
 }
 
 // multiply converts per unit to SI. The wire's complement of engine.go's
@@ -153,6 +181,22 @@ func (c *Controller) Routes(router forge.Router) error {
 		forge.WithResponseSchema(http.StatusNotFound, "No such run", nil),
 	))
 
+	check(router.GET("/runs/:id/extent", c.GetExtent,
+		forge.WithName("cascade.runs.extent"),
+		forge.WithSummary("Get a cascade run's extent"),
+		forge.WithDescription(
+			"The corridor area within half_width_m (default 500, in meters on "+
+				"each side of a traced route) of every branch the run tripped. "+
+				"Corridors that overlap are returned whole rather than merged, "+
+				"so this is corridor area, not a single figure of distinct "+
+				"ground — see shape.Cover."),
+		forge.WithTags("Cascade"),
+		forge.WithRequestSchema(getCascadeExtentRequest{}),
+		forge.WithResponseSchema(http.StatusOK, "Extent", extentResponse{}),
+		forge.WithResponseSchema(http.StatusBadRequest, "Invalid half_width_m", nil),
+		forge.WithResponseSchema(http.StatusNotFound, "No such run", nil),
+	))
+
 	return firstErr
 }
 
@@ -222,5 +266,40 @@ func (c *Controller) GetIslands(ctx forge.Context) error {
 	return ctx.JSON(http.StatusOK, islandsResponse{
 		RunID:   found.ID.String(),
 		Islands: wireIslands(found.Islands, found.SBaseVA),
+	})
+}
+
+// GetExtent returns the ground a cascade run's tripped branches covered.
+func (c *Controller) GetExtent(ctx forge.Context) error {
+	var req getCascadeExtentRequest
+	if err := ctx.BindRequest(&req); err != nil {
+		return forge.BadRequest(err.Error())
+	}
+
+	want, err := cid.ParseRun(req.ID)
+	if err != nil {
+		return forge.BadRequest(err.Error())
+	}
+
+	// A stated default rather than a hidden one: half_width_m left off the
+	// query, or given as zero, both land here rather than reaching Extent as
+	// a width of nothing.
+	halfWidthM := req.HalfWidthM
+	if halfWidthM <= 0 {
+		halfWidthM = defaultExtentHalfWidthM
+	}
+
+	found, err := c.engine.Extent(ctx.Request().Context(), want, halfWidthM)
+	if err != nil {
+		return httperr.From(err)
+	}
+
+	return ctx.JSON(http.StatusOK, extentResponse{
+		RunID:      want.String(),
+		Area:       found.Area,
+		HalfWidthM: found.HalfWidthM,
+		Resolved:   found.Resolved,
+		Untraced:   found.Untraced,
+		Unresolved: found.Unresolved,
 	})
 }
