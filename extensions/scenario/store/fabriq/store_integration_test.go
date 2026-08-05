@@ -553,3 +553,154 @@ func TestClaimIsAtomicUnderConcurrency(t *testing.T) {
 		}
 	}
 }
+
+// aClaimedRun stores a queued run and claims it, which is the only state
+// Finish accepts.
+func aClaimedRun(t *testing.T, s *scnfabriq.Store, modelHash string) scenario.Run {
+	t.Helper()
+
+	ctx := context.Background()
+
+	sc := aScenario(modelHash)
+	if _, err := s.Scenarios().Create(ctx, sc); err != nil {
+		t.Fatalf("creating the scenario: %v", err)
+	}
+
+	if _, err := s.Runs().Create(ctx, aQueuedRun(sc.ID, createdAt)); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	claimed, err := s.Runs().Claim(ctx)
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+
+	return claimed
+}
+
+// A finished run's terminal state reaches Postgres — the failure with its
+// step, the child identifiers, the coverage counts and the finish time — and
+// comes back the same. Without this the run stays running forever and the
+// answer it produced is nowhere.
+func TestFinishRecordsATerminalStateInPostgres(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	claimed := aClaimedRun(t, s, "sha256:finished")
+
+	rated, branches := 3, 5
+	claimed.Status = scenario.StatusComplete
+	claimed.SweepRunID = crid.NewRun()
+	claimed.CascadeRunID = cid.NewRun()
+	claimed.WeatherRated = &rated
+	claimed.BranchCount = &branches
+	claimed.SolverVersion = "bs-solver 0.4.1"
+	claimed.FinishedAt = createdAt.Add(2 * time.Minute)
+
+	if _, err := s.Runs().Finish(ctx, claimed); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+
+	got, err := s.Runs().Get(ctx, claimed.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if got.Status != scenario.StatusComplete {
+		t.Errorf("status = %q, want complete; Finish did not persist", got.Status)
+	}
+
+	if got.SweepRunID != claimed.SweepRunID || got.CascadeRunID != claimed.CascadeRunID {
+		t.Errorf("child ids read back as %s / %s", got.SweepRunID, got.CascadeRunID)
+	}
+
+	if got.WeatherRated == nil || *got.WeatherRated != rated {
+		t.Errorf("weather rated read back as %v, want %d", got.WeatherRated, rated)
+	}
+
+	if got.SolverVersion != claimed.SolverVersion {
+		t.Errorf("solver version = %q", got.SolverVersion)
+	}
+
+	if !got.FinishedAt.Equal(claimed.FinishedAt) {
+		t.Errorf("finished at = %v, want %v", got.FinishedAt, claimed.FinishedAt)
+	}
+}
+
+// A failed run's step and reason survive the JSONB column.
+func TestFinishRecordsWhichStepFailed(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	claimed := aClaimedRun(t, s, "sha256:failed")
+
+	zero := 0
+	branches := 12
+	claimed.Status = scenario.StatusFailed
+	claimed.Failure = &scenario.Failure{
+		Step:   scenario.StepRatings,
+		Reason: "cycle wxcyc_1 has computed no ampacity for 2026-08-04T18:00:00Z",
+	}
+	// Rated zero of twelve, which is a finding rather than an absence: a run
+	// that failed at the rating step after rating nothing must not read the
+	// same as one that never reached the step.
+	claimed.WeatherRated = &zero
+	claimed.BranchCount = &branches
+	claimed.FinishedAt = createdAt.Add(time.Minute)
+
+	if _, err := s.Runs().Finish(ctx, claimed); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+
+	got, err := s.Runs().Get(ctx, claimed.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if got.Failure == nil {
+		t.Fatal("the failure did not survive the round trip")
+	}
+
+	if got.Failure.Step != scenario.StepRatings || got.Failure.Reason != claimed.Failure.Reason {
+		t.Errorf("failure read back as %+v", got.Failure)
+	}
+
+	if got.WeatherRated == nil || *got.WeatherRated != 0 {
+		t.Errorf("weather rated read back as %v, want a pointer to 0 — nil would say "+
+			"the rating step never ran", got.WeatherRated)
+	}
+}
+
+// A run that is not running cannot finish. A second worker that believed it
+// owned a run someone else already finished must be told, not allowed to
+// write its own answer over the first one's.
+func TestFinishRefusesARunThatIsNotRunning(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	claimed := aClaimedRun(t, s, "sha256:twice")
+	claimed.Status = scenario.StatusFailed
+	claimed.Failure = &scenario.Failure{Step: scenario.StepCascade, Reason: "the solver refused"}
+	claimed.FinishedAt = createdAt.Add(time.Minute)
+
+	if _, err := s.Runs().Finish(ctx, claimed); err != nil {
+		t.Fatalf("first Finish: %v", err)
+	}
+
+	if _, err := s.Runs().Finish(ctx, claimed); !errors.Is(err, bserr.ErrConflict) {
+		t.Fatalf("second Finish: %v, want bserr.ErrConflict", err)
+	}
+}
+
+// Finishing a run nothing recorded is not found, not a quiet insert.
+func TestFinishRefusesARunThatDoesNotExist(t *testing.T) {
+	s := harness(t)
+
+	orphan := aQueuedRun(sid.NewScenario(), createdAt)
+	orphan.Status = scenario.StatusFailed
+	orphan.Failure = &scenario.Failure{Step: scenario.StepResolve, Reason: "no such model"}
+
+	if _, err := s.Runs().Finish(context.Background(), orphan); !errors.Is(err, bserr.ErrNotFound) {
+		t.Fatalf("Finish error = %v, want bserr.ErrNotFound", err)
+	}
+}

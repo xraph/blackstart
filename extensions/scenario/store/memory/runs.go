@@ -141,6 +141,37 @@ func (s *runs) Claim(_ context.Context) (scenario.Run, error) {
 	return oldest, nil
 }
 
+// Finish records a run's terminal state.
+//
+// The status check reads and writes under one Lock for the reason Claim does:
+// two workers that both believed they owned one run would otherwise both
+// write their own answer over it, and the second would win silently. Here the
+// loser is told — a run that is no longer running is a conflict, not a no-op,
+// because a worker whose result was discarded needs to know that it was.
+func (s *runs) Finish(_ context.Context, in scenario.Run) (scenario.Run, error) {
+	if err := in.Finishable(); err != nil {
+		return scenario.Run{}, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	existing, ok := s.runs[in.ID]
+	if !ok {
+		return scenario.Run{}, fmt.Errorf("%w: run %s", bserr.ErrNotFound, in.ID)
+	}
+
+	if existing.Status != scenario.StatusRunning {
+		return scenario.Run{}, fmt.Errorf(
+			"%w: run %s is %s, not running; only a claimed run can finish",
+			bserr.ErrConflict, in.ID, existing.Status)
+	}
+
+	s.runs[in.ID] = in
+
+	return in, nil
+}
+
 // olderCandidate reports whether candidate should be claimed before current,
 // by QueuedAt and then by identifier — the same tie-break the Fabriq store's
 // `ORDER BY queued_at ASC, id ASC` applies, so the two stores agree on which

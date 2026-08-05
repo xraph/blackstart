@@ -108,6 +108,126 @@ func TestListByScenarioReturnsMostRecentFirst(t *testing.T) {
 	}
 }
 
+// aClaimedRun stores a queued run and claims it, which is the only state
+// Finish accepts.
+func aClaimedRun(t *testing.T, s *memory.Store) scenario.Run {
+	t.Helper()
+
+	in := scenario.Run{
+		ID:         scnid.NewRun(),
+		ScenarioID: scnid.NewScenario(),
+		Manifest:   validManifest(),
+		Status:     scenario.StatusQueued,
+		QueuedAt:   time.Now().UTC(),
+	}
+
+	if _, err := s.Runs().Create(context.Background(), in); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	claimed, err := s.Runs().Claim(context.Background())
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+
+	return claimed
+}
+
+// Finishing a claimed run records its terminal state, and the record is what
+// a later Get returns — without this the run stays running forever and the
+// answer it produced is nowhere.
+func TestFinishRecordsATerminalState(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	ctx := context.Background()
+
+	claimed := aClaimedRun(t, s)
+	claimed.Status = scenario.StatusFailed
+	claimed.Failure = &scenario.Failure{
+		Step: scenario.StepRatings, Reason: "the cycle rated nothing",
+	}
+	claimed.FinishedAt = time.Now().UTC()
+
+	if _, err := s.Runs().Finish(ctx, claimed); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+
+	stored, err := s.Runs().Get(ctx, claimed.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if stored.Status != scenario.StatusFailed {
+		t.Errorf("stored status is %q; Finish did not persist the terminal state",
+			stored.Status)
+	}
+
+	if stored.Failure == nil || stored.Failure.Step != scenario.StepRatings {
+		t.Errorf("stored failure is %+v, want the step it failed at", stored.Failure)
+	}
+}
+
+// A run that is not running cannot finish. A second worker that believed it
+// owned a run someone else already finished must be told, not allowed to
+// write its own answer over the first one's.
+func TestFinishRefusesARunThatIsNotRunning(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	ctx := context.Background()
+
+	claimed := aClaimedRun(t, s)
+	claimed.Status = scenario.StatusComplete
+	claimed.SweepRunID = scnid.NewRun()
+	claimed.CascadeRunID = scnid.NewRun()
+	claimed.FinishedAt = time.Now().UTC()
+
+	if _, err := s.Runs().Finish(ctx, claimed); err != nil {
+		t.Fatalf("first Finish: %v", err)
+	}
+
+	if _, err := s.Runs().Finish(ctx, claimed); !errors.Is(err, bserr.ErrConflict) {
+		t.Fatalf("finishing an already-finished run returned %v, want a conflict", err)
+	}
+}
+
+// Finish is not a way back into the queue. Writing a queued status over a run
+// that already produced an answer would hand it to a second worker to execute
+// again.
+func TestFinishRefusesANonTerminalStatus(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+
+	claimed := aClaimedRun(t, s)
+	claimed.Status = scenario.StatusQueued
+
+	if _, err := s.Runs().Finish(context.Background(), claimed); !errors.Is(err, bserr.ErrInvalid) {
+		t.Fatalf("finishing as queued returned %v, want invalid", err)
+	}
+}
+
+// Finishing a run nothing recorded is not found, not a quiet insert.
+func TestFinishRefusesARunThatDoesNotExist(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+
+	orphan := scenario.Run{
+		ID:         scnid.NewRun(),
+		ScenarioID: scnid.NewScenario(),
+		Manifest:   validManifest(),
+		Status:     scenario.StatusFailed,
+		Failure:    &scenario.Failure{Step: scenario.StepResolve, Reason: "no such model"},
+		QueuedAt:   time.Now().UTC(),
+	}
+
+	if _, err := s.Runs().Finish(context.Background(), orphan); !errors.Is(err, bserr.ErrNotFound) {
+		t.Fatalf("finishing an unknown run returned %v, want not-found", err)
+	}
+}
+
 // Claiming a queued run returns it and moves it to running, and the move is
 // visible to a later Get — Claim is not just handing back a mutated copy
 // while leaving the stored record untouched.

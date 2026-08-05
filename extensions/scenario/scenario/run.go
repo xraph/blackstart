@@ -171,3 +171,29 @@ func (r Run) Validate() error {
 
 	return nil
 }
+
+// Finishable reports whether this run is in a state RunStore.Finish may write.
+//
+// Declared on the type rather than in either store, because both stores have
+// to enforce it and they have no code in common: the memory store and the
+// Fabriq one would otherwise each carry their own spelling of "terminal", and
+// the two have already diverged once over a detail this small.
+//
+// A run finishes complete or failed and nothing else. Queued is not a
+// terminal state, and writing it over a run that has already produced an
+// answer would put that run back in the queue for a second worker to execute
+// again — the same result computed twice, from a manifest that was supposed
+// to make it citable once.
+func (r Run) Finishable() error {
+	if err := r.Validate(); err != nil {
+		return err
+	}
+
+	if r.Status != StatusComplete && r.Status != StatusFailed {
+		return fmt.Errorf(
+			"%w: run %s cannot finish as %q; a run finishes complete or failed",
+			bserr.ErrInvalid, r.ID, r.Status)
+	}
+
+	return nil
+}

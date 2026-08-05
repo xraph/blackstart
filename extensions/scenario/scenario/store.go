@@ -49,4 +49,24 @@ type RunStore interface {
 	// nothing is queued, never a zero Run. A zero Run has an empty Status,
 	// which would flow into a worker indistinguishable from a real one.
 	Claim(ctx context.Context) (Run, error)
+
+	// Finish records a run's terminal state.
+	//
+	// The other half of Claim, and the only way out of running: Create
+	// records a queued run and Claim moves it to running, so without this
+	// every execution would end with its answer nowhere and its run still
+	// reading as in progress.
+	//
+	// The run handed in must be StatusComplete or StatusFailed, and the run
+	// it names must currently be running. Both are refused rather than
+	// accommodated. A Finish that accepted StatusQueued would un-run a run
+	// that had already produced an answer, and one that accepted a run
+	// nobody had claimed would let two workers each record their own result
+	// for the same scenario — which is precisely what Claim exists to
+	// prevent, and would make the queue's atomicity decorative.
+	//
+	// Returns an error satisfying errors.Is(err, bserr.ErrNotFound) for a run
+	// that does not exist, and one satisfying errors.Is(err,
+	// bserr.ErrConflict) for a run that is not running.
+	Finish(ctx context.Context, in Run) (Run, error)
 }

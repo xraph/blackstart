@@ -230,3 +230,47 @@ func (s *runs) Claim(ctx context.Context) (scenario.Run, error) {
 		return claimed.toDomain()
 	}
 }
+
+// Finish records a run's terminal state.
+//
+// The status is checked against the row that was just read and the write goes
+// out with that row's version, so the check and the write are one atomic step
+// for the reason Claim's are: two workers that both believed they owned a run
+// would otherwise both write their own answer over it, and the second would
+// win silently. Here the version check turns the loser's write into a
+// conflict, which is what the memory store's single Lock achieves the same
+// way.
+//
+// A conflict is returned rather than retried, unlike Claim's. Claim retrying
+// means "take whatever is queued now", which is still the job. Finish
+// retrying would mean overwriting whatever the other worker recorded with
+// this one's answer, which is the opposite of the job.
+func (s *runs) Finish(ctx context.Context, in scenario.Run) (scenario.Run, error) {
+	if err := in.Finishable(); err != nil {
+		return scenario.Run{}, err
+	}
+
+	var current runRow
+	if err := s.base.Get(ctx, RunEntity, in.ID, &current); err != nil {
+		return scenario.Run{}, err
+	}
+
+	if current.Status != string(scenario.StatusRunning) {
+		return scenario.Run{}, fmt.Errorf(
+			"%w: run %s is %s, not running; only a claimed run can finish",
+			bserr.ErrConflict, in.ID, current.Status)
+	}
+
+	row, err := runFromDomain(in)
+	if err != nil {
+		return scenario.Run{}, err
+	}
+
+	version := current.Version
+
+	if err := s.base.Update(ctx, RunEntity, in.ID, row, &version); err != nil {
+		return scenario.Run{}, err
+	}
+
+	return in, nil
+}

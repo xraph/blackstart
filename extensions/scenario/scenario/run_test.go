@@ -3,6 +3,8 @@ package scenario_test
 import (
 	"testing"
 
+	cid "github.com/xraph/blackstart/extensions/cascade/id"
+	crid "github.com/xraph/blackstart/extensions/contingency/id"
 	"github.com/xraph/blackstart/extensions/scenario/scenario"
 )
 
@@ -110,5 +112,53 @@ func TestWeatherRatingCannotBeSetPartially(t *testing.T) {
 
 	if err := r.Validate(); err == nil {
 		t.Fatal("want an error: WeatherRated is set but BranchCount is nil")
+	}
+}
+
+// A run finishes complete or failed and nothing else. Writing a queued status
+// over a run that already produced an answer would put it back in the queue
+// for a second worker to execute again.
+func TestOnlyATerminalStatusIsFinishable(t *testing.T) {
+	t.Parallel()
+
+	base := scenario.Run{
+		Status:       scenario.StatusComplete,
+		SweepRunID:   crid.NewRun(),
+		CascadeRunID: cid.NewRun(),
+	}
+
+	if err := base.Finishable(); err != nil {
+		t.Fatalf("a complete run with both children is finishable, got %v", err)
+	}
+
+	failed := scenario.Run{
+		Status:  scenario.StatusFailed,
+		Failure: &scenario.Failure{Step: scenario.StepScreen, Reason: "the solver refused"},
+	}
+
+	if err := failed.Finishable(); err != nil {
+		t.Fatalf("a failed run naming its step is finishable, got %v", err)
+	}
+
+	for _, status := range []scenario.Status{scenario.StatusQueued, scenario.StatusRunning, ""} {
+		notTerminal := base
+		notTerminal.Status = status
+
+		if err := notTerminal.Finishable(); err == nil {
+			t.Errorf("status %q is finishable; only complete and failed are", status)
+		}
+	}
+}
+
+// Finishable is Validate plus the terminal-state rule, not a replacement for
+// it: a failed run that does not name its step is still a run nobody can act
+// on, whichever method is asked.
+func TestFinishableStillRejectsAFailedRunWithNoStep(t *testing.T) {
+	t.Parallel()
+
+	r := scenario.Run{Status: scenario.StatusFailed}
+
+	if err := r.Finishable(); err == nil {
+		t.Fatal("want an error: a failed run with no failure recorded")
 	}
 }
