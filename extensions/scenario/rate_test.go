@@ -222,3 +222,68 @@ func TestACancelledRunIsNotAPartialRating(t *testing.T) {
 			got.WeatherRated, err)
 	}
 }
+
+// The two ways a model can come back rated nothing are counted apart.
+//
+// Both produce zero overrides and they need different fixes: one is a join
+// between the model and the asset record — solverv1.Branch.id is a free
+// string while geo keys on typed platform identifiers, so a model imported
+// without them rates nothing for a reason that has nothing to do with weather
+// — and the other is a pinned cycle that computed nothing. A caller with only
+// WeatherRated to look at cannot tell which it is holding.
+func TestLocatedTellsAnUnjoinedModelFromAnUnratedCycle(t *testing.T) {
+	t.Parallel()
+
+	unjoined, err := rate(
+		t.Context(), fiveBranchModel(345_000),
+		&fakeGeo{routeErr: errNotFound}, &fakeHazard{ampacity: 900},
+		issued, valid,
+	)
+	if err != nil {
+		t.Fatalf("rate: %v", err)
+	}
+
+	if unjoined.Located != 0 || unjoined.WeatherRated != 0 {
+		t.Errorf("no branch reaches a route, so nothing is located: %+v", unjoined)
+	}
+
+	// The same five branches, every one of them with a route and spans, and
+	// no ampacity computed for any of those spans.
+	unrated, err := rate(
+		t.Context(), fiveBranchModel(345_000),
+		&fakeGeo{route: aRoute, spans: threeSpans},
+		&fakeHazard{bySpan: map[id.ID]float64{}},
+		issued, valid,
+	)
+	if err != nil {
+		t.Fatalf("rate: %v", err)
+	}
+
+	if unrated.Located != 5 {
+		t.Errorf("Located = %d, want 5 — every branch reached its spans and only "+
+			"the weather is missing", unrated.Located)
+	}
+
+	if unrated.WeatherRated != 0 {
+		t.Errorf("WeatherRated = %d, want 0", unrated.WeatherRated)
+	}
+}
+
+// A located branch counts as located whether or not it was rated, so the two
+// numbers together say how far down the chain a run got.
+func TestLocatedCountsRatedBranchesToo(t *testing.T) {
+	t.Parallel()
+
+	got, err := rate(
+		t.Context(), fiveBranchModel(345_000),
+		&fakeGeo{route: aRoute, spans: threeSpans}, &fakeHazard{ampacity: 900},
+		issued, valid,
+	)
+	if err != nil {
+		t.Fatalf("rate: %v", err)
+	}
+
+	if got.Located != 5 || got.WeatherRated != 5 {
+		t.Errorf("located %d and rated %d of 5", got.Located, got.WeatherRated)
+	}
+}

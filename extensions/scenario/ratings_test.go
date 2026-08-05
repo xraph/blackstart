@@ -171,7 +171,7 @@ func rateOneBranch(t *testing.T, amperes []float64, volts float64) float64 {
 		t.Fatalf("weakestSpan: %v", err)
 	}
 
-	if !ok {
+	if ok != outcomeRated {
 		t.Fatal("the chain is complete, so weakestSpan must report a rating")
 	}
 
@@ -268,7 +268,7 @@ func TestAChainThatBreaksYieldsNoRating(t *testing.T) {
 				t.Fatalf("a documented absence is a gap, not a run failure: %v", err)
 			}
 
-			if ok {
+			if ok == outcomeRated {
 				t.Errorf("weakestSpan reported %v A from a broken chain", got)
 			}
 		})
@@ -292,8 +292,9 @@ func TestABranchIdentifierThePlatformCannotParseIsARatingGap(t *testing.T) {
 		t.Fatalf("an identifier that will never parse is a gap, not a failure: %v", err)
 	}
 
-	if ok {
-		t.Errorf("weakestSpan reported %v A for the unparsable branch %q", got, "ln1")
+	if ok != outcomeUnlocated {
+		t.Errorf("weakestSpan reported %v A for the unparsable branch %q, and an "+
+			"identifier that never parses never reached the asset record", got, "ln1")
 	}
 }
 

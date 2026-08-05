@@ -36,6 +36,18 @@ type Rated struct {
 
 	// BranchCount is every branch in the model, rated or not.
 	BranchCount int
+
+	// Located is how many branches reached the asset record: a route with
+	// spans, whether or not the weather then had a number for those spans.
+	//
+	// It exists so the caller can tell two different zero-rated runs apart,
+	// and they need different fixes. Zero located means nothing joined —
+	// solverv1.Branch.id is a free string while geo keys on typed platform
+	// identifiers, so a model imported without them produces zero ratings for
+	// a reason that has nothing to do with weather. Located but unrated means
+	// the join is fine and the pinned cycle computed nothing at that instant.
+	// A single "rated nothing" error covering both helps nobody.
+	Located int
 }
 
 // rate derives dynamic line ratings for a model from the weather.
@@ -114,13 +126,19 @@ func rate(
 				"scenario: rating stopped at branch %d of %d: %w", index, len(branches), err)
 		}
 
-		amperes, ok, err := weakestSpan(ctx, geo, hazard, branch.GetId(), issuedAt, validAt)
+		amperes, outcome, err := weakestSpan(ctx, geo, hazard, branch.GetId(), issuedAt, validAt)
 		if err != nil {
 			return Rated{}, fmt.Errorf(
 				"scenario: rating branch %d (%s): %w", index, branch.GetId(), err)
 		}
 
-		if !ok {
+		if outcome == outcomeUnlocated {
+			continue
+		}
+
+		out.Located++
+
+		if outcome == outcomeUnrated {
 			continue
 		}
 

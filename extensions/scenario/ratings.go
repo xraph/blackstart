@@ -106,6 +106,29 @@ func parseBranch(branchID string) (id.ID, bool) {
 	return parsed, err == nil
 }
 
+// spanOutcome is what the rating chain could say about one branch.
+//
+// Three states rather than two, because the caller has to tell the two
+// unrated ones apart: a branch that never reached the asset record and a
+// branch whose spans are known but carry no computed value are both "no
+// override", and they are different failures with different fixes when a
+// whole run comes back rated nothing.
+type spanOutcome int
+
+const (
+	// outcomeUnlocated means the chain broke before any span was identified:
+	// a branch identifier that is not a platform one, no route carrying the
+	// branch, or a route with no spans.
+	outcomeUnlocated spanOutcome = iota
+
+	// outcomeUnrated means the spans are known and the weather has no usable
+	// number for them at the pinned instant.
+	outcomeUnrated
+
+	// outcomeRated means every span answered and the branch has a rating.
+	outcomeRated
+)
+
 // weakestSpan is the lowest ampacity across a branch's spans, in AMPERES.
 //
 // The minimum rather than a mean, and this is a physical claim rather than a
@@ -115,43 +138,44 @@ func parseBranch(branchID string) (id.ID, bool) {
 // current that one of its own spans cannot. Selection, not computation — the
 // number returned is one hazard already computed, unaltered.
 //
-// Three outcomes, not two. A rating; a gap in the asset record, which is
-// (0, false, nil) and leaves the branch on its static rating; or an error,
-// which fails the whole run. A partial rating is never returned: a minimum
-// taken over the spans that happened to resolve is a rating for a shorter
-// line than the one being rated.
+// Three outcomes and an error, not two. A rating; a gap that leaves the
+// branch on its static rating, said two ways so the caller can tell a branch
+// that never joined the asset record from one whose spans the weather did not
+// reach; or an error, which fails the whole run. A partial rating is never
+// returned: a minimum taken over the spans that happened to resolve is a
+// rating for a shorter line than the one being rated.
 func weakestSpan(
 	ctx context.Context,
 	geo GeoReader,
 	hazard HazardReader,
 	branchID string,
 	issuedAt, validAt time.Time,
-) (float64, bool, error) {
+) (float64, spanOutcome, error) {
 	branch, named := parseBranch(branchID)
 	if !named {
-		return 0, false, nil
+		return 0, outcomeUnlocated, nil
 	}
 
 	route, err := geo.RouteForBranch(ctx, branch)
 	if err != nil {
 		if isRatingGap(err) {
-			return 0, false, nil
+			return 0, outcomeUnlocated, nil
 		}
 
-		return 0, false, fmt.Errorf("reading the route carrying %s: %w", branch, err)
+		return 0, outcomeUnlocated, fmt.Errorf("reading the route carrying %s: %w", branch, err)
 	}
 
 	spans, err := geo.Spans(ctx, route.ID)
 	if err != nil {
 		if isRatingGap(err) {
-			return 0, false, nil
+			return 0, outcomeUnlocated, nil
 		}
 
-		return 0, false, fmt.Errorf("reading the spans of route %s: %w", route.ID, err)
+		return 0, outcomeUnlocated, fmt.Errorf("reading the spans of route %s: %w", route.ID, err)
 	}
 
 	if len(spans) == 0 {
-		return 0, false, nil
+		return 0, outcomeUnlocated, nil
 	}
 
 	ids := make([]id.ID, 0, len(spans))
@@ -159,13 +183,15 @@ func weakestSpan(
 		ids = append(ids, span.ID)
 	}
 
+	// Located from here on: the branch has spans, so anything that follows is
+	// the weather missing rather than the asset record missing.
 	amperes, err := hazard.Ampacities(ctx, ids, issuedAt, validAt)
 	if err != nil {
 		if isRatingGap(err) {
-			return 0, false, nil
+			return 0, outcomeUnrated, nil
 		}
 
-		return 0, false, fmt.Errorf("reading the ampacities of route %s: %w", route.ID, err)
+		return 0, outcomeUnrated, fmt.Errorf("reading the ampacities of route %s: %w", route.ID, err)
 	}
 
 	weakest := math.Inf(1)
@@ -173,7 +199,7 @@ func weakestSpan(
 	for _, span := range spans {
 		value, ok := amperes[span.ID]
 		if !ok {
-			return 0, false, nil
+			return 0, outcomeUnrated, nil
 		}
 
 		// A non-positive or non-finite ampacity is not a measurement of a line
@@ -182,13 +208,13 @@ func weakestSpan(
 		// which every consumer reads as unrated and skips — so the branch
 		// would drop out of every violation check rather than fail one.
 		if !(value > 0) || math.IsInf(value, 0) {
-			return 0, false, nil
+			return 0, outcomeUnrated, nil
 		}
 
 		weakest = math.Min(weakest, value)
 	}
 
-	return weakest, true, nil
+	return weakest, outcomeRated, nil
 }
 
 // voltAmperes converts a line current into three-phase apparent power.
