@@ -53,6 +53,14 @@ export interface CascadeRun {
   steps: number;
 }
 
+export interface Circuit {
+  externalId: string;
+  id: string;
+  operator: string;
+  source: string;
+  voltageKv: number;
+}
+
 export interface Computation {
   computedAt: string;
   cycleId: string;
@@ -213,7 +221,7 @@ export interface Reduction {
 }
 
 export interface Route {
-  branchId: string;
+  carrierId: string;
   id: string;
   lengthM: number;
   provenance: string;
@@ -339,6 +347,10 @@ export interface assignmentsResponse {
 
 export interface cascadeRunsResponse {
   runs: CascadeRun[];
+}
+
+export interface circuitsResponse {
+  circuits: Circuit[];
 }
 
 export interface computationsResponse {
