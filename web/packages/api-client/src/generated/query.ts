@@ -143,7 +143,7 @@ export function useCascadeRunsList(
   client: RESTClient,
   modelHash?: string,
   limit?: number | undefined,
-  options?: Omit<UseQueryOptions<types.runsResponse, Error>, 'queryKey' | 'queryFn'>,
+  options?: Omit<UseQueryOptions<types.cascadeRunsResponse, Error>, 'queryKey' | 'queryFn'>,
 ) {
   return useQuery({
     queryKey: queryKeys.cascadeRunsList(modelHash, limit),
@@ -170,7 +170,7 @@ export function useContingencyRunsList(
   client: RESTClient,
   modelHash?: string,
   limit?: number | undefined,
-  options?: Omit<UseQueryOptions<types.runsResponse, Error>, 'queryKey' | 'queryFn'>,
+  options?: Omit<UseQueryOptions<types.sweepRunsResponse, Error>, 'queryKey' | 'queryFn'>,
 ) {
   return useQuery({
     queryKey: queryKeys.contingencyRunsList(modelHash, limit),

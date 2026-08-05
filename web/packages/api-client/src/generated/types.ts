@@ -318,6 +318,15 @@ export interface Substation {
   name: string;
 }
 
+export interface SweepRun {
+  candidates: Candidate[];
+  finishedAt: string;
+  id: string;
+  modelHash: string;
+  solverVersion: string;
+  startedAt: string;
+}
+
 export interface TracedInput {
   dataset: DatasetVersion;
   role: string;
@@ -332,6 +341,10 @@ export interface Violation {
 
 export interface assignmentsResponse {
   assignments: Assignment[];
+}
+
+export interface cascadeRunsResponse {
+  runs: BlackstartRun[];
 }
 
 export interface computationsResponse {
@@ -410,10 +423,6 @@ export interface routesResponse {
   routes: Route[];
 }
 
-export interface runsResponse {
-  runs: BlackstartRun[];
-}
-
 export interface solutionsResponse {
   solutions: Solution[];
 }
@@ -430,6 +439,10 @@ export interface spansResponse {
 
 export interface substationsResponse {
   substations: Substation[];
+}
+
+export interface sweepRunsResponse {
+  runs: SweepRun[];
 }
 
 export interface traceResponse {
