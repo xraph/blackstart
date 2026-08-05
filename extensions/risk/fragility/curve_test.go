@@ -15,7 +15,14 @@ func TestACurveIsBoundedAndMonotone(t *testing.T) {
 
 	previous := -1.0
 
-	for _, intensity := range []float64{0, 1, 5, 10, 20, 30, 40, 60, 100, 1000} {
+	// 14 and 18 N/m sit inside the lattice curve's transition band (median
+	// 15.85 N/m): without them, this list is four points saturated at 0,
+	// six saturated at 1, and nothing in between, which passes for any step
+	// function — including the wrong-by-a-factor-of-2 dispersion this test
+	// once let through. See TestACurveStrictlyRisesThroughItsTransitionBand
+	// below for the assertion that actually distinguishes a lognormal from a
+	// step.
+	for _, intensity := range []float64{0, 1, 5, 10, 14, 18, 20, 30, 40, 60, 100, 1000} {
 		got := curve.Probability(intensity)
 
 		if got < 0 || got > 1 {
@@ -26,6 +33,36 @@ func TestACurveIsBoundedAndMonotone(t *testing.T) {
 			t.Fatalf("P(%v) = %v fell below the previous %v; a fragility curve "+
 				"that is not monotone in intensity says a stronger storm is "+
 				"safer", intensity, got, previous)
+		}
+
+		previous = got
+	}
+}
+
+// TestACurveStrictlyRisesThroughItsTransitionBand catches a curve so steep
+// it behaves like a step function. TestACurveIsBoundedAndMonotone alone
+// cannot: a step function is technically monotone too, it just saturates at
+// 0 or 1 everywhere outside a razor-thin band, which is exactly what an
+// undoubled dispersion produced here (P(10)≈0, P(15.85)=0.5, P(20)≈1). This
+// asserts a strict increase across points inside the lattice curve's
+// transition band, where a correctly-dispersed lognormal should still be
+// visibly rising rather than already saturated.
+func TestACurveStrictlyRisesThroughItsTransitionBand(t *testing.T) {
+	curve, ok := fragility.ByClass(fragility.Lattice)
+	if !ok {
+		t.Fatal("no curve for a lattice tower")
+	}
+
+	previous := -1.0
+
+	for _, intensity := range []float64{10, 14, 18, 20} {
+		got := curve.Probability(intensity)
+
+		if got <= previous {
+			t.Fatalf("P(%v) = %v did not strictly exceed the previous %v; "+
+				"the curve is not visibly rising through its own transition "+
+				"band, which is what a dispersion too small for the "+
+				"intensity measure's units looks like", intensity, got, previous)
 		}
 
 		previous = got

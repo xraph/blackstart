@@ -18,16 +18,21 @@ import "math"
 
 // Class is the closed set structure curves are indexed by.
 //
-// Portal (H-frame) structures are deliberately not a member. PNNL-33587's
-// fragility function catalog and the literature search conducted for this
-// package turned up open-access, national-laboratory-grade wind fragility
-// curves for lattice towers and for wood/steel poles, but none for
-// portal/H-frame transmission structures carrying a numeric median and
-// dispersion rather than only a shape. A plausible-looking entry would be
-// indistinguishable from a measured one once it is stored and multiplied
-// through a forecast — see the package doc — so the class is omitted rather
-// than approximated. [ByClass] reports false for it because it is not a
-// member of this type, not because of a runtime lookup miss.
+// Portal (H-frame) structures are deliberately not a member. The literature
+// search conducted for this package included PNNL-33587's fragility function
+// catalog, which carries no portal/H-frame entry with a numeric median and
+// dispersion (its wind and hurricane sections cover wind turbines, poles,
+// circuit breakers, telecom towers, and lattice towers only). Note for a
+// reader tempted to look there: the Lattice and Pole curves stored below do
+// not come from PNNL-33587 either — they are read directly from the journal
+// papers cited beside each in the library below (Liu & Yan 2022; Mohammadi
+// Darestani & Shafieezadeh 2019). No open-access or national-laboratory
+// source turned up a numeric median and dispersion for Portal specifically.
+// A plausible-looking entry would be indistinguishable from a measured one
+// once it is stored and multiplied through a forecast — see the package
+// doc — so the class is omitted rather than approximated. [ByClass] reports
+// false for it because it is not a member of this type, not because of a
+// runtime lookup miss.
 type Class string
 
 const (
@@ -50,8 +55,13 @@ type Curve struct {
 // Zero and negative intensities return zero rather than evaluating: ln(0) is
 // negative infinity, and the NaN that follows would propagate silently through
 // every county-hour sum downstream instead of failing where it was produced.
+//
+// A non-positive Dispersion gets the same treatment. Curve is exported and
+// constructible by any caller, and a zero Dispersion divides by zero at
+// exactly intensity == Median — 0/0, which is NaN, not a clean infinity —
+// so it is guarded the same way rather than trusted to never occur.
 func (c Curve) Probability(intensity float64) float64 {
-	if intensity <= 0 {
+	if intensity <= 0 || c.Dispersion <= 0 {
 		return 0
 	}
 
@@ -113,13 +123,25 @@ var library = map[Class]Curve{
 		// the load a reference conductor sees at that speed via
 		// windLoadFromSpeed, because this platform's intensity measure is
 		// wind_load (N/m), not wind speed. 30.3 m/s → 15.85 N/m.
+		//
+		// windLoadFromSpeed is quadratic (W = kV²), a power-law map, not a
+		// linear rescale. A lognormal random variable pushed through a
+		// power-law map of exponent p is still lognormal, with its log-scale
+		// parameter multiplied by p: V ~ lognormal(ln θ, β) implies
+		// W = kV² ~ lognormal(ln θ_W, 2β). The median (θ) was converted
+		// through windLoadFromSpeed above; the dispersion (β) must be scaled
+		// by that same exponent, 2, or the stored curve is twice as steep in
+		// log-load space as the cited paper supports. 0.0397 (the paper's own
+		// value, in wind-speed space) × 2 = 0.0794, stored below.
 		Median:     windLoadFromSpeed(30.326),
-		Dispersion: 0.0397,
+		Dispersion: 0.0794,
 		Source: "Liu, C., Yan, Z. (2022). Fragility Analysis of Wind-Induced " +
 			"Collapse of a Transmission Tower Considering Corrosion. " +
 			"Buildings 12(10), 1500. https://doi.org/10.3390/buildings12101500 " +
 			"(sec. 3.4: log-mean 3.412, log-std 0.0397 for basic collapse wind " +
-			"speed, m/s; converted here to wind load via a reference conductor)",
+			"speed, m/s; median converted here to wind load via a reference " +
+			"conductor, dispersion doubled to 0.0794 to match — the paper's " +
+			"0.0397 describes wind speed, not the load stored in Median)",
 	},
 	Pole: {
 		// Mohammadi Darestani, Y., Shafieezadeh, A. (2019). "Multi-
@@ -140,16 +162,23 @@ var library = map[Class]Curve{
 		// from the same table gives ≈176.6 mph, confirming the coefficients
 		// were read correctly. Converted from 78.68 m/s to 106.7 N/m via
 		// windLoadFromSpeed, for the same reason as Lattice above.
+		//
+		// windLoadFromSpeed is quadratic (see the Lattice entry above for the
+		// full derivation), so the dispersion computed above — 0.2223, in
+		// wind-speed log-space — must likewise be doubled to describe the
+		// load stored in Median: 0.2223 × 2 = 0.4446, stored below.
 		Median:     windLoadFromSpeed(78.679),
-		Dispersion: 0.2223,
+		Dispersion: 0.4446,
 		Source: "Mohammadi Darestani, Y., Shafieezadeh, A. (2019). Multi-" +
 			"dimensional wind fragility functions for wood utility poles. " +
 			"Engineering Structures 183, 937-948. " +
 			"https://doi.org/10.1016/j.engstruct.2018.12.041 (Fig. 4b design " +
 			"point: Class 3 pole, age 50 yr, wind perpendicular to " +
 			"conductors, 2 m^2 conductor area; median 176 mph stated in " +
-			"text, dispersion 0.2223 computed from eq. 22 and Table 16; " +
-			"converted here to wind load via a reference conductor)",
+			"text, dispersion 0.2223 computed from eq. 22 and Table 16 in " +
+			"wind-speed log-space, doubled to 0.4446 to match Median's " +
+			"wind-load units; converted here to wind load via a reference " +
+			"conductor)",
 	},
 }
 

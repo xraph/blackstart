@@ -33,10 +33,20 @@ const (
 	conductorRateCeilingPerKmHour = 1e-3
 
 	// conductorWindScaleNPerM is the wind load at which the wind term alone
-	// would bring the rate to 1 − 1/e of its ceiling — around 100 N/m, the
-	// load a Drake conductor (see curve.go) sees from roughly a 54 m/s gust,
-	// solidly inside the range fragility curves cited in this package treat
-	// as severe.
+	// would bring the rate to 1 − 1/e of its ceiling. 100 N/m is the load a
+	// Drake conductor (see curve.go's windLoadFromSpeed) sees from roughly a
+	// 76.2 m/s gust, not the 54 m/s an earlier version of this comment
+	// claimed — windLoadFromSpeed(54) is only 50.3 N/m. 76.2 m/s is not a
+	// comfortably mid-range "severe" value with headroom on both sides: it
+	// sits almost exactly at the Pole curve's median (78.68 m/s, Mohammadi
+	// Darestani & Shafieezadeh 2019) and about 2.5x the Lattice curve's
+	// median (30.33 m/s, Liu & Yan 2022). That is deliberate, not a mistake
+	// to fix by lowering the scale: this term is where the wind contribution
+	// alone reaches 1 − 1/e of the ceiling, not where it reaches the
+	// ceiling, and Jamieson et al.'s own reported curves keep rising well
+	// past the point structures start failing, so anchoring the half-rise
+	// point near the top of this package's structural severity range is
+	// consistent with their shape rather than an arbitrary pick.
 	conductorWindScaleNPerM = 100.0
 
 	// conductorIceScaleKgPerM is the ice load contributing as much as
@@ -50,6 +60,13 @@ const (
 
 // ConductorRate returns λ: expected conductor failures per kilometer per hour
 // under the given wind and ice loading.
+//
+// λ here is a monotone construction calibrated to the right order of
+// magnitude, not a fit to Jamieson, Strbac and Bell (2020)'s data: their own
+// λ is empirical, taken from binned historical fault-rate tables indexed by
+// wind speed, and is not published in closed form for this platform's
+// wind_load/ice_load units. See the constants below for the full citation
+// and for what is and is not reproduced from that paper.
 //
 // Negative inputs are clamped to zero rather than allowed to cancel a
 // positive term: a negative load is not physically meaningful, and treating
