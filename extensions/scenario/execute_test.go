@@ -160,6 +160,107 @@ func TestThePolicyReachesTheScreen(t *testing.T) {
 	}
 }
 
+// Whether a rating rests on a substituted voltage is a fact about the run,
+// and it only becomes one by reaching the record.
+//
+// The fixture's buses state no nominal voltage of their own, so every rated
+// branch converts against the model-level base — a rating that is right for
+// the branches sitting at that level and out by the ratio of the two voltages
+// for the rest. Nothing downstream can see that, because volt-amperes
+// computed against the wrong voltage look exactly like volt-amperes. This
+// count is the only evidence, and a count that stops at the internal Rated
+// never reaches anybody.
+func TestTheVoltageBaseFallbackReachesTheRecord(t *testing.T) {
+	t.Parallel()
+
+	f := working()
+	executed, store := executing(t, f)
+
+	stored, err := store.Runs().Get(t.Context(), executed.ID)
+	if err != nil {
+		t.Fatalf("get run: %v", err)
+	}
+
+	if stored.BaseVoltageFallback == nil {
+		t.Fatal("base voltage fallback is nil after a run that rated every branch " +
+			"against a voltage no bus stated")
+	}
+
+	if *stored.BaseVoltageFallback != len(lines) {
+		t.Errorf("base voltage fallback = %d, want %d — every branch of this "+
+			"fixture falls back", *stored.BaseVoltageFallback, len(lines))
+	}
+}
+
+// A model that states its buses' voltages records a fallback of zero, not an
+// absent one.
+//
+// The two are different findings and this is the boundary that would collapse
+// them: nil says nobody counted, 0 says every rated branch converted against
+// a voltage its own bus stated. A pipeline that only wrote the field when it
+// had something to report would make the well-formed model indistinguishable
+// from the unexamined one.
+func TestAModelThatStatesItsVoltagesRecordsAFallbackOfZero(t *testing.T) {
+	t.Parallel()
+
+	f := working()
+	e, store := engineWith(t, f)
+
+	defined, err := e.Define(t.Context(), scn.Scenario{
+		Name: "every voltage stated", Manifest: executableWithStatedVoltages(t, f),
+	})
+	if err != nil {
+		t.Fatalf("define: %v", err)
+	}
+
+	if _, err := e.Enqueue(t.Context(), defined.ID); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	claimed, err := store.Runs().Claim(t.Context())
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+
+	executed, err := e.Execute(t.Context(), claimed)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	stored, err := store.Runs().Get(t.Context(), executed.ID)
+	if err != nil {
+		t.Fatalf("get run: %v", err)
+	}
+
+	if stored.WeatherRated == nil || *stored.WeatherRated != len(lines) {
+		t.Fatalf("weather rated = %v, want %d; the fallback count means nothing "+
+			"without the rating it counts against", stored.WeatherRated, len(lines))
+	}
+
+	if stored.BaseVoltageFallback == nil {
+		t.Fatal("base voltage fallback is nil; a model that fell back nowhere " +
+			"must record 0, or it reads as one nobody examined")
+	}
+
+	if *stored.BaseVoltageFallback != 0 {
+		t.Errorf("base voltage fallback = %d, want 0; every bus in this fixture "+
+			"states its own nominal voltage", *stored.BaseVoltageFallback)
+	}
+}
+
+// executableWithStatedVoltages is executable over a model whose every bus
+// states the voltage it sits at, so no branch has to fall back.
+func executableWithStatedVoltages(t *testing.T, f *fakes) scn.Manifest {
+	t.Helper()
+
+	model := aCanonicalModel()
+	for index := range model.Buses {
+		model.Buses[index].VNominalV = 345_000
+	}
+
+	return pinned(t, f, model)
+}
+
 // executableWithBranchOpen is executable over a model whose branch at index
 // is out of service — the state rate.go deliberately keeps and rates, and the
 // one an explicit policy is free to name.
@@ -168,6 +269,19 @@ func executableWithBranchOpen(t *testing.T, f *fakes, index int) scn.Manifest {
 
 	model := aCanonicalModel()
 	model.Branches[index].InService = false
+
+	return pinned(t, f, model)
+}
+
+// pinned stores a model against the model fakes and returns the manifest that
+// pins it by content hash.
+//
+// The hash is taken from the model each caller actually built rather than
+// from aCanonicalModel: a manifest pinning one model while the fakes hold
+// another resolves to a drift error, which is a test failure with nothing to
+// do with what the test was asking about.
+func pinned(t *testing.T, f *fakes, model canonical.Model) scn.Manifest {
+	t.Helper()
 
 	encoded, err := canonical.Encode(model)
 	if err != nil {

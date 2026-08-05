@@ -23,6 +23,7 @@ func Group() *migrate.Group {
 
 	g.MustRegister(migration0001Tables)
 	g.MustRegister(migration0002RecentRuns)
+	g.MustRegister(migration0003VoltageBaseFallback)
 
 	return g
 }
@@ -53,8 +54,50 @@ var migration0002RecentRuns = &migrate.Migration{
 	Down:    down0002,
 }
 
+// A third migration rather than a column added to tables(), for the reason
+// 0002 is a second migration: a database that has already run 0001 will never
+// be handed it again, so a column appended to that DDL would exist on a fresh
+// database and on no deployed one.
+var migration0003VoltageBaseFallback = &migrate.Migration{
+	Name:    "scenario_voltage_base_fallback",
+	Version: "20260805000030",
+	Comment: "how many of a run's ratings converted against the model's own voltage base",
+	Up:      up0003,
+	Down:    down0003,
+}
+
 func up0001(ctx context.Context, exec migrate.Executor) error {
 	return execAll(ctx, exec, tables())
+}
+
+func up0003(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, fallbackColumn())
+}
+
+// fallbackColumn is the DDL, separated from the executor so a test can read
+// it alongside the rest of the schema — the same split tables() uses.
+//
+// Nullable, and deliberately without a DEFAULT 0. Every run stored before
+// this migration was rated by a binary that did not count fallbacks, so its
+// answer to "how many of these ratings rest on a substituted voltage" is
+// unknown — and a default would write 0, which is not unknown but the
+// opposite claim: that every branch converted against a voltage its own bus
+// stated. The column exists to make a substituted voltage visible; filling it
+// with a number nobody measured would make invisibility its default value.
+//
+// INTEGER, matching weather_rated and branch_count: it counts branches, and
+// it cannot exceed weather_rated.
+func fallbackColumn() []string {
+	return []string{
+		`ALTER TABLE ` + RunTable + `
+			ADD COLUMN IF NOT EXISTS base_voltage_fallback INTEGER`,
+	}
+}
+
+func down0003(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`ALTER TABLE ` + RunTable + ` DROP COLUMN IF EXISTS base_voltage_fallback`,
+	})
 }
 
 // up0002 indexes the question RunStore.List asks.

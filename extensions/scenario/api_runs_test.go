@@ -227,7 +227,7 @@ func TestAQueuedRunPublishesNothingItHasNotObserved(t *testing.T) {
 	}
 
 	for _, key := range []string{
-		"weather_rated", "branch_count", "failure",
+		"weather_rated", "branch_count", "base_voltage_fallback", "failure",
 		"sweep_run_id", "cascade_run_id", "started_at", "finished_at",
 	} {
 		if value, present := raw[key]; present {
@@ -271,6 +271,74 @@ func TestARunThatRatedNothingPublishesZeroRatherThanNothing(t *testing.T) {
 
 	if string(raw["branch_count"]) != "2000" {
 		t.Errorf("branch_count %s, want 2000", raw["branch_count"])
+	}
+}
+
+// A run that fell back nowhere publishes the zero, for the same reason and at
+// the same boundary.
+//
+// `omitempty` on an int would drop it, and a console reading the field's
+// absence as "not recorded" would then report a model whose every bus states
+// its own voltage as one nobody examined. The pointer is what keeps the zero
+// on the wire; this is the test that fails if it stops being one.
+func TestARunThatFellBackNowherePublishesZeroRatherThanNothing(t *testing.T) {
+	s := newSurface(t)
+
+	run := s.finished(t, func(in *scn.ScenarioRun) {
+		rated, total, none := 2000, 2000, 0
+		in.Status = scn.StatusFailed
+		in.Failure = &scn.Failure{Step: scn.StepScreen, Reason: "the screener refused"}
+		in.WeatherRated, in.BranchCount = &rated, &total
+		in.BaseVoltageFallback = &none
+	})
+
+	rec := s.do(http.MethodGet, "/api/v1/scenario/runs/"+run.ID.String(), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decoding the response: %v; body: %s", err, rec.Body.String())
+	}
+
+	if string(raw["base_voltage_fallback"]) != "0" {
+		t.Errorf("base_voltage_fallback %s, want 0; an omitted count reads as "+
+			"'nobody looked', which is the opposite claim",
+			raw["base_voltage_fallback"])
+	}
+}
+
+// A run whose ratings rested on a substituted voltage says how many, and the
+// number reaches the wire.
+//
+// The count is the only evidence a reader has: volt-amperes computed against
+// the wrong voltage look exactly like volt-amperes, so a rating out by the
+// ratio of two voltage levels is invisible in every other field of this
+// response.
+func TestARunPublishesHowManyRatingsFellBackToTheModelBase(t *testing.T) {
+	s := newSurface(t)
+
+	run := s.finished(t, func(in *scn.ScenarioRun) {
+		rated, total, fellBack := 2000, 2000, 317
+		in.Status = scn.StatusFailed
+		in.Failure = &scn.Failure{Step: scn.StepScreen, Reason: "the screener refused"}
+		in.WeatherRated, in.BranchCount = &rated, &total
+		in.BaseVoltageFallback = &fellBack
+	})
+
+	rec := s.do(http.MethodGet, "/api/v1/scenario/runs/"+run.ID.String(), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decoding the response: %v; body: %s", err, rec.Body.String())
+	}
+
+	if string(raw["base_voltage_fallback"]) != "317" {
+		t.Errorf("base_voltage_fallback %s, want 317", raw["base_voltage_fallback"])
 	}
 }
 

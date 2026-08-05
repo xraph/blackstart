@@ -66,7 +66,16 @@ func (e *Engine) Execute(ctx context.Context, in scn.ScenarioRun) (scn.ScenarioR
 	// runs. A run that failed after rating nothing and a run that never
 	// reached the rating step are different findings, and these two fields
 	// are the only thing that tells them apart.
+	//
+	// The fallback count is written here too, and unconditionally — a zero is
+	// the answer for a model that states every bus's voltage, and writing the
+	// field only when it had something to report would make that model read
+	// as one nobody examined. It is the only evidence that any of these
+	// ratings rests on a voltage the model did not state for that bus, and it
+	// is written at the same point for the same reason: a run that failed at
+	// the screen still rated what it rated, against the voltages it used.
 	in.WeatherRated, in.BranchCount = &rated.WeatherRated, &rated.BranchCount
+	in.BaseVoltageFallback = &rated.BaseVoltageFallback
 
 	if err := ratingGap(in.Manifest, rated); err != nil {
 		return e.fail(ctx, in, scn.StepRatings, err)

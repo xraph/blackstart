@@ -132,6 +132,14 @@ type runRow struct {
 	WeatherRated *int `grove:"weather_rated"`
 	BranchCount  *int `grove:"branch_count"`
 
+	// BaseVoltageFallback is a pointer for the same reason and against a
+	// second absence the other two do not have: the column was added by
+	// migration 0003, so every run stored before it reads NULL — "not
+	// recorded" rather than "fell back nowhere". Defaulting it to 0 in the
+	// DDL would have written that second answer over every historical row,
+	// and 0 is a claim about a rating nobody made.
+	BaseVoltageFallback *int `grove:"base_voltage_fallback"`
+
 	// SolverVersion carries no notnull tag: it is read from the solver's own
 	// response once the cascade step runs, so a queued or still-running run
 	// has none yet.
@@ -156,16 +164,17 @@ func runFromDomain(in scenario.ScenarioRun) (runRow, error) {
 	}
 
 	row := runRow{
-		ID:            in.ID.String(),
-		ScenarioID:    in.ScenarioID.String(),
-		Manifest:      manifest,
-		Status:        string(in.Status),
-		WeatherRated:  in.WeatherRated,
-		BranchCount:   in.BranchCount,
-		SolverVersion: in.SolverVersion,
-		QueuedAt:      in.QueuedAt.UTC(),
-		StartedAt:     in.StartedAt.UTC(),
-		FinishedAt:    in.FinishedAt.UTC(),
+		ID:                  in.ID.String(),
+		ScenarioID:          in.ScenarioID.String(),
+		Manifest:            manifest,
+		Status:              string(in.Status),
+		WeatherRated:        in.WeatherRated,
+		BranchCount:         in.BranchCount,
+		BaseVoltageFallback: in.BaseVoltageFallback,
+		SolverVersion:       in.SolverVersion,
+		QueuedAt:            in.QueuedAt.UTC(),
+		StartedAt:           in.StartedAt.UTC(),
+		FinishedAt:          in.FinishedAt.UTC(),
 	}
 
 	if in.Failure != nil {
@@ -208,14 +217,15 @@ func (r runRow) toDomain() (scenario.ScenarioRun, error) {
 	}
 
 	out := scenario.ScenarioRun{
-		ID:            runID,
-		ScenarioID:    scenarioID,
-		Manifest:      manifest,
-		Status:        scenario.Status(r.Status),
-		WeatherRated:  r.WeatherRated,
-		BranchCount:   r.BranchCount,
-		SolverVersion: r.SolverVersion,
-		QueuedAt:      r.QueuedAt.UTC(),
+		ID:                  runID,
+		ScenarioID:          scenarioID,
+		Manifest:            manifest,
+		Status:              scenario.Status(r.Status),
+		WeatherRated:        r.WeatherRated,
+		BranchCount:         r.BranchCount,
+		BaseVoltageFallback: r.BaseVoltageFallback,
+		SolverVersion:       r.SolverVersion,
+		QueuedAt:            r.QueuedAt.UTC(),
 	}
 
 	if len(r.Failure) > 0 {

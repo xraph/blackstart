@@ -280,7 +280,7 @@ func TestRunWithEveryFieldSetRoundTripsThroughPostgres(t *testing.T) {
 		t.Fatalf("creating the scenario: %v", err)
 	}
 
-	weatherRated, branchCount := 0, 2000
+	weatherRated, branchCount, fellBack := 0, 2000, 0
 
 	want := aQueuedRun(sc.ID, createdAt)
 	want.Status = scenario.StatusFailed
@@ -290,6 +290,7 @@ func TestRunWithEveryFieldSetRoundTripsThroughPostgres(t *testing.T) {
 	}
 	want.WeatherRated = &weatherRated
 	want.BranchCount = &branchCount
+	want.BaseVoltageFallback = &fellBack
 	want.SweepRunID = crid.NewRun()
 	want.CascadeRunID = cid.NewRun()
 	want.SolverVersion = "0.1.0-test"
@@ -326,6 +327,18 @@ func TestRunWithEveryFieldSetRoundTripsThroughPostgres(t *testing.T) {
 
 	if *got.BranchCount != branchCount {
 		t.Errorf("branch count = %d, want %d", *got.BranchCount, branchCount)
+	}
+
+	// A pointer to zero again, and against the real nullable column for the
+	// same reason: a fallback of 0 says every rated branch converted against a
+	// voltage its own bus stated, and a NULL written in its place says nobody
+	// counted. The column has no DEFAULT precisely so those stay apart.
+	if got.BaseVoltageFallback == nil {
+		t.Fatalf("base voltage fallback came back nil, want a pointer to %d", fellBack)
+	}
+
+	if *got.BaseVoltageFallback != fellBack {
+		t.Errorf("base voltage fallback = %d, want %d", *got.BaseVoltageFallback, fellBack)
 	}
 
 	if got.SweepRunID != want.SweepRunID || got.CascadeRunID != want.CascadeRunID {
@@ -951,12 +964,13 @@ func TestFinishRecordsATerminalStateInPostgres(t *testing.T) {
 
 	claimed := aClaimedRun(t, s, "sha256:finished")
 
-	rated, branches := 3, 5
+	rated, branches, fellBack := 3, 5, 2
 	claimed.Status = scenario.StatusComplete
 	claimed.SweepRunID = crid.NewRun()
 	claimed.CascadeRunID = cid.NewRun()
 	claimed.WeatherRated = &rated
 	claimed.BranchCount = &branches
+	claimed.BaseVoltageFallback = &fellBack
 	claimed.SolverVersion = "bs-solver 0.4.1"
 	claimed.FinishedAt = createdAt.Add(2 * time.Minute)
 
@@ -979,6 +993,14 @@ func TestFinishRecordsATerminalStateInPostgres(t *testing.T) {
 
 	if got.WeatherRated == nil || *got.WeatherRated != rated {
 		t.Errorf("weather rated read back as %v, want %d", got.WeatherRated, rated)
+	}
+
+	// Finish is the write the pipeline actually makes, so a column the mapper
+	// fills and Finish's UPDATE does not name would fail here and nowhere
+	// else — Create writes every column and would go on passing.
+	if got.BaseVoltageFallback == nil || *got.BaseVoltageFallback != fellBack {
+		t.Errorf("base voltage fallback read back as %v, want %d",
+			got.BaseVoltageFallback, fellBack)
 	}
 
 	if got.SolverVersion != claimed.SolverVersion {

@@ -322,7 +322,7 @@ func TestTheSpecificationDoesNotPromiseWhatAQueuedRunOmits(t *testing.T) {
 
 	for _, absentable := range []string{
 		"sweep_run_id", "cascade_run_id", "started_at", "finished_at",
-		"failure", "weather_rated", "branch_count",
+		"failure", "weather_rated", "branch_count", "base_voltage_fallback",
 	} {
 		if slices.Contains(required, absentable) {
 			t.Errorf("the specification marks %q required, and a queued run has none of it",

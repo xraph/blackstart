@@ -112,7 +112,7 @@ func aRun() scenario.ScenarioRun {
 func TestRunRoundTrips(t *testing.T) {
 	t.Parallel()
 
-	weatherRated, branchCount := 137, 2000
+	weatherRated, branchCount, fellBack := 137, 2000, 12
 
 	want := aRun()
 	want.Status = scenario.StatusComplete
@@ -120,6 +120,7 @@ func TestRunRoundTrips(t *testing.T) {
 	want.CascadeRunID = cid.NewRun()
 	want.WeatherRated = &weatherRated
 	want.BranchCount = &branchCount
+	want.BaseVoltageFallback = &fellBack
 	want.SolverVersion = "0.1.0-test"
 	want.StartedAt = want.QueuedAt.Add(time.Second)
 	want.FinishedAt = want.QueuedAt.Add(30 * time.Second)
@@ -153,6 +154,11 @@ func TestRunRoundTrips(t *testing.T) {
 	if *got.WeatherRated != *want.WeatherRated || *got.BranchCount != *want.BranchCount {
 		t.Errorf("weather rated %d branch count %d, want %d %d",
 			*got.WeatherRated, *got.BranchCount, *want.WeatherRated, *want.BranchCount)
+	}
+
+	if got.BaseVoltageFallback == nil || *got.BaseVoltageFallback != fellBack {
+		t.Errorf("base voltage fallback round-tripped as %v, want %d",
+			got.BaseVoltageFallback, fellBack)
 	}
 
 	if got.SolverVersion != want.SolverVersion {
@@ -191,6 +197,11 @@ func TestAbsentFieldsStayAbsent(t *testing.T) {
 
 	if got.WeatherRated != nil || got.BranchCount != nil {
 		t.Errorf("a run nobody rated came back rated: %+v", got)
+	}
+
+	if got.BaseVoltageFallback != nil {
+		t.Errorf("a run nobody rated came back knowing how many branches fell "+
+			"back to the model's voltage base: %v", got.BaseVoltageFallback)
 	}
 
 	if !got.SweepRunID.IsZero() || !got.CascadeRunID.IsZero() {
@@ -241,6 +252,43 @@ func TestWeatherRatedZeroRoundTrips(t *testing.T) {
 
 	if got.BranchCount == nil || *got.BranchCount != total {
 		t.Errorf("branch count = %v, want %d", got.BranchCount, total)
+	}
+}
+
+// A fallback of zero is the well-formed model's answer, and it must not come
+// back through the database as "nobody counted".
+//
+// The two absences this field distinguishes are a NULL column and an INTEGER
+// 0, and the mapper is where they would be collapsed. Nil means the count was
+// never taken; 0 means every rated branch converted against a voltage its own
+// bus stated — which is the state a mixed-voltage model is supposed to reach,
+// and the one a reader needs to be able to trust.
+func TestAVoltageBaseFallbackOfZeroRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	rated, total, none := 2000, 2000, 0
+
+	want := aRun()
+	want.WeatherRated = &rated
+	want.BranchCount = &total
+	want.BaseVoltageFallback = &none
+
+	row, err := runFromDomain(want)
+	if err != nil {
+		t.Fatalf("runFromDomain: %v", err)
+	}
+
+	got, err := row.toDomain()
+	if err != nil {
+		t.Fatalf("toDomain: %v", err)
+	}
+
+	if got.BaseVoltageFallback == nil {
+		t.Fatal("base voltage fallback came back nil, want a pointer to 0")
+	}
+
+	if *got.BaseVoltageFallback != 0 {
+		t.Errorf("base voltage fallback = %d, want 0", *got.BaseVoltageFallback)
 	}
 }
 
@@ -379,17 +427,32 @@ func TestEveryTaggedColumnExistsInTheSchema(t *testing.T) {
 // tables(), rather than every statement joined together — see
 // TestEveryTaggedColumnExistsInTheSchema's own comment for why the join is
 // exactly what must be avoided here.
+// The columns a later migration added count as part of the table, and are
+// gathered by the same per-table rule: an ALTER naming this table, never one
+// naming the other. A column added by migration 0003 is no less real than one
+// created by 0001, and a check reading only tables() would report every one
+// of them as a tag with nowhere to land.
 func tableDDL(t *testing.T, table string) string {
 	t.Helper()
+
+	statements := make([]string, 0, 2)
 
 	prefix := "CREATE TABLE IF NOT EXISTS " + table
 	for _, stmt := range tables() {
 		if strings.HasPrefix(stmt, prefix) {
-			return stmt
+			statements = append(statements, stmt)
 		}
 	}
 
-	t.Fatalf("no CREATE TABLE statement found for %s", table)
+	if len(statements) == 0 {
+		t.Fatalf("no CREATE TABLE statement found for %s", table)
+	}
 
-	return ""
+	for _, stmt := range fallbackColumn() {
+		if strings.HasPrefix(stmt, "ALTER TABLE "+table) {
+			statements = append(statements, stmt)
+		}
+	}
+
+	return strings.Join(statements, "\n")
 }
