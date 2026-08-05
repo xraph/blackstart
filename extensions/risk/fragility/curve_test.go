@@ -80,6 +80,41 @@ func TestACurveIsNotSaturatedInsideItsTransitionBand(t *testing.T) {
 	}
 }
 
+// TestPoleCurveIsNotSaturatedInsideItsTransitionBand is the Pole analog of
+// TestACurveIsNotSaturatedInsideItsTransitionBand above. Without it, nothing
+// in this package pins Pole's median or its β-doubling — TestACurveIsBoundedAndMonotone
+// and the tests below it exercise Lattice only, and halving Pole.Dispersion
+// back to 0.2223 (the un-doubled value curve.go's own comment derives, and
+// the exact bug this doubling exists to prevent) leaves every other test in
+// this file green.
+//
+// Pole's median is 106.696 N/m and its correct dispersion is 0.4446 — much
+// wider than Lattice's 0.0794, so the curve is nowhere near a step function
+// even at half that dispersion. The two points below are chosen far enough
+// from the median that the correct and halved dispersions land in visibly
+// different, non-overlapping windows: P(70) = 0.172 at β=0.4446 versus 0.029
+// at β=0.2223; P(150) = 0.778 at β=0.4446 versus 0.937 at β=0.2223.
+func TestPoleCurveIsNotSaturatedInsideItsTransitionBand(t *testing.T) {
+	curve, ok := fragility.ByClass(fragility.Pole)
+	if !ok {
+		t.Fatal("no curve for a pole")
+	}
+
+	if got := curve.Probability(70); got < 0.10 || got > 0.30 {
+		t.Fatalf("P(70) = %v, want in [0.10, 0.30]; a value outside this "+
+			"window means Pole's dispersion has drifted from 0.4446 — this "+
+			"window was chosen to exclude 0.029, the value the halved, "+
+			"un-doubled dispersion (0.2223) produces here", got)
+	}
+
+	if got := curve.Probability(150); got < 0.65 || got > 0.90 {
+		t.Fatalf("P(150) = %v, want in [0.65, 0.90]; a value outside this "+
+			"window means Pole's dispersion has drifted from 0.4446 — this "+
+			"window was chosen to exclude 0.937, the value the halved, "+
+			"un-doubled dispersion (0.2223) produces here", got)
+	}
+}
+
 func TestZeroIntensityBreaksNothing(t *testing.T) {
 	curve, _ := fragility.ByClass(fragility.Lattice)
 
