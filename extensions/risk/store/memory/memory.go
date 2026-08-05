@@ -76,7 +76,17 @@ func (s *values) PutBatch(_ context.Context, in []store.ComponentValue) error {
 	defer s.mu.Unlock()
 
 	for _, value := range in {
-		key := seriesKey{component: value.ComponentID, quantity: value.Quantity, issuedAt: value.IssuedAt}
+		// .UTC() normalizes the same way store/fabriq/values.go does before
+		// its own issued_at comparison: time.Time equality (and the map
+		// hashing seriesKey relies on) includes the location pointer and the
+		// monotonic reading, so an unnormalized key here could silently miss
+		// a row written under a wall-clock-equal but not struct-equal
+		// instant. compute.go passes cycle.IssuedAt as given; this is where
+		// that gets normalized on the read side of this store.
+		key := seriesKey{
+			component: value.ComponentID, quantity: value.Quantity,
+			issuedAt: value.IssuedAt.UTC(),
+		}
 		s.series[key] = append(s.series[key], value)
 	}
 
@@ -92,7 +102,7 @@ func (s *values) ForComponent(
 	out := make([]store.ComponentValue, 0)
 
 	for _, quantity := range quantities {
-		key := seriesKey{component: component, quantity: quantity, issuedAt: issuedAt}
+		key := seriesKey{component: component, quantity: quantity, issuedAt: issuedAt.UTC()}
 
 		for _, value := range s.series[key] {
 			if !inWindow(value.ValidAt, from, to) {

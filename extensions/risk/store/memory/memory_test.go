@@ -92,6 +92,59 @@ func TestAnotherIssuanceIsADifferentSeries(t *testing.T) {
 	}
 }
 
+// TestAnIssuanceIsFoundRegardlessOfItsLocation guards against issuance key
+// drift between this store and store/fabriq: values.go normalizes issued_at
+// with .UTC() before using it as a query parameter, but this store's
+// seriesKey held a raw time.Time, whose equality (and the map hashing it
+// relies on) includes the location pointer and the monotonic reading, not
+// just the instant. compute.go passes cycle.IssuedAt unnormalized, so a
+// write under a non-UTC-located time.Time and a read keyed on the UTC
+// equivalent of the same instant must still find each other. Every other
+// fixture in this package is already a UTC constant, which is exactly why
+// this gap went unnoticed until a mutation review caught it.
+func TestAnIssuanceIsFoundRegardlessOfItsLocation(t *testing.T) {
+	st := memory.New()
+	ctx := context.Background()
+	span := gid.NewSpan()
+
+	// 13:00 at UTC-5 is the same instant as 18:00 UTC, but as a time.Time the
+	// two are not ==: the location pointer differs, and struct equality (and
+	// therefore map-key equality) is not the same question as "same instant".
+	writtenAt := time.Date(2026, 2, 15, 13, 0, 0, 0, time.FixedZone("UTC-5", -5*60*60))
+	readAt := writtenAt.UTC()
+
+	// Deliberately struct equality, not writtenAt.Equal(readAt): the whole
+	// point of this fixture is that the two are the same instant but not the
+	// same struct, which is exactly what makes seriesKey's raw time.Time
+	// field able to miss the match.
+	if writtenAt == readAt { //nolint:staticcheck // see comment above
+		t.Fatal("test fixture is not exercising the bug: writtenAt and readAt " +
+			"are already struct-equal")
+	}
+
+	if err := st.Values().PutBatch(ctx, []store.ComponentValue{
+		{
+			ComponentID: span, Quantity: store.QuantityConductorFailure,
+			IssuedAt: writtenAt, ValidAt: writtenAt, Probability: 0.42, Scalar: 1,
+		},
+	}); err != nil {
+		t.Fatalf("PutBatch: %v", err)
+	}
+
+	back, err := st.Values().ForComponent(ctx, span,
+		[]store.Quantity{store.QuantityConductorFailure},
+		readAt, readAt, readAt.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("ForComponent: %v", err)
+	}
+
+	if len(back) != 1 {
+		t.Fatalf("reading back with the UTC-normalized issuance found %d "+
+			"values, want 1 — a value written under a non-UTC-located but "+
+			"equal instant should still be found", len(back))
+	}
+}
+
 func TestTheScalarSurvivesTheRoundTrip(t *testing.T) {
 	st := memory.New()
 	ctx := context.Background()
