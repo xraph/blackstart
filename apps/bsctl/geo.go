@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/xraph/forge/cli"
 
 	"github.com/xraph/blackstart/extensions/geo"
+	"github.com/xraph/blackstart/extensions/geo/asset"
 	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/geo/shape"
 	"github.com/xraph/blackstart/pkg/id"
@@ -134,6 +136,11 @@ func geoShowCommand() cli.Command {
 				return err
 			}
 
+			structures, err := engine.Structures(ctx.Context(), route.ID)
+			if err != nil {
+				return err
+			}
+
 			ctx.Printf("id          %s\n", route.ID)
 			ctx.Printf("carrier     %s\n", route.CarrierID)
 			ctx.Printf("provenance  %s\n", route.Provenance)
@@ -146,6 +153,8 @@ func geoShowCommand() cli.Command {
 				ctx.Printf("  span %-4d %8.1f m  bearing %5.1f°  %v\n",
 					span.Sequence, span.LengthM, span.AzimuthDeg, span.Geometry[0])
 			}
+
+			printStructures(ctx, structures)
 
 			return nil
 		},
@@ -174,6 +183,96 @@ func geoEngine(ctx context.Context) (*geo.Engine, func(), error) {
 	}
 
 	return engine, cleanup, nil
+}
+
+// printStructures reports a route's structure count, class distribution, and
+// its first and last structure.
+//
+// Count and class rather than a full listing, for headAndTail's reason: a
+// long line has hundreds of structures, and the two that matter for eyeballing
+// whether the geometry landed the right way round — and whether classes
+// survived the import — are the first and last.
+func printStructures(ctx cli.CommandContext, structures []asset.Structure) {
+	ctx.Printf("structures  %d  (%s)\n", len(structures), classDistribution(structures))
+
+	if len(structures) == 0 {
+		return
+	}
+
+	first := structures[0]
+	ctx.Printf("  %-6s %s  %.4f, %.4f  %s\n",
+		"first", first.ID, first.Location.Lat, first.Location.Lon, structureClass(first))
+
+	if len(structures) > 1 {
+		last := structures[len(structures)-1]
+		ctx.Printf("  %-6s %s  %.4f, %.4f  %s\n",
+			"last", last.ID, last.Location.Lat, last.Location.Lon, structureClass(last))
+	}
+}
+
+// classDistribution summarizes how many structures fall into each Kind.
+//
+// Unclassed is counted rather than merged into any class, and always sorts
+// last regardless of its count. It is exactly the set of structures the risk
+// extension will be unable to fit a fragility curve to, and surfacing it here
+// — at import time — is cheaper than discovering it as a silent gap in a risk
+// computation.
+func classDistribution(structures []asset.Structure) string {
+	counts := make(map[string]int, len(structures))
+	for _, s := range structures {
+		counts[structureKind(s)]++
+	}
+
+	classes := make([]string, 0, len(counts))
+	for kind := range counts {
+		classes = append(classes, kind)
+	}
+
+	sort.Slice(classes, func(i, j int) bool {
+		if classes[i] == unclassed {
+			return false
+		}
+
+		if classes[j] == unclassed {
+			return true
+		}
+
+		if counts[classes[i]] != counts[classes[j]] {
+			return counts[classes[i]] > counts[classes[j]]
+		}
+
+		return classes[i] < classes[j]
+	})
+
+	parts := make([]string, 0, len(classes))
+	for _, kind := range classes {
+		parts = append(parts, fmt.Sprintf("%s %d", kind, counts[kind]))
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+// unclassed labels a structure whose source recorded no Kind.
+const unclassed = "unclassed"
+
+// structureKind is a structure's Kind, or unclassed when the source recorded
+// none.
+func structureKind(s asset.Structure) string {
+	if s.Kind == "" {
+		return unclassed
+	}
+
+	return s.Kind
+}
+
+// structureClass renders a structure's kind and, when known, its material.
+func structureClass(s asset.Structure) string {
+	kind := structureKind(s)
+	if s.Material == "" {
+		return kind
+	}
+
+	return kind + "/" + s.Material
 }
 
 // headAndTail returns the first and last n items, or everything when there are
