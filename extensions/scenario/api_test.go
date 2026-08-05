@@ -39,6 +39,14 @@ type recordingStore struct {
 
 	scenarioLimits []int
 	runLimits      []int
+
+	// allRunLimits is kept apart from runLimits rather than merged into it.
+	// The two endpoints are bounded by the same rule and could share a
+	// recorder, but then assertBounded's "asked exactly once" check would pass
+	// for a handler that listed across every scenario when it was asked for
+	// one scenario's runs — the confusion this whole primitive exists to
+	// avoid.
+	allRunLimits []int
 }
 
 func recording(inner scnstore.Store) *recordingStore {
@@ -91,6 +99,12 @@ func (s *recordingRuns) ListByScenario(
 	s.parent.runLimits = append(s.parent.runLimits, limit)
 
 	return s.parent.Store.Runs().ListByScenario(ctx, scenarioID, limit)
+}
+
+func (s *recordingRuns) List(ctx context.Context, limit int) ([]scn.ScenarioRun, error) {
+	s.parent.allRunLimits = append(s.parent.allRunLimits, limit)
+
+	return s.parent.Store.Runs().List(ctx, limit)
 }
 
 func (s *recordingRuns) Claim(ctx context.Context) (scn.ScenarioRun, error) {

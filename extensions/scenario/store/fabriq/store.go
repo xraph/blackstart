@@ -227,6 +227,52 @@ func (s *runs) ListByScenario(
 		return nil, err
 	}
 
+	return runsToDomain(rows)
+}
+
+// List returns runs across every scenario, most recent first.
+//
+// `queued_at DESC, id DESC`, character for character what ListByScenario
+// above orders by and what the memory store's newestFirst sorts to. The two
+// stores have already disagreed once about what "oldest" meant — Claim scanned
+// insertion order in one and queued_at in the other — so the ordering clause
+// here is not an independent choice, it is the other half of a pair.
+//
+// The index behind it is RunTable_recent_idx rather than
+// RunTable_scenario_idx: the scenario index leads on scenario_id, so a scan
+// that names no scenario cannot walk it in order and Postgres falls back to
+// sorting the tenant's whole run table to answer a request for the newest
+// hundred rows.
+//
+// A limit of zero or less returns everything, matching scenario.RunStore's
+// own documentation and the memory store's behavior. No clamp here for the
+// reason ListByScenario has none: the bound belongs at the caller, and the
+// HTTP surface always passes an explicit one.
+func (s *runs) List(ctx context.Context, limit int) ([]scenario.ScenarioRun, error) {
+	var rows []runRow
+
+	query := `SELECT * FROM ` + RunTable + `
+		 WHERE tenant_id = current_setting('app.tenant_id', true)
+		 ORDER BY queued_at DESC, id DESC`
+
+	var args []any
+
+	if limit > 0 {
+		query += ` LIMIT $1`
+		args = append(args, limit)
+	}
+
+	if err := s.base.Query(ctx, &rows, query, args...); err != nil {
+		return nil, err
+	}
+
+	return runsToDomain(rows)
+}
+
+// runsToDomain maps a queried page of rows, naming the row that failed by
+// stopping at it rather than returning a partial list a caller would read as
+// the whole answer.
+func runsToDomain(rows []runRow) ([]scenario.ScenarioRun, error) {
 	out := make([]scenario.ScenarioRun, 0, len(rows))
 
 	for _, row := range rows {

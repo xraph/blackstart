@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -105,6 +106,223 @@ func TestListByScenarioReturnsMostRecentFirst(t *testing.T) {
 		if run.ID.String() != want {
 			t.Errorf("position %d: got run %s, want %s (most recent first)", i, run.ID, want)
 		}
+	}
+}
+
+// Listing across scenarios returns every run, whatever scenario it belongs
+// to. ListByScenario's filter is the thing this method drops, so a List that
+// still filtered — to the last scenario written, say — would answer a console
+// asking "what has run lately" with one scenario's history.
+func TestListReturnsRunsFromEveryScenario(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	ctx := context.Background()
+
+	base := time.Date(2026, 8, 4, 9, 0, 0, 0, time.UTC)
+	want := make(map[string]bool, 4)
+
+	for i := range 4 {
+		run := scenario.ScenarioRun{
+			ID: scnid.NewRun(),
+			// A distinct scenario per run: nothing here shares a parent, so a
+			// listing that filtered by any one of them returns a single row.
+			ScenarioID: scnid.NewScenario(),
+			Manifest:   validManifest(),
+			Status:     scenario.StatusQueued,
+			QueuedAt:   base.Add(time.Duration(i) * time.Hour),
+		}
+
+		if _, err := s.Runs().Create(ctx, run); err != nil {
+			t.Fatalf("Create run %d: %v", i, err)
+		}
+
+		want[run.ID.String()] = true
+	}
+
+	got, err := s.Runs().List(ctx, 0)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("List returned %d runs, want all %d across four scenarios", len(got), len(want))
+	}
+
+	for _, run := range got {
+		if !want[run.ID.String()] {
+			t.Errorf("List returned run %s, which was never created", run.ID)
+		}
+
+		delete(want, run.ID.String())
+	}
+}
+
+// The ordering test, and the one this primitive was most likely to get wrong.
+//
+// Runs are created in an order that is not their QueuedAt order, so a List
+// that walked runOrder — or reversed it — returns something different from a
+// List that sorts. Both stores are held to `queued_at DESC, id DESC`; the
+// Fabriq half of this fixture is TestListOrdersRunsAcrossScenariosNewestFirst
+// in the integration tests, built from the same out-of-order insertion so the
+// two answers can be compared to the same expectation rather than to each
+// other's implementation.
+func TestListOrdersByQueuedAtNotInsertionOrder(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	ctx := context.Background()
+
+	base := time.Date(2026, 8, 4, 9, 0, 0, 0, time.UTC)
+
+	// Hours 2, 0, 3, 1 — every adjacent pair is out of order in one direction
+	// or the other, so neither insertion order nor its reverse is the answer.
+	hours := []int{2, 0, 3, 1}
+
+	byHour := make(map[int]string, len(hours))
+
+	for _, hour := range hours {
+		run := scenario.ScenarioRun{
+			ID:         scnid.NewRun(),
+			ScenarioID: scnid.NewScenario(),
+			Manifest:   validManifest(),
+			Status:     scenario.StatusQueued,
+			QueuedAt:   base.Add(time.Duration(hour) * time.Hour),
+		}
+
+		if _, err := s.Runs().Create(ctx, run); err != nil {
+			t.Fatalf("Create the %d-hour run: %v", hour, err)
+		}
+
+		byHour[hour] = run.ID.String()
+	}
+
+	got, err := s.Runs().List(ctx, 0)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	if len(got) != len(hours) {
+		t.Fatalf("List returned %d runs, want %d", len(got), len(hours))
+	}
+
+	// Newest first: hours 3, 2, 1, 0.
+	for index, hour := range []int{3, 2, 1, 0} {
+		if got[index].ID.String() != byHour[hour] {
+			t.Errorf("position %d holds the run queued at %v, want the %d-hour one; "+
+				"List is not ordering by queued_at descending",
+				index, got[index].QueuedAt, hour)
+		}
+	}
+}
+
+// Two runs queued in the same instant order by identifier descending, so the
+// list is reproducible rather than dependent on which was written first. The
+// Fabriq store's `ORDER BY queued_at DESC, id DESC` breaks the tie the same
+// way; without a tie-break here the two stores answer differently whenever a
+// pair shares a timestamp.
+func TestListBreaksTiesOnIdentifierDescending(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	ctx := context.Background()
+
+	instant := time.Date(2026, 8, 4, 9, 0, 0, 0, time.UTC)
+
+	var ids []string
+
+	for range 5 {
+		run := scenario.ScenarioRun{
+			ID:         scnid.NewRun(),
+			ScenarioID: scnid.NewScenario(),
+			Manifest:   validManifest(),
+			Status:     scenario.StatusQueued,
+			QueuedAt:   instant,
+		}
+
+		if _, err := s.Runs().Create(ctx, run); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		ids = append(ids, run.ID.String())
+	}
+
+	got, err := s.Runs().List(ctx, 0)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	slices.Sort(ids)
+	slices.Reverse(ids)
+
+	for index, want := range ids {
+		if got[index].ID.String() != want {
+			t.Fatalf("position %d holds %s, want %s — runs queued in one instant "+
+				"must order by identifier descending", index, got[index].ID, want)
+		}
+	}
+}
+
+// A limit of zero or less returns everything, and a positive one returns that
+// many of the newest. scenario.RunStore documents the first half and the HTTP
+// surface depends on the second; a store that clamped a zero to some default
+// would break a CLI, and one that ignored a positive limit would let one
+// request page the whole table.
+func TestListHonoursTheLimitAndTreatsZeroAsEverything(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	ctx := context.Background()
+
+	base := time.Date(2026, 8, 4, 9, 0, 0, 0, time.UTC)
+
+	// More than pkgstore's default page of 100, so a reintroduced clamp to it
+	// is what this catches rather than something a smaller fixture would hide.
+	const runCount = 120
+
+	newest := ""
+
+	for i := range runCount {
+		run := scenario.ScenarioRun{
+			ID:         scnid.NewRun(),
+			ScenarioID: scnid.NewScenario(),
+			Manifest:   validManifest(),
+			Status:     scenario.StatusQueued,
+			QueuedAt:   base.Add(time.Duration(i) * time.Minute),
+		}
+
+		if _, err := s.Runs().Create(ctx, run); err != nil {
+			t.Fatalf("Create run %d: %v", i, err)
+		}
+
+		newest = run.ID.String()
+	}
+
+	for _, limit := range []int{0, -1} {
+		got, err := s.Runs().List(ctx, limit)
+		if err != nil {
+			t.Fatalf("List(%d): %v", limit, err)
+		}
+
+		if len(got) != runCount {
+			t.Errorf("List(%d) returned %d runs, want all %d", limit, len(got), runCount)
+		}
+	}
+
+	got, err := s.Runs().List(ctx, 3)
+	if err != nil {
+		t.Fatalf("List(3): %v", err)
+	}
+
+	if len(got) != 3 {
+		t.Fatalf("a limit of 3 returned %d rows", len(got))
+	}
+
+	// The newest three, not any three: a limit applied before the sort would
+	// return the same count and the wrong rows.
+	if got[0].ID.String() != newest {
+		t.Errorf("the limited list starts at %s, want the newest run %s; "+
+			"the limit must be applied after the ordering", got[0].ID, newest)
 	}
 }
 

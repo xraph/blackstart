@@ -61,7 +61,7 @@ func (s *runs) ListByScenario(
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var out []scenario.ScenarioRun
+	out := make([]scenario.ScenarioRun, 0, len(s.runOrder))
 
 	for _, key := range s.runOrder {
 		if found := s.runs[key]; found.ScenarioID == scenarioID {
@@ -69,11 +69,46 @@ func (s *runs) ListByScenario(
 		}
 	}
 
-	slices.Reverse(out)
+	return newestFirst(out, limit), nil
+}
 
-	// Ties on QueuedAt break on identifier, which is chronologically
-	// sortable, so two runs queued in the same instant still order
-	// reproducibly.
+// List returns runs across every scenario, most recent first.
+//
+// A limit of zero or less returns everything, which is what a CLI wants.
+//
+// The ordering is newestFirst's, the same call ListByScenario makes, so the
+// two cannot drift apart the way the two stores' Claim once did. What that
+// leaves is the parity this store cannot enforce from inside itself: the
+// Fabriq store answers the same question with `ORDER BY queued_at DESC, id
+// DESC`, and only a test that runs the same fixture through both can hold
+// them together.
+func (s *runs) List(_ context.Context, limit int) ([]scenario.ScenarioRun, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]scenario.ScenarioRun, 0, len(s.runOrder))
+	for _, key := range s.runOrder {
+		out = append(out, s.runs[key])
+	}
+
+	return newestFirst(out, limit), nil
+}
+
+// newestFirst orders runs the way both listings publish them and applies the
+// limit.
+//
+// Sorted rather than read off runOrder, and this is the whole reason the
+// helper exists rather than each caller looping. runOrder is insertion
+// sequence, which is not the same thing as queue time: a run backfilled with
+// an earlier QueuedAt than one already recorded belongs later in this list, and
+// a listing that trusted its slice position would put it first. Claim learned
+// that distinction the expensive way — it scanned insertion order here while
+// the Fabriq store asked Postgres for queued_at — and these two listings
+// answer to the same `ORDER BY queued_at DESC, id DESC` that store's SQL does.
+//
+// Ties on QueuedAt break on identifier, which is chronologically sortable, so
+// two runs queued in the same instant still order reproducibly.
+func newestFirst(out []scenario.ScenarioRun, limit int) []scenario.ScenarioRun {
 	slices.SortStableFunc(out, func(left, right scenario.ScenarioRun) int {
 		if by := right.QueuedAt.Compare(left.QueuedAt); by != 0 {
 			return by
@@ -86,7 +121,7 @@ func (s *runs) ListByScenario(
 		out = out[:limit]
 	}
 
-	return out, nil
+	return out
 }
 
 // Claim takes the oldest queued run, marks it running, and returns it.

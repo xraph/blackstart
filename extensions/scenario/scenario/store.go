@@ -61,6 +61,28 @@ type RunStore interface {
 	// A limit of zero or less returns everything, which is what a CLI wants.
 	ListByScenario(ctx context.Context, scenarioID id.ID, limit int) ([]ScenarioRun, error)
 
+	// List returns runs across every scenario, most recent first.
+	//
+	// Not ListByScenario with the filter dropped: a console's run index is a
+	// flat list of what has happened lately, and without this the only way to
+	// build one is to list every scenario and issue a request per scenario —
+	// which is a fan-out that grows with the number of scenarios and still
+	// cannot order the merged result correctly without fetching all of it.
+	//
+	// "Most recent first" means the same thing here as it does in
+	// ListByScenario: queued_at descending, tie-broken on identifier. The two
+	// implementations of this interface have already diverged once on exactly
+	// that — Claim scanned insertion order in one and queued_at in the other —
+	// so the order is stated on the interface rather than left to each store
+	// to spell for itself.
+	//
+	// A limit of zero or less returns everything, the same rule
+	// ListByScenario states. No clamp: a caller that asked for everything and
+	// silently received the newest fifty of sixty cannot tell it happened, so
+	// the bound belongs at the caller. The HTTP surface is that caller and
+	// always passes an explicit, positive one.
+	List(ctx context.Context, limit int) ([]ScenarioRun, error)
+
 	// Claim takes the oldest queued run, marks it running, and returns it.
 	//
 	// This is the one place the scenario extension has concurrency: several
