@@ -118,7 +118,7 @@ func (c *Controller) Routes(router forge.Router) error {
 				"for; ranking is a separate view."),
 		forge.WithTags("Contingency"),
 		forge.WithRequestSchema(getSweepRunRequest{}),
-		forge.WithResponseSchema(http.StatusOK, "Run", sweep.Run{}),
+		forge.WithResponseSchema(http.StatusOK, "SweepRun", sweep.Run{}),
 		forge.WithResponseSchema(http.StatusNotFound, "No such run", nil),
 	))
 

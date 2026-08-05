@@ -100,7 +100,7 @@ func (c *Controller) Routes(router forge.Router) error {
 				"in simulated time."),
 		forge.WithTags("Cascade"),
 		forge.WithRequestSchema(getCascadeRunRequest{}),
-		forge.WithResponseSchema(http.StatusOK, "Run", run.Run{}),
+		forge.WithResponseSchema(http.StatusOK, "CascadeRun", run.Run{}),
 		forge.WithResponseSchema(http.StatusNotFound, "No such run", nil),
 	))
 
