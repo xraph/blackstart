@@ -75,4 +75,14 @@ describe("runs search params", () => {
   it("holds at most two runs, because the exit from this screen is a diff", () => {
     expect(runsSearch.safeParse({ compare: ["a", "b", "c"] }).success).toBe(false);
   });
+
+  it("admits the scenario kind, since a scenario run belongs in the same index", () => {
+    expect(runsSearch.parse({ kind: "scenario" }).kind).toBe("scenario");
+  });
+
+  it("rejects a kind the index has never heard of, rather than falling back to unfiltered", () => {
+    // Distinct from the acceptance test above: a schema that defaults on any
+    // unrecognized string would pass "scenario" for the wrong reason.
+    expect(runsSearch.safeParse({ kind: "nonsense" }).success).toBe(false);
+  });
 });

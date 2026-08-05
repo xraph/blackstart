@@ -90,7 +90,7 @@ export const cascadeSearch = consoleSearch.extend({
 export type CascadeSearch = z.infer<typeof cascadeSearch>;
 
 export const runsSearch = z.object({
-  kind: z.enum(["all", "cascade", "sweep", "validation"]).default("all"),
+  kind: z.enum(["all", "cascade", "sweep", "validation", "scenario"]).default("all"),
   status: z.enum(["any", "complete", "running", "failed", "queued"]).default("any"),
   /**
    * Runs selected for comparison. Capped at two because the exit from this
