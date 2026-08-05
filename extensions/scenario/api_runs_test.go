@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	scnid "github.com/xraph/blackstart/extensions/scenario/id"
 	scn "github.com/xraph/blackstart/extensions/scenario/scenario"
@@ -83,6 +84,118 @@ func TestListingRunsNeverAsksAStoreForEverything(t *testing.T) {
 
 		if len(queued) > 0 {
 			t.Errorf("listing%s never returned %d of the queued runs", query, len(queued))
+		}
+	}
+}
+
+// The run index may never ask a store for everything either, and it is the
+// endpoint where that matters most: nothing narrows it to one scenario, so a
+// forwarded zero pages every run the tenant has ever recorded.
+//
+// The same four queries the two other list endpoints are held to, checked
+// against allRunLimits rather than runLimits — a handler that answered this
+// path by listing one scenario's runs would satisfy an assertion made against
+// the wrong recorder.
+func TestListingRecentRunsNeverAsksAStoreForEverything(t *testing.T) {
+	for _, query := range []string{"", "?limit=0", "?limit=-1", "?limit=999999"} {
+		s := newSurface(t)
+
+		queued := make(map[id.ID]bool, seededRuns)
+
+		// One scenario per run, so this cannot pass by accident on a handler
+		// that filtered: every run here belongs to a different scenario, and
+		// a filtered listing returns one of them.
+		for range seededRuns {
+			run, err := s.engine.Enqueue(t.Context(), s.define(t).ID)
+			if err != nil {
+				t.Fatalf("Enqueue: %v", err)
+			}
+
+			queued[run.ID] = true
+		}
+
+		rec := s.do(http.MethodGet, "/api/v1/scenario/runs"+query, "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("listing%s: status %d; body: %s", query, rec.Code, rec.Body.String())
+		}
+
+		assertBounded(t, query, s.store.allRunLimits)
+
+		if len(s.store.runLimits) != 0 {
+			t.Errorf("listing%s reached ListByScenario; the run index names no scenario",
+				query)
+		}
+
+		var got scenarioRunsResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("decoding the listing: %v; body: %s", err, rec.Body.String())
+		}
+
+		if len(got.Runs) != seededRuns {
+			t.Errorf("listing%s returned %d runs, want the %d that were queued "+
+				"across %d scenarios", query, len(got.Runs), seededRuns, seededRuns)
+		}
+
+		for _, run := range got.Runs {
+			if !queued[run.ID] {
+				t.Errorf("listing%s returned run %s, which was never queued", query, run.ID)
+			}
+
+			delete(queued, run.ID)
+		}
+
+		if len(queued) > 0 {
+			t.Errorf("listing%s never returned %d of the queued runs", query, len(queued))
+		}
+	}
+}
+
+// The run index publishes runs newest first, which is the whole shape of the
+// screen that reads it.
+//
+// Both stores order this way and both are tested for it, but neither test can
+// see what the handler does with the result — a controller that sorted, or
+// reversed, or built its response from a map would pass every store test in
+// the extension. The clock is stepped backwards between enqueues so the
+// answer is not the order the runs were created in.
+func TestTheRunIndexPublishesNewestFirst(t *testing.T) {
+	s := newSurface(t)
+
+	base := time.Date(2026, 8, 4, 9, 0, 0, 0, time.UTC)
+
+	// Hours 2, 0, 3, 1: neither the order these are enqueued in nor its
+	// reverse is newest-first.
+	byHour := make(map[int]id.ID, 4)
+
+	for _, hour := range []int{2, 0, 3, 1} {
+		s.engine.now = func() time.Time { return base.Add(time.Duration(hour) * time.Hour) }
+
+		run, err := s.engine.Enqueue(t.Context(), s.define(t).ID)
+		if err != nil {
+			t.Fatalf("Enqueue the %d-hour run: %v", hour, err)
+		}
+
+		byHour[hour] = run.ID
+	}
+
+	rec := s.do(http.MethodGet, "/api/v1/scenario/runs", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var got scenarioRunsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding the listing: %v; body: %s", err, rec.Body.String())
+	}
+
+	if len(got.Runs) != len(byHour) {
+		t.Fatalf("the index returned %d runs, want %d", len(got.Runs), len(byHour))
+	}
+
+	for index, hour := range []int{3, 2, 1, 0} {
+		if got.Runs[index].ID != byHour[hour] {
+			t.Errorf("position %d holds the run queued at %v, want the %d-hour one",
+				index, got.Runs[index].QueuedAt, hour)
 		}
 	}
 }

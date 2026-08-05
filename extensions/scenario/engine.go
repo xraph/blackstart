@@ -81,6 +81,11 @@ func (e *Engine) Runs(ctx context.Context, scenarioID id.ID, limit int) ([]scn.S
 	return e.store.Runs().ListByScenario(ctx, scenarioID, limit)
 }
 
+// RecentRuns returns runs across every scenario, most recent first.
+func (e *Engine) RecentRuns(ctx context.Context, limit int) ([]scn.ScenarioRun, error) {
+	return e.store.Runs().List(ctx, limit)
+}
+
 // Enqueue freezes a scenario's manifest into a new queued run.
 //
 // This is the moment the reproducibility contract is made, and the reason

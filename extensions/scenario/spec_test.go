@@ -195,6 +195,106 @@ func TestEveryComponentThisExtensionPublishesIsItsOwn(t *testing.T) {
 	}
 }
 
+// Every component this extension's paths reference is one the map above
+// covers.
+//
+// The map is a list someone has to remember to extend, and the two collisions
+// this file was written for were both types nobody thought to check. This is
+// the half that does not depend on remembering: it walks the extension's own
+// paths, collects every component they point at, and fails on one that is not
+// accounted for — either in the map, or as a type this extension deliberately
+// borrows from elsewhere.
+//
+// The immediate case is the run index. Both run listings answer with
+// scenarioRunsResponse rather than a second wrapper of the same shape; a
+// `recentRunsResponse` added later would be a new component with a new name,
+// and this is what would say so.
+func TestNoScenarioPathReferencesAnUnaccountedComponent(t *testing.T) {
+	document := spec(t)
+
+	accounted := map[string]bool{
+		"Manifest": true, "Failure": true, "Scenario": true, "ScenarioRun": true,
+		"scenariosResponse": true, "scenarioRunsResponse": true,
+	}
+
+	paths, ok := document["paths"].(map[string]any)
+	if !ok {
+		t.Fatal("the specification has no paths")
+	}
+
+	for path, item := range paths {
+		if !strings.HasPrefix(path, "/api/v1/scenario/") {
+			continue
+		}
+
+		for _, name := range componentsUnder(item) {
+			if !accounted[name] {
+				t.Errorf("%s references component %q, which no assertion in this "+
+					"file covers; add it to the map above with fields only this "+
+					"extension's type has, or answer with a component already there",
+					path, name)
+			}
+		}
+	}
+}
+
+// componentsUnder collects every schema component named anywhere beneath a
+// decoded JSON value, by walking for $ref rather than by knowing the shape of
+// an OpenAPI path item — a request body, a response and a nested property all
+// reference the same way, and a walk cannot miss the one that moves.
+func componentsUnder(node any) []string {
+	const prefix = "#/components/schemas/"
+
+	var found []string
+
+	switch typed := node.(type) {
+	case map[string]any:
+		for key, value := range typed {
+			if ref, ok := value.(string); key == "$ref" && ok {
+				if name, cut := strings.CutPrefix(ref, prefix); cut {
+					found = append(found, name)
+				}
+
+				continue
+			}
+
+			found = append(found, componentsUnder(value)...)
+		}
+	case []any:
+		for _, value := range typed {
+			found = append(found, componentsUnder(value)...)
+		}
+	}
+
+	return found
+}
+
+// The run index answers with the component the per-scenario listing already
+// publishes.
+//
+// Not a style preference. A second wrapper holding one `runs` field would put
+// a byte-identical component in the specification and a byte-identical type in
+// every generated client — two names for one shape, which is the collision
+// problem inverted and just as much work for a reader to undo. The two
+// endpoints differ in which runs they select, not in what a run list is.
+func TestBothRunListingsAnswerWithOneComponent(t *testing.T) {
+	document := spec(t)
+
+	index := runSchema(t, document, "/api/v1/scenario/runs", "200")
+	perScenario := runSchema(t, document, "/api/v1/scenario/scenarios/{id}/runs", "200")
+
+	if index != perScenario {
+		t.Fatalf("the run index answers with %q and the per-scenario listing with "+
+			"%q; one shape published under two names is two types in every "+
+			"generated client", index, perScenario)
+	}
+
+	if index != "scenarioRunsResponse" {
+		t.Errorf("the run listings answer with %q; scenarioRunsResponse is the "+
+			"name the other assertions in this file guard", index)
+	}
+}
+
 // A field the encoder omits must not be documented as always present.
 //
 // Absent means unknown on this surface: a queued run has no child ids, no

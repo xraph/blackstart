@@ -31,11 +31,23 @@ type listScenarioRunsRequest struct {
 	Limit int    `query:"limit" description:"Maximum results, most recent first" optional:"true"`
 }
 
+type listRecentRunsRequest struct {
+	Limit int `query:"limit" description:"Maximum results, most recent first" optional:"true"`
+}
+
 // --- Response DTOs ---
 
 // scenarioRunsResponse, not runsResponse. `runsResponse` has already collided
 // twice in this repository, because Forge keys an OpenAPI component by bare
 // Go type name and the label passed to WithResponseSchema is not it.
+//
+// Both run listings answer with this one type rather than a second wrapper of
+// the same shape, and that is the same rule read from the other end. A
+// distinct `recentRunsResponse` holding one `runs` field would put a second,
+// byte-identical component in the specification and a second, byte-identical
+// type in every generated client — two names for one shape, which is the
+// collision problem inverted and just as much work for a reader to undo. The
+// endpoints differ in which runs they select, not in what a run list is.
 type scenarioRunsResponse struct {
 	Runs []scn.ScenarioRun `json:"runs"`
 }
@@ -72,6 +84,23 @@ func (c *Controller) runRoutes(router forge.Router) error {
 		forge.WithDescription("Every recorded run of one scenario, most recent first."),
 		forge.WithTags("Scenario"),
 		forge.WithRequestSchema(listScenarioRunsRequest{}),
+		forge.WithResponseSchema(http.StatusOK, "Runs", scenarioRunsResponse{}),
+	))
+
+	// Before /runs/:id, so the literal segment is what a reader meets first.
+	// Not a routing requirement — Forge matches a static segment ahead of a
+	// parameter either way — but the two paths differ by one segment and the
+	// order they are declared in is the only thing telling a reader they are
+	// two endpoints rather than one with an optional id.
+	check(router.GET("/runs", c.ListRecentRuns,
+		forge.WithName("scenario.runs.recent"),
+		forge.WithSummary("List runs across every scenario"),
+		forge.WithDescription(
+			"Every recorded run, most recent first, whatever scenario it "+
+				"belongs to. This is what a run index reads; a single "+
+				"scenario's history is /scenarios/{id}/runs."),
+		forge.WithTags("Scenario"),
+		forge.WithRequestSchema(listRecentRunsRequest{}),
 		forge.WithResponseSchema(http.StatusOK, "Runs", scenarioRunsResponse{}),
 	))
 
@@ -129,6 +158,27 @@ func (c *Controller) ListRuns(ctx forge.Context) error {
 	}
 
 	found, err := c.engine.Runs(ctx.Request().Context(), want, bound(req.Limit))
+	if err != nil {
+		return httperr.From(err)
+	}
+
+	return ctx.JSON(http.StatusOK, scenarioRunsResponse{Runs: found})
+}
+
+// ListRecentRuns returns runs across every scenario, most recent first.
+//
+// bound(), the same call ListRuns and List make. The store honors a
+// non-positive limit as "everything" and this endpoint is unfiltered, so it is
+// the one place on this surface where forwarding an absent limit would page
+// every run the tenant has ever recorded — which is the request the console's
+// run index makes on every load.
+func (c *Controller) ListRecentRuns(ctx forge.Context) error {
+	var req listRecentRunsRequest
+	if err := ctx.BindRequest(&req); err != nil {
+		return forge.BadRequest(err.Error())
+	}
+
+	found, err := c.engine.RecentRuns(ctx.Request().Context(), bound(req.Limit))
 	if err != nil {
 		return httperr.From(err)
 	}
