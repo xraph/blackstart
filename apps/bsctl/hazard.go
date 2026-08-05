@@ -9,12 +9,14 @@ import (
 	"github.com/xraph/forge"
 	"github.com/xraph/forge/cli"
 
+	"github.com/xraph/blackstart/extensions/geo"
 	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/hazard"
 	"github.com/xraph/blackstart/extensions/hazard/conductor"
 	hid "github.com/xraph/blackstart/extensions/hazard/id"
 	hzstore "github.com/xraph/blackstart/extensions/hazard/store"
 	wid "github.com/xraph/blackstart/extensions/weather/id"
+	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
 	pkgstore "github.com/xraph/blackstart/pkg/store"
 )
@@ -25,12 +27,13 @@ func hazardCommand() cli.Command {
 		"hazard",
 		"Conductor loading and dynamic line ratings",
 		func(ctx cli.CommandContext) error {
-			ctx.Println("usage: bsctl hazard <conductors|assign|assignments|compute|rating|loading>")
+			ctx.Println("usage: bsctl hazard <conductors|assign|assume|assignments|compute|rating|loading>")
 
 			return nil
 		},
 		cli.WithSubcommand(hazardConductorsCommand()),
 		cli.WithSubcommand(hazardAssignCommand()),
+		cli.WithSubcommand(hazardAssumeCommand()),
 		cli.WithSubcommand(hazardAssignmentsCommand()),
 		cli.WithSubcommand(hazardComputeCommand()),
 		cli.WithSubcommand(hazardRatingCommand()),
@@ -344,4 +347,148 @@ func hazardEngine(ctx context.Context) (*hazard.Engine, func(), error) {
 	}
 
 	return engine, cleanup, nil
+}
+
+// hazardAssumeCommand gives a conductor to every carrier that states a voltage.
+func hazardAssumeCommand() cli.Command {
+	return cli.NewCommand(
+		"assume",
+		"Assume a conductor for every carrier whose voltage is known",
+		func(ctx cli.CommandContext) error {
+			hazardEngine, geoEngine, cleanup, err := hazardAndGeo(ctx.Context())
+			if err != nil {
+				return err
+			}
+
+			defer cleanup()
+
+			candidates, branches, err := assumeCandidates(
+				ctx.Context(), hazardEngine, geoEngine, ctx.Int("limit"))
+			if err != nil {
+				return err
+			}
+
+			dryRun := ctx.Bool("dry-run")
+
+			plan, err := hazardEngine.Assume(ctx.Context(), candidates, dryRun)
+			if err != nil {
+				return err
+			}
+
+			if dryRun {
+				ctx.Println("dry run — nothing was written")
+			}
+
+			for _, got := range plan.Assume {
+				ctx.Printf("%-30s %s\n", got.CarrierID, got.ConductorCode)
+			}
+
+			// Every number, every time. A command reporting only what it did is
+			// how somebody comes to believe the map is fuller than it is — and
+			// the two skip reasons are not interchangeable: no voltage is a gap
+			// in the source data, already assigned is a decision somebody made,
+			// and a branch cannot state a voltage at all because the canonical
+			// model keeps one voltage base for the whole network.
+			ctx.Printf("\nassigned          %d\n", len(plan.Assume))
+			ctx.Printf("no voltage        %d\n", len(plan.NoVoltage))
+			ctx.Printf("already assigned  %d\n", len(plan.AlreadyAssigned))
+			ctx.Printf("branches skipped  %d\n", branches)
+
+			return nil
+		},
+		cli.WithUsage("bsctl hazard assume [--dry-run] [--limit N]"),
+		cli.WithFlag(cli.NewBoolFlag(
+			"dry-run", "", "report what would be assigned without writing", false)),
+		cli.WithFlag(cli.NewIntFlag(
+			"limit", "", "how many routes to consider", 1000)),
+	)
+}
+
+// assumeCandidates collects the carriers a pass could assign, and counts the
+// ones it cannot.
+//
+// Branches are counted rather than offered. A branch has no voltage anywhere in
+// this platform — the canonical model keeps a single voltage base for the whole
+// network, deliberately — so there is nothing to assume from, and handing one
+// an operator-supplied default would record assumed_by_voltage against a
+// voltage that was never the element's.
+func assumeCandidates(
+	ctx context.Context, hz *hazard.Engine, gx *geo.Engine, limit int,
+) ([]conductor.Candidate, int, error) {
+	routes, err := gx.Routes(ctx, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("bsctl: reading routes: %w", err)
+	}
+
+	candidates := make([]conductor.Candidate, 0, len(routes))
+	branches := 0
+
+	for _, route := range routes {
+		if !gid.IsCircuit(route.CarrierID) {
+			branches++
+
+			continue
+		}
+
+		circuit, err := gx.Circuit(ctx, route.CarrierID)
+		if err != nil {
+			return nil, 0, fmt.Errorf(
+				"bsctl: reading circuit %s: %w", route.CarrierID, err)
+		}
+
+		// Absence is not an error here. ForCarrier missing is the ordinary
+		// answer for a carrier nobody has assigned, which is the whole set this
+		// command exists to shrink.
+		_, err = hz.AssignmentForCarrier(ctx, route.CarrierID)
+		assigned := err == nil
+
+		if err != nil && !errors.Is(err, bserr.ErrNotFound) {
+			return nil, 0, fmt.Errorf(
+				"bsctl: reading the assignment of %s: %w", route.CarrierID, err)
+		}
+
+		candidates = append(candidates, conductor.Candidate{
+			CarrierID: route.CarrierID,
+			VoltageKV: circuit.VoltageKV,
+			Assigned:  assigned,
+		})
+	}
+
+	return candidates, branches, nil
+}
+
+// hazardAndGeo resolves both engines from one application.
+//
+// One application, not two. Each helper starts its own, and starting the stack
+// twice in one command opens two connection pools and runs the migration
+// orchestrator concurrently against the same database.
+func hazardAndGeo(
+	ctx context.Context,
+) (*hazard.Engine, *geo.Engine, func(), error) {
+	app, err := App()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if err := app.Start(ctx); err != nil {
+		return nil, nil, nil, fmt.Errorf("starting the application: %w", err)
+	}
+
+	cleanup := func() { _ = app.Stop(context.WithoutCancel(ctx)) }
+
+	hz, err := forge.Inject[*hazard.Engine](app.Container())
+	if err != nil {
+		cleanup()
+
+		return nil, nil, nil, fmt.Errorf("resolving the hazard engine: %w", err)
+	}
+
+	gx, err := forge.Inject[*geo.Engine](app.Container())
+	if err != nil {
+		cleanup()
+
+		return nil, nil, nil, fmt.Errorf("resolving the geo engine: %w", err)
+	}
+
+	return hz, gx, cleanup, nil
 }
