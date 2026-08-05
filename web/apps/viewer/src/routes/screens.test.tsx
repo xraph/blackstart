@@ -263,7 +263,19 @@ const SCENARIO_UNRATED = {
   solverVersion: "0.3.1",
 };
 
-/** A run that stopped, and the step it stopped at. */
+/**
+ * A run that stopped: where, and why.
+ *
+ * `step` is `"ratings"` because that is one of the four values
+ * `extensions/scenario/scenario/run.go` defines — `resolve`, `ratings`,
+ * `screen`, `cascade`. A fixture carrying a step the backend cannot emit is
+ * how a test starts passing for the wrong reason.
+ *
+ * `reason` is a sentence, and deliberately a long one: the two failures
+ * `ratingGap` in `extensions/scenario/resolve.go` writes both run to several
+ * lines, so a fixture with a short reason would never exercise the truncation
+ * the table row needs.
+ */
 const SCENARIO_FAILED = {
   id: "run_01k3qf8m2xw7rb4n09yvtscnr3",
   scenarioId: "tx-2026-0802-derecho",
@@ -275,7 +287,25 @@ const SCENARIO_FAILED = {
   solverVersion: "0.3.1",
   branchCount: 2000,
   weatherRated: 1841,
-  failure: { step: "rate", reason: "hazard grid unavailable" },
+  failure: {
+    step: "ratings",
+    reason:
+      "cycle hrrr-2026080218 has computed no ampacity valid at 2026-08-02T22:00:00Z for any " +
+      "of the 1841 branches whose spans this model does reach (of 2000)",
+  },
+};
+
+/**
+ * The same failure with the explanation missing.
+ *
+ * Go's `Failure.Reason` has no `omitempty`, so a reason the platform does not
+ * write arrives as `""` rather than as an absent key — and a row reading
+ * "ratings — " is worse than a row reading "ratings".
+ */
+const SCENARIO_FAILED_NO_REASON = {
+  ...SCENARIO_FAILED,
+  id: "run_01k3qf8m2xw7rb4n09yvtscnr4",
+  failure: { step: "ratings", reason: "" },
 };
 
 const loading = { data: undefined, isPending: true, isError: false, error: null };
@@ -684,14 +714,42 @@ describe("runs index, scenario runs", () => {
     expect(screen.queryByRole("link", { name: /play back cascade/i })).toBeNull();
   });
 
-  it("names the step a failed run stopped at", async () => {
+  it("says both where a failed run stopped and why", async () => {
+    // The step is the coarse classification; the reason is the sentence
+    // somebody acts on, and the backend keeps them apart precisely so a
+    // reader can tell a forecast gap from a model that does not join to the
+    // asset record. A row carrying only the step throws the second away.
     scenarioQuery.current = loaded([SCENARIO_FAILED]);
     await renderAt("/runs?kind=scenario");
     // Scoped to the table: "failed" is also a status the filter control
     // offers, and a match on the control would prove nothing about the row.
     const row = within(screen.getByRole("table"));
     expect(row.getByText("failed")).toBeTruthy();
-    expect(row.getByText("rate")).toBeTruthy();
+    expect(row.getByText("ratings")).toBeTruthy();
+    expect(row.getByText(SCENARIO_FAILED.failure.reason)).toBeTruthy();
+  });
+
+  it("keeps the whole reason recoverable from a row that truncates it", async () => {
+    // A reason runs to a sentence and a table row cannot grow, so the cell
+    // truncates — which is only honest if the full text is still reachable.
+    scenarioQuery.current = loaded([SCENARIO_FAILED]);
+    await renderAt("/runs?kind=scenario");
+    const cell = within(screen.getByRole("table")).getByTitle(
+      `${SCENARIO_FAILED.failure.step} — ${SCENARIO_FAILED.failure.reason}`,
+    );
+    expect(cell).toBeTruthy();
+  });
+
+  it("shows the step alone when the platform recorded no reason", async () => {
+    // Go's `Failure.Reason` has no omitempty, so a missing explanation is an
+    // empty string on the wire. "ratings — " reads as a truncation bug.
+    scenarioQuery.current = loaded([SCENARIO_FAILED_NO_REASON]);
+    await renderAt("/runs?kind=scenario");
+    const row = within(screen.getByRole("table"));
+    expect(row.getByText("ratings")).toBeTruthy();
+    // The title falls back to the step alone rather than a dangling dash.
+    expect(row.getByTitle("ratings")).toBeTruthy();
+    expect(row.queryByTitle("ratings — ")).toBeNull();
   });
 
   // ── Status: applied where it is real, admitted where it is not. ─────────
@@ -741,5 +799,15 @@ describe("runs screen, narrow", () => {
     expect(screen.queryByRole("table")).toBeNull();
     expect(screen.getByText("not rated")).toBeTruthy();
     expect(screen.queryByText(/^0 of /)).toBeNull();
+  });
+
+  it("gives the failure reason room to wrap on a card rather than truncating it", async () => {
+    // A card has the width a table cell does not, so this is the one place
+    // the whole sentence is on screen instead of behind a hover.
+    scenarioQuery.current = loaded([SCENARIO_FAILED]);
+    await renderAt("/runs?kind=scenario");
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByText(new RegExp(`failed at ${SCENARIO_FAILED.failure.step}`))).toBeTruthy();
+    expect(screen.getByText(new RegExp(SCENARIO_FAILED.failure.reason.slice(0, 40)))).toBeTruthy();
   });
 });

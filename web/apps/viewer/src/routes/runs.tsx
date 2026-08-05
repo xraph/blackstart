@@ -398,7 +398,7 @@ function ScenarioTable({ runs }: { readonly runs: readonly ScenarioRun[] }): Rea
           <th className={TH}>Scenario</th>
           <th className={TH}>Status</th>
           <th className={TH}>Weather</th>
-          <th className={TH}>Failed at</th>
+          <th className={TH}>Failure</th>
           <th className={TH}>Cascade</th>
           <th className={TH}>Queued</th>
         </tr>
@@ -412,7 +412,9 @@ function ScenarioTable({ runs }: { readonly runs: readonly ScenarioRun[] }): Rea
               <RunStatusCell status={r.status} />
             </td>
             <td className={TD}>{weatherCoverage(r)}</td>
-            <td className={TD}>{failedStep(r) ?? <span className="text-fg-4">—</span>}</td>
+            <td className={TD}>
+              <FailureCell run={r} />
+            </td>
             <td className={TD}>
               <CascadeLink run={r} />
             </td>
@@ -425,7 +427,7 @@ function ScenarioTable({ runs }: { readonly runs: readonly ScenarioRun[] }): Rea
 }
 
 function ScenarioCard({ run }: { readonly run: ScenarioRun }): React.JSX.Element {
-  const step = failedStep(run);
+  const failure = failureOf(run);
 
   return (
     <li className="flex flex-col gap-1.5 border-b border-line-t px-3.5 py-3">
@@ -433,9 +435,19 @@ function ScenarioCard({ run }: { readonly run: ScenarioRun }): React.JSX.Element
       <span className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[9.5px] tabular text-fg-3">
         <RunStatusCell status={run.status} />
         <span>{weatherCoverage(run)}</span>
-        {step === undefined ? null : <span className="text-alarm">failed at {step}</span>}
         <span>{formatInstantLocal(run.queuedAt)}</span>
       </span>
+      {failure === undefined ? null : (
+        // The card wraps where the row truncates: a card has the width a table
+        // cell does not, and the reason is the half of the pair worth reading
+        // in full.
+        <span className="font-mono text-[9.5px] leading-snug text-alarm">
+          failed at {failure.step}
+          {failure.reason === undefined ? null : (
+            <span className="text-fg-3"> — {failure.reason}</span>
+          )}
+        </span>
+      )}
       <CascadeLink run={run} />
     </li>
   );
@@ -486,9 +498,64 @@ function weatherCoverage(run: ScenarioRun): string {
   return `${run.weatherRated} of ${total}`;
 }
 
-/** The step a failed run stopped at, and nothing at all for a run that did not fail. */
-function failedStep(run: ScenarioRun): string | undefined {
-  return run.failure === undefined ? undefined : run.failure.step;
+/**
+ * Where a failed run stopped, and why — both halves, because they are not the
+ * same fact.
+ *
+ * `extensions/scenario/scenario/run.go` keeps `Step` and `Reason` apart on
+ * purpose: the four `Step` values are the coarse classification a dashboard
+ * filters on, and `Reason` is the human-readable explanation, deliberately not
+ * a machine-parsed code. A row showing only the step says the run stopped at
+ * ratings; it does not say whether the forecast had no ampacity for the
+ * branches this model reaches or whether the model never joined to the asset
+ * record at all. Those are two different errors the backend goes to trouble to
+ * distinguish, and they are fixed by two different people. Showing the step
+ * alone throws that away at the last step of the chain.
+ *
+ * An empty reason is treated as no reason. The wire always carries the field —
+ * Go's `Failure.Reason` has no `omitempty` — so absence arrives as `""`, and a
+ * row reading "ratings — " is worse than a row reading "ratings".
+ */
+function failureOf(run: ScenarioRun): { step: string; reason: string | undefined } | undefined {
+  if (run.failure === undefined) return undefined;
+
+  // Widened deliberately: the generated type says `reason: string`, but this
+  // is a wire payload and a field the platform stops sending would arrive as
+  // `undefined` regardless of what the type asserts.
+  const reason: string | undefined = run.failure.reason;
+
+  return {
+    step: run.failure.step,
+    reason: reason === undefined || reason.trim() === "" ? undefined : reason,
+  };
+}
+
+/**
+ * The failure, in a row that cannot grow.
+ *
+ * A reason is a sentence — `ratingGap` in `extensions/scenario/resolve.go`
+ * writes two of them and both run to several lines — so the cell truncates and
+ * carries the full pair in `title`, which is what every other long string in
+ * this console does (`risk.tsx` does exactly this with its evidence text). The
+ * step never truncates: it is four known words and it is the half that has to
+ * be readable at a glance.
+ */
+function FailureCell({ run }: { readonly run: ScenarioRun }): React.JSX.Element {
+  const failure = failureOf(run);
+
+  if (failure === undefined) return <span className="text-fg-4">—</span>;
+
+  return (
+    <span
+      className="flex items-baseline gap-2"
+      title={failure.reason === undefined ? failure.step : `${failure.step} — ${failure.reason}`}
+    >
+      <span className="shrink-0 text-alarm">{failure.step}</span>
+      {failure.reason === undefined ? null : (
+        <span className="max-w-[34ch] truncate text-fg-3">{failure.reason}</span>
+      )}
+    </span>
+  );
 }
 
 /**
