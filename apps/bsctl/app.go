@@ -69,6 +69,7 @@ func Commands() []cli.Command {
 	return []cli.Command{
 		entitiesCommand(), modelCommand(), geoCommand(), sclCommand(),
 		solveCommand(), n1Command(), weatherCommand(), hazardCommand(),
+		riskCommand(),
 	}
 }
 
