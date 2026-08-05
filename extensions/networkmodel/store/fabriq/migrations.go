@@ -22,6 +22,7 @@ func Group() *migrate.Group {
 
 	g.MustRegister(migration0001Tables)
 	g.MustRegister(migration0002BytePlane)
+	g.MustRegister(migration0003Identity)
 
 	return g
 }
@@ -114,6 +115,77 @@ func down0001(ctx context.Context, exec migrate.Executor) error {
 	return execAll(ctx, exec, []string{
 		`DROP TABLE IF EXISTS ` + BlobTable,
 		`DROP TABLE IF EXISTS ` + ModelTable,
+	})
+}
+
+// migration0003Identity adds branch identity and bus placements.
+//
+// A third migration rather than an edit to 0001 or 0002, for the same reason
+// 0002 was: both have run in databases that exist, and grove records them as
+// applied.
+var migration0003Identity = &migrate.Migration{
+	Name:    "networkmodel_id",
+	Version: "20260805000010",
+	Comment: "branch identity and bus placements, beside the canonical blob",
+	Up:      up0003,
+	Down:    down0003,
+}
+
+func up0003(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`CREATE TABLE IF NOT EXISTS ` + BranchTable + ` (
+			id         TEXT PRIMARY KEY,
+			tenant_id  TEXT NOT NULL,
+			version    BIGINT NOT NULL,
+			model_id   TEXT NOT NULL,
+			ordinal    TEXT NOT NULL,
+			from_bus   TEXT NOT NULL,
+			to_bus     TEXT NOT NULL,
+			alias      TEXT NOT NULL DEFAULT ''
+		)`,
+
+		// One branch per ordinal per model. Unique because two would be a
+		// contradiction rather than a duplicate: nothing could say which
+		// conductor a cascade event meant.
+		`CREATE UNIQUE INDEX IF NOT EXISTS ` + BranchTable + `_ordinal_key
+			ON ` + BranchTable + ` (tenant_id, model_id, ordinal)`,
+
+		`CREATE TABLE IF NOT EXISTS ` + PlacementTable + ` (
+			id         TEXT PRIMARY KEY,
+			tenant_id  TEXT NOT NULL,
+			version    BIGINT NOT NULL,
+			model_id   TEXT NOT NULL,
+			bus        TEXT NOT NULL,
+			lon        DOUBLE PRECISION NOT NULL,
+			lat        DOUBLE PRECISION NOT NULL,
+			elevation  DOUBLE PRECISION NOT NULL DEFAULT 0
+		)`,
+
+		`CREATE UNIQUE INDEX IF NOT EXISTS ` + PlacementTable + `_bus_key
+			ON ` + PlacementTable + ` (tenant_id, model_id, bus)`,
+
+		// Row-level security, forced, and a tenant-isolation policy — the same
+		// treatment up0001 gives ModelTable and BlobTable above. Without FORCE
+		// the table owner is exempt and tenant isolation is silently a no-op
+		// for exactly the connection most likely to be used by mistake.
+		`ALTER TABLE ` + BranchTable + ` ENABLE ROW LEVEL SECURITY`,
+		`ALTER TABLE ` + BranchTable + ` FORCE ROW LEVEL SECURITY`,
+		`DROP POLICY IF EXISTS tenant_isolation ON ` + BranchTable,
+		`CREATE POLICY tenant_isolation ON ` + BranchTable + `
+			USING (tenant_id = current_setting('app.tenant_id', true))`,
+
+		`ALTER TABLE ` + PlacementTable + ` ENABLE ROW LEVEL SECURITY`,
+		`ALTER TABLE ` + PlacementTable + ` FORCE ROW LEVEL SECURITY`,
+		`DROP POLICY IF EXISTS tenant_isolation ON ` + PlacementTable,
+		`CREATE POLICY tenant_isolation ON ` + PlacementTable + `
+			USING (tenant_id = current_setting('app.tenant_id', true))`,
+	})
+}
+
+func down0003(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`DROP TABLE IF EXISTS ` + PlacementTable,
+		`DROP TABLE IF EXISTS ` + BranchTable,
 	})
 }
 

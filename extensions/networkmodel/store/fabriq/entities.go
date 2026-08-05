@@ -31,5 +31,15 @@ func (Contributor) Specs() []registry.EntitySpec {
 			Model:     (*modelRow)(nil),
 			GraphNode: "NetworkModel",
 		},
+		{
+			Name:  BranchEntity,
+			Kind:  registry.KindAggregate,
+			Model: (*branchRow)(nil),
+		},
+		{
+			Name:  PlacementEntity,
+			Kind:  registry.KindAggregate,
+			Model: (*placementRow)(nil),
+		},
 	}
 }
