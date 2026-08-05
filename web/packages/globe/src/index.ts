@@ -5,6 +5,8 @@ export { assertConsistent, emptyModel } from "./model";
 export type { ViewerBranches, ViewerBuses, ViewerModel } from "./model";
 
 export { Controls } from "./Controls";
+export { buildExtentGeometry, Extent } from "./Extent";
+export type { ExtentProps } from "./Extent";
 export { Globe } from "./Globe";
 export { Network } from "./Network";
 export { buildRouteColors, buildRouteSegments, Routes } from "./Routes";

@@ -1,6 +1,7 @@
 import { Canvas } from "@react-three/fiber";
 
 import { Controls } from "./Controls";
+import { Extent, type ExtentProps } from "./Extent";
 import { Globe } from "./Globe";
 import { Network, type Selection } from "./Network";
 import { Routes, type RoutePolyline, type Rgba } from "./Routes";
@@ -21,6 +22,14 @@ interface SceneProps {
   /** The colour a span is drawn in. Omitted, routes draw in one colour. */
   colorOf?: ((spanId: string) => Rgba) | undefined;
 
+  /**
+   * The ground a cascade covered, drawn beneath the routes.
+   *
+   * Optional for the same reason `routes` is: a viewer with no run to show an
+   * extent for still draws a scene.
+   */
+  extent?: ExtentProps["area"] | undefined;
+
   onSelect?: ((selection: Selection | null) => void) | undefined;
   onSelectRoute?: ((route: RoutePolyline) => void) | undefined;
 }
@@ -38,6 +47,7 @@ export function Scene({
   model,
   routes,
   colorOf,
+  extent,
   onSelect,
   onSelectRoute,
 }: SceneProps): React.JSX.Element {
@@ -56,6 +66,9 @@ export function Scene({
       <Controls />
       <Globe />
       <Network model={model} onSelect={onSelect} />
+      {/* Drawn before the routes so a route is never sorted beneath the
+       * translucent ground it sits on — conductors stay legible on top. */}
+      {extent !== undefined && extent.length > 0 && <Extent area={extent} />}
       {routes !== undefined && routes.length > 0 && (
         <Routes routes={routes} colorOf={colorOf} onSelect={onSelectRoute} />
       )}

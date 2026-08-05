@@ -33,7 +33,11 @@ import {
   useMediaQuery,
 } from "@blackstart/ui";
 import { Scene } from "@blackstart/globe";
-import { useCascadeRunsGet, type CascadeRun as WireRun } from "@blackstart/api-client";
+import {
+  useCascadeRunsExtent,
+  useCascadeRunsGet,
+  type CascadeRun as WireRun,
+} from "@blackstart/api-client";
 import { CascadeRun, provenanceOf, hz, mw, type CascadeEventKind } from "@blackstart/schema";
 
 import { cascadeRoute } from "../router";
@@ -159,6 +163,15 @@ export function CascadeScreen(): React.JSX.Element {
    * as real a failure as the fetch never landing, and shown the same way. */
   const malformed = data !== undefined && run === undefined;
 
+  /* The ground the run's tripped branches covered. Fetched alongside the run
+   * rather than derived from it — the platform, not the viewer, resolves a
+   * trip's branch to a traced route and buffers it, the same reason the
+   * blast radius figure in the left panel comes from the run rather than
+   * being summed here. */
+  const { data: extent } = useCascadeRunsExtent(client, search.run ?? "", undefined, {
+    enabled: search.run !== undefined,
+  });
+
   const events = run?.events ?? [];
   const lastT = events[events.length - 1]?.t ?? 1;
   const [position, setPosition] = useState(1);
@@ -193,6 +206,41 @@ export function CascadeScreen(): React.JSX.Element {
 
   const simTime = position * lastT;
   const shown = useMemo(() => events.filter((e) => e.t <= simTime + 1e-6), [events, simTime]);
+
+  /**
+   * The trip events `extent.area` was built from, in the same order and
+   * de-duplication the platform used to build it: one contribution per
+   * distinct tripped branch ordinal, first occurrence wins (see
+   * `cascade.Engine.Extent`, whose `seen` map does exactly this over
+   * `found.Events`). The wire response carries no per-polygon timestamp, so
+   * a ring cannot be matched to the event that caused it exactly — a branch
+   * with several spans contributes several rings for one trip. This walks
+   * the same trip order the server walked and reveals rings in that
+   * proportion, which grows the extent with the scrubber without claiming a
+   * precision the response does not carry.
+   */
+  const trippedOrdinals = useMemo(() => {
+    const seen = new Set<string>();
+    const ordinals: string[] = [];
+    for (const e of events) {
+      if (e.kind !== "trip" || seen.has(e.element)) continue;
+      seen.add(e.element);
+      ordinals.push(e.element);
+    }
+    return ordinals;
+  }, [events]);
+
+  const visibleExtent = useMemo(() => {
+    const area = extent?.area ?? [];
+    if (area.length === 0 || trippedOrdinals.length === 0) return [];
+
+    const trippedSoFar = trippedOrdinals.filter((ordinal) =>
+      shown.some((e) => e.kind === "trip" && e.element === ordinal),
+    ).length;
+
+    const ringCount = Math.floor((trippedSoFar / trippedOrdinals.length) * area.length);
+    return area.slice(0, ringCount);
+  }, [extent, trippedOrdinals, shown]);
 
   /** Steps to the adjacent discrete event, not a fixed time delta. */
   const step = (delta: -1 | 1): void => {
@@ -255,7 +303,7 @@ export function CascadeScreen(): React.JSX.Element {
         <div className="relative min-w-0 flex-1 overflow-hidden bg-stage">
           {/* The globe draws the static network model, which does not depend
            * on the run — so it never shows a loading state of its own. */}
-          <Scene model={model} onSelect={() => undefined} />
+          <Scene model={model} extent={visibleExtent} onSelect={() => undefined} />
 
           {failed ? (
             <div
