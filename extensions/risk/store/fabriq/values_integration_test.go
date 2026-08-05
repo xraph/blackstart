@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/xraph/fabriq"
+	"github.com/xraph/grove/drivers/pgdriver"
 
 	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/risk/store"
@@ -59,7 +60,82 @@ func harness(t *testing.T) *riskfabriq.Store {
 	return s
 }
 
-// aPass builds one component's 24-hour forecast, one row per hour.
+// harnessWithoutCoveringIndex is harness, plus one thing: it disables the
+// planner's index and bitmap scan paths for fabriq_app's future sessions
+// before Fabriq opens its connection pool.
+//
+// Why this exists: blackstart_risk_value_idx is (tenant_id, component_id,
+// quantity, issued_at, valid_at), and ForComponent's WHERE clause pins every
+// column ahead of valid_at to an equality. That makes a plain Index Scan on
+// this index the planner's obvious choice for this query shape — verified
+// with EXPLAIN (ANALYZE, BUFFERS) against this exact query — and a B-tree
+// index scan visits its leaf entries in key order, so it hands back rows
+// already sorted by valid_at regardless of physical insertion order and
+// regardless of whether values.go's SQL text has an ORDER BY at all. A
+// fixture that inserts out of order (reversed, below) is not enough by
+// itself to make TestValuesRoundTripAtRealisticScale fail if
+// `ORDER BY valid_at ASC` is removed from ForComponent's query — the index
+// supplies the same ordering for free, every time, as long as the planner
+// reaches for it, which it reliably will. Disabling enable_indexscan,
+// enable_indexonlyscan and enable_bitmapscan for the role forces a sequential
+// scan instead, whose output order is the chunk's physical (here: insertion)
+// order — the one thing the reversed fixture actually controls. Only then
+// does removing the ORDER BY produce observably wrong output. This was
+// confirmed empirically, not assumed: see task-6-report.md for both runs.
+func harnessWithoutCoveringIndex(t *testing.T) *riskfabriq.Store {
+	t.Helper()
+
+	superDSN := testsupport.Postgres(t)
+
+	testsupport.Migrate(t, superDSN, riskfabriq.Group())
+
+	appDSN := testsupport.AppDSN(t, superDSN)
+
+	admin := pgdriver.New()
+	if err := admin.Open(context.Background(), superDSN); err != nil {
+		t.Fatalf("opening the admin connection to disable index scans: %v", err)
+	}
+
+	defer func() { _ = admin.Close() }()
+
+	// ALTER ROLE ... SET is a login-time default: it only affects sessions
+	// opened after this runs, which is why it happens before fab.Open below
+	// rather than after. It is deliberately scoped to fabriq_app rather than
+	// the whole database, so it cannot leak into any other role's plans.
+	for _, stmt := range []string{
+		`ALTER ROLE fabriq_app SET enable_indexscan = off`,
+		`ALTER ROLE fabriq_app SET enable_indexonlyscan = off`,
+		`ALTER ROLE fabriq_app SET enable_bitmapscan = off`,
+	} {
+		if _, err := admin.Exec(context.Background(), stmt); err != nil {
+			t.Fatalf("disabling index scans for fabriq_app: %v", err)
+		}
+	}
+
+	reg, err := entities.Build(riskfabriq.Contributor{})
+	if err != nil {
+		t.Fatalf("building the registry: %v", err)
+	}
+
+	fab, _, err := fabriq.Open(context.Background(), reg, fabriq.Config{
+		Postgres: fabriq.PostgresConfig{DSN: appDSN},
+	})
+	if err != nil {
+		t.Fatalf("opening fabriq: %v", err)
+	}
+
+	t.Cleanup(func() { _ = fab.Close() })
+
+	s, err := riskfabriq.New(fab, tenantID)
+	if err != nil {
+		t.Fatalf("building the store: %v", err)
+	}
+
+	return s
+}
+
+// aPass builds one component's 24-hour forecast, one row per hour, in
+// ascending ValidAt order — the natural order a forecast pass computes in.
 func aPass(component id.ID, quantity store.Quantity, at time.Time) []store.ComponentValue {
 	out := make([]store.ComponentValue, 0, 24)
 
@@ -77,6 +153,28 @@ func aPass(component id.ID, quantity store.Quantity, at time.Time) []store.Compo
 	return out
 }
 
+// reversed copies vs in reverse order.
+//
+// TestValuesRoundTripAtRealisticScale inserts every pass through this rather
+// than aPass's natural ascending order. If the rows land in the table
+// already sorted the way ForComponent's `ORDER BY valid_at ASC` is supposed
+// to produce them, the composite index on (tenant_id, component_id,
+// quantity, issued_at, valid_at) — an exact match for that query's WHERE
+// clause — can return them correctly ordered by sheer coincidence of index
+// or physical order, whether or not the ORDER BY clause is actually present
+// in values.go. Reversing the insertion order means a missing or broken
+// ORDER BY produces detectably wrong (descending) output instead. Do not
+// "tidy" this back to ascending — that would silently turn the ordering
+// assertion below back into one that cannot fail.
+func reversed(vs []store.ComponentValue) []store.ComponentValue {
+	out := make([]store.ComponentValue, len(vs))
+	for i, v := range vs {
+		out[len(vs)-1-i] = v
+	}
+
+	return out
+}
+
 // TestValuesRoundTripAtRealisticScale writes a batch shaped like an actual
 // risk pass — one row per component per forecast hour — sized well past the
 // 500-row PutBatch chunk boundary rather than the handful of rows that would
@@ -85,8 +183,15 @@ func aPass(component id.ID, quantity store.Quantity, at time.Time) []store.Compo
 // component's own series (component 20 occupies rows 480-503) so a chunk
 // split at the wrong place would show up as a truncated read for exactly
 // that component.
+//
+// Each component's pass is inserted through reversed (see its doc comment)
+// rather than aPass's natural ascending order, and the harness disables the
+// planner's access to the covering index (see harnessWithoutCoveringIndex):
+// together, neither the fixture's physical order nor an incidental index
+// scan can produce the expected ascending output on their own, so the
+// assertion below only passes because ForComponent's own ORDER BY does.
 func TestValuesRoundTripAtRealisticScale(t *testing.T) {
-	s := harness(t)
+	s := harnessWithoutCoveringIndex(t)
 	ctx := context.Background()
 
 	const components = 50
@@ -98,7 +203,7 @@ func TestValuesRoundTripAtRealisticScale(t *testing.T) {
 
 	batch := make([]store.ComponentValue, 0, components*24)
 	for _, span := range spans {
-		batch = append(batch, aPass(span, store.QuantityConductorFailure, issuance)...)
+		batch = append(batch, reversed(aPass(span, store.QuantityConductorFailure, issuance))...)
 	}
 
 	if len(batch) <= 1000 {
