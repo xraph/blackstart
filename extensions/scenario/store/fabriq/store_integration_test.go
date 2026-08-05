@@ -5,6 +5,7 @@ package fabriq_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -395,6 +396,192 @@ func TestListByScenarioWithNoLimitReturnsEverything(t *testing.T) {
 
 	if len(got) != runCount {
 		t.Fatalf("a limit of 0 returned %d rows, want all %d", len(got), runCount)
+	}
+}
+
+// Listing across scenarios returns every run, whatever scenario it belongs to.
+func TestListReturnsRunsFromEveryScenario(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	want := make(map[string]bool, 4)
+
+	for i := range 4 {
+		sc := aScenario("sha256:everywhere")
+		if _, err := s.Scenarios().Create(ctx, sc); err != nil {
+			t.Fatalf("creating scenario %d: %v", i, err)
+		}
+
+		run := aQueuedRun(sc.ID, createdAt.Add(time.Duration(i)*time.Hour))
+		if _, err := s.Runs().Create(ctx, run); err != nil {
+			t.Fatalf("creating run %d: %v", i, err)
+		}
+
+		want[run.ID.String()] = true
+	}
+
+	got, err := s.Runs().List(ctx, 0)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("List returned %d runs, want all %d across four scenarios", len(got), len(want))
+	}
+
+	for _, run := range got {
+		if !want[run.ID.String()] {
+			t.Errorf("List returned run %s, which was never created", run.ID)
+		}
+	}
+}
+
+// The Fabriq half of the ordering fixture the memory store's
+// TestListOrdersByQueuedAtNotInsertionOrder runs: the same four runs, inserted
+// in the same order that is not their queue order, checked against the same
+// expectation. Two stores compared to one written-down answer rather than to
+// each other, because comparing them to each other passes when both are wrong
+// — which is how Claim came to scan insertion order here and queued_at there.
+func TestListOrdersRunsAcrossScenariosNewestFirst(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	// Hours 2, 0, 3, 1 — neither insertion order nor its reverse is the
+	// answer, so a query that dropped the ORDER BY and happened to read rows
+	// back in write order cannot pass.
+	hours := []int{2, 0, 3, 1}
+
+	byHour := make(map[int]string, len(hours))
+
+	for _, hour := range hours {
+		sc := aScenario("sha256:ordered")
+		if _, err := s.Scenarios().Create(ctx, sc); err != nil {
+			t.Fatalf("creating the scenario for hour %d: %v", hour, err)
+		}
+
+		run := aQueuedRun(sc.ID, createdAt.Add(time.Duration(hour)*time.Hour))
+		if _, err := s.Runs().Create(ctx, run); err != nil {
+			t.Fatalf("creating the %d-hour run: %v", hour, err)
+		}
+
+		byHour[hour] = run.ID.String()
+	}
+
+	got, err := s.Runs().List(ctx, 0)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	if len(got) != len(hours) {
+		t.Fatalf("List returned %d runs, want %d", len(got), len(hours))
+	}
+
+	// Position by position against the expected run, not merely "each row is
+	// no newer than the one before it": a monotonicity check passes on a list
+	// that is correctly ordered and missing half its rows.
+	for index, hour := range []int{3, 2, 1, 0} {
+		if got[index].ID.String() != byHour[hour] {
+			t.Errorf("position %d holds the run queued at %v, want the %d-hour one; "+
+				"List is not ordering by queued_at descending",
+				index, got[index].QueuedAt, hour)
+		}
+	}
+}
+
+// Runs queued in the same instant order by identifier descending, the tie-break
+// the memory store's newestFirst applies. Without `id DESC` in the ORDER BY,
+// Postgres returns them in whatever order it read the heap and the two stores
+// answer differently for any pair sharing a timestamp.
+func TestListBreaksTiesOnIdentifierDescending(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	sc := aScenario("sha256:tied")
+	if _, err := s.Scenarios().Create(ctx, sc); err != nil {
+		t.Fatalf("creating the scenario: %v", err)
+	}
+
+	var ids []string
+
+	for range 5 {
+		run := aQueuedRun(sc.ID, createdAt)
+		if _, err := s.Runs().Create(ctx, run); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		ids = append(ids, run.ID.String())
+	}
+
+	got, err := s.Runs().List(ctx, 0)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	slices.Sort(ids)
+	slices.Reverse(ids)
+
+	for index, want := range ids {
+		if got[index].ID.String() != want {
+			t.Fatalf("position %d holds %s, want %s — runs queued in one instant "+
+				"must order by identifier descending", index, got[index].ID, want)
+		}
+	}
+}
+
+// A limit of zero returns everything and a positive one returns that many of
+// the newest.
+//
+// 120 rows rather than the 60 TestListByScenarioWithNoLimitReturnsEverything
+// uses. That one was sized to catch the clamp to 50 that commit 4dbf824
+// removed; the clamp a reader of api.go would reintroduce today is
+// pkgstore.DefaultPageLimit, which is 100 — and a 60-row fixture passes with
+// that clamp in place. The memory store's counterpart is sized the same way
+// for the same reason.
+func TestListHonoursTheLimitAndTreatsZeroAsEverything(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	sc := aScenario("sha256:unclamped-globally")
+	if _, err := s.Scenarios().Create(ctx, sc); err != nil {
+		t.Fatalf("creating the scenario: %v", err)
+	}
+
+	const runCount = 120
+
+	newest := ""
+
+	for minute := range runCount {
+		run := aQueuedRun(sc.ID, createdAt.Add(time.Duration(minute)*time.Minute))
+		if _, err := s.Runs().Create(ctx, run); err != nil {
+			t.Fatalf("Create run %d: %v", minute, err)
+		}
+
+		newest = run.ID.String()
+	}
+
+	everything, err := s.Runs().List(ctx, 0)
+	if err != nil {
+		t.Fatalf("List(0): %v", err)
+	}
+
+	if len(everything) != runCount {
+		t.Fatalf("a limit of 0 returned %d rows, want all %d", len(everything), runCount)
+	}
+
+	limited, err := s.Runs().List(ctx, 3)
+	if err != nil {
+		t.Fatalf("List(3): %v", err)
+	}
+
+	if len(limited) != 3 {
+		t.Fatalf("a limit of 3 returned %d rows", len(limited))
+	}
+
+	// The newest three, not any three: a LIMIT applied to an unordered scan
+	// returns the right count and the wrong rows.
+	if limited[0].ID.String() != newest {
+		t.Errorf("the limited list starts at %s, want the newest run %s",
+			limited[0].ID, newest)
 	}
 }
 

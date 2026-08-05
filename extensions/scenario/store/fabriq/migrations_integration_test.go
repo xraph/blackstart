@@ -16,7 +16,7 @@ import (
 //
 // Grove rolls back one migration per call rather than a whole batch, so a
 // group with more than one needs that many calls to unwind.
-const registered = 1
+const registered = 2
 
 // Spec section 10 requires migrations to run forward and backward cleanly.
 func TestMigrationsRunBothWays(t *testing.T) {

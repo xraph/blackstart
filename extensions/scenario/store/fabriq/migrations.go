@@ -22,6 +22,7 @@ func Group() *migrate.Group {
 	g := migrate.NewGroup(GroupName, migrate.DependsOn(fabriqmigrations.GroupName))
 
 	g.MustRegister(migration0001Tables)
+	g.MustRegister(migration0002RecentRuns)
 
 	return g
 }
@@ -38,8 +39,48 @@ var migration0001Tables = &migrate.Migration{
 	Down:    down0001,
 }
 
+// A second migration rather than another statement in tables().
+//
+// migration0001Tables has run. Grove records a migration by version and skips
+// one it has already applied, so an index appended to the first migration's
+// DDL would be created on a fresh database and on no existing one — and the
+// difference would only show up as a query plan, never as an error.
+var migration0002RecentRuns = &migrate.Migration{
+	Name:    "scenario_recent_runs",
+	Version: "20260805000020",
+	Comment: "index for listing runs across scenarios, most recent first",
+	Up:      up0002,
+	Down:    down0002,
+}
+
 func up0001(ctx context.Context, exec migrate.Executor) error {
 	return execAll(ctx, exec, tables())
+}
+
+// up0002 indexes the question RunStore.List asks.
+//
+// RunTable_scenario_idx cannot serve it: that index leads on scenario_id, so
+// a scan naming no scenario cannot walk it in queued_at order and Postgres
+// sorts the tenant's whole run table to return the newest hundred rows. Runs
+// are append-only and a console polls this endpoint, so that cost grows
+// without bound and is paid on every poll.
+//
+// id DESC is in the key rather than left to a sort step because it is the
+// tie-break both stores apply, and an index that ordered only by queued_at
+// would leave rows queued in the same instant to come back in whatever order
+// the heap held them — which is how the two stores would silently start
+// disagreeing again.
+func up0002(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`CREATE INDEX IF NOT EXISTS ` + RunTable + `_recent_idx
+			ON ` + RunTable + ` (tenant_id, queued_at DESC, id DESC)`,
+	})
+}
+
+func down0002(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`DROP INDEX IF EXISTS ` + RunTable + `_recent_idx`,
+	})
 }
 
 // tables is the DDL, separated from the executor so a test can read it
