@@ -117,35 +117,36 @@ func (s *runs) Get(ctx context.Context, runID id.ID) (scenario.Run, error) {
 	return row.toDomain()
 }
 
-// defaultListLimit bounds an unbounded request.
-//
-// The memory store returns everything on a limit of zero, which is what a CLI
-// wants and what a handful of runs can afford. Against a database the same
-// call would be a full scan, so this one clamps instead — the two stores
-// differ here, and the difference is stated rather than discovered, the same
-// choice cascade's ListByModel documents.
-const defaultListLimit = 50
-
 // ListByScenario returns runs for one scenario, most recent first.
+//
+// A limit of zero or less returns everything, matching scenario.RunStore's
+// own documentation and the memory store's behavior. This store does not
+// clamp that to some default: a caller that asked for everything and silently
+// got the newest 50 of 60 has no way to tell it happened, and the bound
+// belongs at the caller that knows what it wants — Task 7's HTTP surface
+// always passes an explicit one.
 func (s *runs) ListByScenario(
 	ctx context.Context, scenarioID id.ID, limit int,
 ) ([]scenario.Run, error) {
-	if limit <= 0 {
-		limit = defaultListLimit
-	}
-
 	var rows []runRow
 
 	// Ordered in SQL rather than in Go, because the index is already on
 	// (tenant_id, scenario_id, queued_at DESC). Identifier breaks the tie so
 	// two runs queued in the same instant still order reproducibly, the same
 	// rule the memory store sorts by.
-	if err := s.base.Query(ctx, &rows,
-		`SELECT * FROM `+RunTable+`
+	query := `SELECT * FROM ` + RunTable + `
 		 WHERE tenant_id = current_setting('app.tenant_id', true)
 		   AND scenario_id = $1
-		 ORDER BY queued_at DESC, id DESC
-		 LIMIT $2`, scenarioID.String(), limit); err != nil {
+		 ORDER BY queued_at DESC, id DESC`
+
+	args := []any{scenarioID.String()}
+
+	if limit > 0 {
+		query += ` LIMIT $2`
+		args = append(args, limit)
+	}
+
+	if err := s.base.Query(ctx, &rows, query, args...); err != nil {
 		return nil, err
 	}
 
