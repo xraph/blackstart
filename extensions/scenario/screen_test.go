@@ -1,6 +1,7 @@
 package scenario
 
 import (
+	"strings"
 	"testing"
 
 	cid "github.com/xraph/blackstart/extensions/cascade/id"
@@ -33,6 +34,35 @@ func aSweep() sweep.Run {
 			{
 				ContingencyID: lines[3].String(), Branch: 3,
 				Screenability: sweep.Radial,
+			},
+		},
+	}
+}
+
+// aSweepOverAnOpenBranch is what the screen returns for an explicit policy
+// naming branch 4, which the pinned model already has out of service: the
+// sweep answers not-applicable for it, and Ranked puts that answer in the
+// same leading bucket as a radial outage. Branches 1 and 0 are the real
+// contingencies the manifest also named.
+func aSweepOverAnOpenBranch() sweep.Run {
+	loading := func(v float64) *float64 { return &v }
+
+	return sweep.Run{
+		ID:            crid.NewRun(),
+		ModelHash:     "sha256:screened",
+		SolverVersion: "bs-solver 0.4.1",
+		Candidates: []sweep.Candidate{
+			{
+				ContingencyID: lines[4].String(), Branch: 4,
+				Screenability: sweep.NotApplicable,
+			},
+			{
+				ContingencyID: lines[1].String(), Branch: 1,
+				Screenability: sweep.Screened, WorstLoading: loading(1.8),
+			},
+			{
+				ContingencyID: lines[0].String(), Branch: 0,
+				Screenability: sweep.Screened, WorstLoading: loading(0.4),
 			},
 		},
 	}
@@ -98,6 +128,58 @@ func TestASweepWithNoCandidatesHasNoWorstOutage(t *testing.T) {
 		t.Context(), validManifest(), fiveBranchModel(345_000), nil,
 	); err == nil {
 		t.Fatal("want an error: no candidate to cascade")
+	}
+}
+
+// A branch that is already open is not the worst outage. Its outage is not an
+// outage: cascading it would open an open branch, settle with nothing having
+// happened, and present that as the scenario's answer.
+//
+// It ranks first all the same — Ranked's leading bucket is everything the
+// screen could not evaluate, and not-applicable shares it with radial — so
+// nothing but this predicate stands between the fixture and a false
+// all-clear.
+func TestAnAlreadyOpenBranchIsNotTheWorstOutage(t *testing.T) {
+	t.Parallel()
+
+	f := working()
+	f.screener.run = aSweepOverAnOpenBranch()
+
+	e, _ := engineWith(t, f)
+
+	_, worst, err := e.screen(
+		t.Context(), validManifest(), fiveBranchModel(345_000), nil)
+	if err != nil {
+		t.Fatalf("screen: %v", err)
+	}
+
+	if worst.Branch != 1 {
+		t.Errorf("worst candidate is branch %d, want 1 — branch 4 is already out "+
+			"of service, so its outage is not a contingency", worst.Branch)
+	}
+}
+
+// If passing over the already-open branches empties the list there is no
+// outage to cascade, and the run has to say so rather than reach for the
+// front of the ranking anyway.
+func TestASweepOfNothingButOpenBranchesHasNoWorstOutage(t *testing.T) {
+	t.Parallel()
+
+	f := working()
+
+	open := aSweepOverAnOpenBranch()
+	open.Candidates = open.Candidates[:1]
+	f.screener.run = open
+
+	e, _ := engineWith(t, f)
+
+	_, _, err := e.screen(t.Context(), validManifest(), fiveBranchModel(345_000), nil)
+	if err == nil {
+		t.Fatal("want an error: every candidate names a branch that is already open")
+	}
+
+	if !strings.Contains(err.Error(), "out of service") {
+		t.Errorf("the refusal does not say why there is no outage: %v", err)
 	}
 }
 

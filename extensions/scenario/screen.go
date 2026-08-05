@@ -47,5 +47,44 @@ func (e *Engine) screen(
 				"cascade", screened.ID)
 	}
 
-	return screened, ranked[0], nil
+	worst, found := worstApplicable(ranked)
+	if !found {
+		return sweep.Run{}, sweep.Candidate{}, fmt.Errorf(
+			"sweep %s screened %d contingencies and every one of them names a branch "+
+				"the pinned model already has out of service, so there is no outage to "+
+				"cascade: opening an open branch would produce a cascade in which "+
+				"nothing happens and present it as this scenario's answer",
+			screened.ID, len(ranked))
+	}
+
+	return screened, worst, nil
+}
+
+// worstApplicable is ranked[0] with the already-open branches passed over.
+//
+// Ranking's leading bucket is everything the screen could not evaluate, and
+// that bucket holds two unlike things. sweep.Radial belongs at the front: a
+// real outage a linear factor cannot answer, so it has to be simulated.
+// sweep.NotApplicable does not — sweep.go says of it that "the branch was
+// already out of service, so its outage is not a contingency at all", and
+// cascading one opens a branch that is already open. The run would complete,
+// link a real casc_…, and show a cascade in which nothing happens, while the
+// contingencies the manifest actually named went unsimulated. A false
+// all-clear is the one answer worse here than no answer.
+//
+// Only PolicyExplicit can reach this. Rust's all_branches filters to
+// in-service before it screens anything, so PolicyAll never produces the
+// bucket; the explicit path deliberately does no in-service filtering,
+// because §5 makes the ordering the caller's, and rate.go keeps and rates
+// out-of-service branches on purpose. Each of those is right on its own,
+// which is why the gap between them has to be closed here rather than in any
+// of them.
+func worstApplicable(ranked []sweep.Candidate) (sweep.Candidate, bool) {
+	for _, candidate := range ranked {
+		if candidate.Screenability != sweep.NotApplicable {
+			return candidate, true
+		}
+	}
+
+	return sweep.Candidate{}, false
 }

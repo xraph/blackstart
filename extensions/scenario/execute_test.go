@@ -4,6 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xraph/blackstart/extensions/networkmodel/canonical"
+	nmid "github.com/xraph/blackstart/extensions/networkmodel/id"
+	nmmodel "github.com/xraph/blackstart/extensions/networkmodel/model"
 	scn "github.com/xraph/blackstart/extensions/scenario/scenario"
 	scnstore "github.com/xraph/blackstart/extensions/scenario/store"
 	"github.com/xraph/blackstart/pkg/id"
@@ -154,6 +157,95 @@ func TestThePolicyReachesTheScreen(t *testing.T) {
 	sent := explicit.screener.request.Contingencies
 	if len(sent) != 2 || sent[0].GetBranch() != 2 || sent[1].GetBranch() != 0 {
 		t.Errorf("the screen got %+v, want branches 2 then 0 in the manifest's order", sent)
+	}
+}
+
+// executableWithBranchOpen is executable over a model whose branch at index
+// is out of service — the state rate.go deliberately keeps and rates, and the
+// one an explicit policy is free to name.
+func executableWithBranchOpen(t *testing.T, f *fakes, index int) scn.Manifest {
+	t.Helper()
+
+	model := aCanonicalModel()
+	model.Branches[index].InService = false
+
+	encoded, err := canonical.Encode(model)
+	if err != nil {
+		t.Fatalf("encoding the fixture: %v", err)
+	}
+
+	hash, err := canonical.Hash(model)
+	if err != nil {
+		t.Fatalf("hashing the fixture: %v", err)
+	}
+
+	f.models.found = nmmodel.NetworkModel{
+		ID:          nmid.NewModel(),
+		ContentHash: hash,
+		Name:        theModelName,
+		BusCount:    len(model.Buses),
+		BranchCount: len(model.Branches),
+	}
+	f.models.encoded = encoded
+
+	manifest := validManifest()
+	manifest.ModelHash = hash
+
+	return manifest
+}
+
+// The whole pipeline, against the case the review found: an explicit policy
+// naming one branch the pinned model already has open alongside two real
+// contingencies.
+//
+// The screen answers not-applicable for the open one and Ranked puts that
+// answer first, so a run that took the front of the ranking would open an
+// already-open branch, settle, complete, and link a cascade in which nothing
+// happened — while the two contingencies the manifest asked about were never
+// simulated. The assertion is on what the cascade was told to initiate,
+// because that is the only place the difference shows.
+func TestACascadeNeverInitiatesOnAnAlreadyOpenBranch(t *testing.T) {
+	t.Parallel()
+
+	f := working()
+	f.screener.run = aSweepOverAnOpenBranch()
+
+	e, store := engineWith(t, f)
+
+	manifest := executableWithBranchOpen(t, f, 4)
+	manifest.Policy = scn.PolicyExplicit
+	manifest.Branches = []string{
+		lines[4].String(), lines[1].String(), lines[0].String(),
+	}
+
+	defined, err := e.Define(t.Context(), scn.Scenario{Name: "derecho", Manifest: manifest})
+	if err != nil {
+		t.Fatalf("define: %v", err)
+	}
+
+	if _, err := e.Enqueue(t.Context(), defined.ID); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	claimed, err := store.Runs().Claim(t.Context())
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+
+	executed, err := e.Execute(t.Context(), claimed)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if executed.Status != scn.StatusComplete {
+		t.Fatalf("status = %q (%+v), want complete", executed.Status, executed.Failure)
+	}
+
+	initiating := f.simulator.request.Initiating
+	if len(initiating) != 1 || initiating[0] != 1 {
+		t.Errorf("the cascade initiated on %v, want branch 1 — branch 4 is out of "+
+			"service in the pinned model, and opening it again is a cascade in "+
+			"which nothing happens presented as this scenario's answer", initiating)
 	}
 }
 
