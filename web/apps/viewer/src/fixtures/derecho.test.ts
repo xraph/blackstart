@@ -42,7 +42,9 @@ describe("derecho fixture", () => {
       // No nadir means no trace, and that pairing is the invariant: a traced
       // island must have the number the trace bottoms out at.
       if (island.nadir === undefined) {
-        expect(FREQ_TRACES.has(island.id), `island ${island.id} traced without a nadir`).toBe(false);
+        expect(FREQ_TRACES.has(island.id), `island ${island.id} traced without a nadir`).toBe(
+          false,
+        );
         continue;
       }
 

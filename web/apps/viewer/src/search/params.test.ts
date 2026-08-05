@@ -34,9 +34,9 @@ describe("console search params", () => {
   });
 
   it("rejects a selection that is not a TypeID, so a hand-edited URL fails loudly", () => {
-    expect(
-      consoleSearch.safeParse({ valid: "2026-08-02T22:00Z", sel: "LINE-4471" }).success,
-    ).toBe(false);
+    expect(consoleSearch.safeParse({ valid: "2026-08-02T22:00Z", sel: "LINE-4471" }).success).toBe(
+      false,
+    );
   });
 
   it("rejects a lead hour outside the published horizon", () => {

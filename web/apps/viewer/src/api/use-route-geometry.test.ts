@@ -23,9 +23,18 @@ const span = (sequence: number, coords: readonly (readonly [number, number])[]):
 describe("polylineOfSpans", () => {
   it("orders by sequence, not by arrival", () => {
     const scrambled = [
-      span(2, [[-101.2, 34.2], [-101.3, 34.3]]),
-      span(0, [[-101.0, 34.0], [-101.1, 34.1]]),
-      span(1, [[-101.1, 34.1], [-101.2, 34.2]]),
+      span(2, [
+        [-101.2, 34.2],
+        [-101.3, 34.3],
+      ]),
+      span(0, [
+        [-101.0, 34.0],
+        [-101.1, 34.1],
+      ]),
+      span(1, [
+        [-101.1, 34.1],
+        [-101.2, 34.2],
+      ]),
     ];
 
     const line = polylineOfSpans("rt_1", "br_1", scrambled);
@@ -46,15 +55,26 @@ describe("polylineOfSpans", () => {
     // Deduplicating would be tidier and would also silently shorten the path
     // if two spans genuinely met at different coordinates.
     const line = polylineOfSpans("rt_1", "nmdl_1", [
-      span(0, [[-101.0, 34.0], [-101.1, 34.1]]),
-      span(1, [[-101.1, 34.1], [-101.2, 34.2]]),
+      span(0, [
+        [-101.0, 34.0],
+        [-101.1, 34.1],
+      ]),
+      span(1, [
+        [-101.1, 34.1],
+        [-101.2, 34.2],
+      ]),
     ]);
 
     expect(line?.points).toHaveLength(4);
   });
 
   it("carries the identifiers a click needs to report", () => {
-    const line = polylineOfSpans("rt_9", "nmdl_9", [span(0, [[-101, 34], [-101.1, 34.1]])]);
+    const line = polylineOfSpans("rt_9", "nmdl_9", [
+      span(0, [
+        [-101, 34],
+        [-101.1, 34.1],
+      ]),
+    ]);
 
     expect(line?.id).toBe("rt_9");
     expect(line?.carrierId).toBe("nmdl_9");
@@ -65,7 +85,12 @@ describe("polylineOfSpans", () => {
   // so a helper that normalised or validated it here would be a second place
   // for the two to disagree.
   it("passes a circuit carrier through unchanged", () => {
-    const line = polylineOfSpans("rt_3", "circ_3", [span(0, [[-97.8, 30.2], [-97.7, 30.3]])]);
+    const line = polylineOfSpans("rt_3", "circ_3", [
+      span(0, [
+        [-97.8, 30.2],
+        [-97.7, 30.3],
+      ]),
+    ]);
 
     expect(line?.carrierId).toBe("circ_3");
   });

@@ -12,8 +12,13 @@ import { NavRail, TabBar, TopBar, type NavItem } from "@blackstart/ui";
 /* Inline SVG rather than an icon dependency: four of them do not justify
  * shipping a set, and these are drawn at the shell's own stroke weight. */
 const icon = (paths: React.ReactNode): React.ReactElement => (
-  <svg viewBox="0 0 24 24" className="size-4 fill-none stroke-current stroke-[1.4]"
-       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+  <svg
+    viewBox="0 0 24 24"
+    className="size-4 fill-none stroke-current stroke-[1.4]"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
     {paths}
   </svg>
 );

@@ -74,9 +74,7 @@ describe("chainOfTrace", () => {
   it("marks an unhashed input present but unverified rather than dropping it", () => {
     // A dataset nobody hashed is a real gap in the record. Omitting it would
     // make the chain look complete; defaulting a hash would be a lie.
-    const chain = chainOfTrace(
-      trace({ inputs: [dataset("ds_case", "network-case", "")] }),
-    );
+    const chain = chainOfTrace(trace({ inputs: [dataset("ds_case", "network-case", "")] }));
 
     const link = chain.find((l) => l.ref === "ds_case");
     expect(link?.verified).toBe(false);

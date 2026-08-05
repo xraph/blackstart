@@ -83,9 +83,8 @@ export function ConsoleScreen(): React.JSX.Element {
       <ContingencyRail rows={CONTINGENCIES} onSelect={(c) => select(c.element)} />
     ) : (
       <p className="p-3 text-[11px] leading-snug text-fg-2">
-        No explanation is available for{" "}
-        <span className="font-mono text-fg">{search.sel}</span>. The element is in the network
-        but has not been scored in this run.
+        No explanation is available for <span className="font-mono text-fg">{search.sel}</span>. The
+        element is in the network but has not been scored in this run.
       </p>
     );
 
@@ -124,9 +123,7 @@ export function ConsoleScreen(): React.JSX.Element {
                   : geometry.error !== null
                     ? "unavailable"
                     : `${geometry.fetched} drawn${
-                        geometry.fetched < geometry.available
-                          ? ` of ${geometry.available}`
-                          : ""
+                        geometry.fetched < geometry.available ? ` of ${geometry.available}` : ""
                       }`}
               </div>
             </div>
@@ -177,9 +174,7 @@ export function ConsoleScreen(): React.JSX.Element {
                   <span className="rounded-[2px] border border-line-2 px-1.5 text-fg-2">
                     EXPECTED COST ▾
                   </span>
-                  <span className="ml-auto">
-                    N-1 · f+{String(search.lead).padStart(2, "0")}
-                  </span>
+                  <span className="ml-auto">N-1 · f+{String(search.lead).padStart(2, "0")}</span>
                 </>
               }
             >
