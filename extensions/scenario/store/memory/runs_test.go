@@ -157,6 +157,57 @@ func TestClaimTakesTheOldestQueuedRunAndMovesItToRunning(t *testing.T) {
 	}
 }
 
+// Claim orders by QueuedAt, not by insertion order. A run created after
+// another but backfilled with an earlier QueuedAt must still be claimed
+// first — the same order the Fabriq store asks Postgres for with
+// `ORDER BY queued_at ASC, id ASC`. A Claim that instead scanned insertion
+// order would return the 10:00 run here, disagreeing with the database-backed
+// store about which run is "oldest".
+func TestClaimOrdersByQueuedAtNotInsertionOrder(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	ctx := context.Background()
+
+	scenarioID := scnid.NewScenario()
+
+	later := scenario.Run{
+		ID:         scnid.NewRun(),
+		ScenarioID: scenarioID,
+		Manifest:   validManifest(),
+		Status:     scenario.StatusQueued,
+		QueuedAt:   time.Date(2026, 8, 4, 10, 0, 0, 0, time.UTC),
+	}
+
+	if _, err := s.Runs().Create(ctx, later); err != nil {
+		t.Fatalf("Create later: %v", err)
+	}
+
+	// Created second, but backfilled with an earlier QueuedAt than the run
+	// above — the case a pure insertion-order scan gets wrong.
+	earlier := scenario.Run{
+		ID:         scnid.NewRun(),
+		ScenarioID: scenarioID,
+		Manifest:   validManifest(),
+		Status:     scenario.StatusQueued,
+		QueuedAt:   time.Date(2026, 8, 4, 9, 0, 0, 0, time.UTC),
+	}
+
+	if _, err := s.Runs().Create(ctx, earlier); err != nil {
+		t.Fatalf("Create earlier: %v", err)
+	}
+
+	claimed, err := s.Runs().Claim(ctx)
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+
+	if claimed.ID != earlier.ID {
+		t.Fatalf("Claim returned run %s (queued at %v), want the 09:00 run %s",
+			claimed.ID, claimed.QueuedAt, earlier.ID)
+	}
+}
+
 // Claiming when nothing is queued — because the store is empty, or because
 // every run present is already running or finished — returns a not-found
 // error rather than a zero-valued Run. A zero Run has an empty Status, which

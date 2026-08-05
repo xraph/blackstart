@@ -34,9 +34,15 @@ type Store struct {
 
 	runs map[id.ID]scenario.Run
 
-	// runOrder is the same device as scenarioOrder, and doubles as Claim's
-	// queue order: runs are created in chronological order, so the first
-	// entry still queued is the oldest one.
+	// runOrder is the same device as scenarioOrder: it lets ListByScenario
+	// build a result without depending on map iteration order.
+	//
+	// It is not Claim's queue order. A run's insertion position is when it
+	// was recorded, and Claim's queue is ordered by QueuedAt — the two agree
+	// only when nothing is ever backfilled. A run queued for 09:00 but
+	// created after one queued for 10:00 sorts after it here, and Claim
+	// (runs.go) scans every candidate's QueuedAt rather than trusting this
+	// slice's position, for exactly that reason.
 	runOrder []id.ID
 }
 

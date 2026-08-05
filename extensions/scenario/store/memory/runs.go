@@ -91,11 +91,19 @@ func (s *runs) ListByScenario(
 
 // Claim takes the oldest queued run, marks it running, and returns it.
 //
-// The scan for a queued run, the mutation of its Status, and the write back
-// to the map all happen under one Lock — not RLock — so the whole
-// read-modify-write is one atomic step. Two goroutines calling Claim at the
-// same instant serialize on s.mu: whichever gets the lock second sees the
-// first goroutine's write already applied, so it scans past the run the
+// "Oldest" means the smallest QueuedAt among queued runs, tie-broken on
+// identifier — the same order the Fabriq store's Claim asks Postgres for
+// with `ORDER BY queued_at ASC, id ASC`. It is not runOrder (insertion
+// order): a run backfilled with an earlier QueuedAt after a later one was
+// already created must still be claimed first, and scanning runOrder alone
+// would claim the later-created one instead, silently disagreeing with the
+// database-backed store about which run is "oldest".
+//
+// The scan for the oldest queued run, the mutation of its Status, and the
+// write back to the map all happen under one Lock — not RLock — so the
+// whole read-modify-write is one atomic step. Two goroutines calling Claim
+// at the same instant serialize on s.mu: whichever gets the lock second sees
+// the first goroutine's write already applied, so it scans past the run the
 // first one just claimed instead of claiming it again. That is the property
 // a sequential test cannot exercise, because a sequential test never puts
 // two callers inside the critical section at once — it would pass even if
@@ -105,18 +113,42 @@ func (s *runs) Claim(_ context.Context) (scenario.Run, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	var (
+		oldestKey id.ID
+		oldest    scenario.Run
+		found     bool
+	)
+
 	for _, key := range s.runOrder {
-		found := s.runs[key]
-		if found.Status != scenario.StatusQueued {
+		candidate := s.runs[key]
+		if candidate.Status != scenario.StatusQueued {
 			continue
 		}
 
-		found.Status = scenario.StatusRunning
-		found.StartedAt = time.Now().UTC()
-		s.runs[key] = found
-
-		return found, nil
+		if !found || olderCandidate(candidate, oldest) {
+			oldestKey, oldest, found = key, candidate, true
+		}
 	}
 
-	return scenario.Run{}, fmt.Errorf("%w: no run is queued", bserr.ErrNotFound)
+	if !found {
+		return scenario.Run{}, fmt.Errorf("%w: no run is queued", bserr.ErrNotFound)
+	}
+
+	oldest.Status = scenario.StatusRunning
+	oldest.StartedAt = time.Now().UTC()
+	s.runs[oldestKey] = oldest
+
+	return oldest, nil
+}
+
+// olderCandidate reports whether candidate should be claimed before current,
+// by QueuedAt and then by identifier — the same tie-break the Fabriq store's
+// `ORDER BY queued_at ASC, id ASC` applies, so the two stores agree on which
+// run is claimed whenever more than one is queued at the same instant.
+func olderCandidate(candidate, current scenario.Run) bool {
+	if !candidate.QueuedAt.Equal(current.QueuedAt) {
+		return candidate.QueuedAt.Before(current.QueuedAt)
+	}
+
+	return candidate.ID.String() < current.ID.String()
 }
