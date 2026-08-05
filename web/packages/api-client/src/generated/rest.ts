@@ -9,17 +9,17 @@ export class RESTClient extends Client {
        * Get a cascade run
        * One recorded simulation, with every event in the order it happened in simulated time.
        */
-      get: async (id: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.Run> => {
+      get: async (id: string, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.CascadeRun> => {
         let __path = `/api/v1/cascade/runs/${encodeURIComponent(String(id))}`;
         const config: RequestConfig = {
           method: 'GET',
           url: __path,
           signal: options?.signal,
           retry: options?.retry,
-          responseCodec: "Run",
+          responseCodec: "CascadeRun",
         };
 
-        return this.request<types.Run>(config);
+        return this.request<types.CascadeRun>(config);
       },
 
       /**
