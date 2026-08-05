@@ -17,11 +17,13 @@ func TestACurveIsBoundedAndMonotone(t *testing.T) {
 
 	// 14 and 18 N/m sit inside the lattice curve's transition band (median
 	// 15.85 N/m): without them, this list is four points saturated at 0,
-	// six saturated at 1, and nothing in between, which passes for any step
-	// function — including the wrong-by-a-factor-of-2 dispersion this test
-	// once let through. See TestACurveStrictlyRisesThroughItsTransitionBand
-	// below for the assertion that actually distinguishes a lognormal from a
-	// step.
+	// six saturated at 1, and nothing in between. Note that strict
+	// monotonicity through those two points is not itself proof the curve
+	// has the right steepness — a step function is strictly increasing too,
+	// at every one of its steps — so this loop only bounds and orders the
+	// curve. See TestACurveIsNotSaturatedInsideItsTransitionBand below for
+	// the assertion that actually distinguishes a lognormal of the right
+	// dispersion from a step function.
 	for _, intensity := range []float64{0, 1, 5, 10, 14, 18, 20, 30, 40, 60, 100, 1000} {
 		got := curve.Probability(intensity)
 
@@ -39,33 +41,42 @@ func TestACurveIsBoundedAndMonotone(t *testing.T) {
 	}
 }
 
-// TestACurveStrictlyRisesThroughItsTransitionBand catches a curve so steep
-// it behaves like a step function. TestACurveIsBoundedAndMonotone alone
-// cannot: a step function is technically monotone too, it just saturates at
-// 0 or 1 everywhere outside a razor-thin band, which is exactly what an
-// undoubled dispersion produced here (P(10)≈0, P(15.85)=0.5, P(20)≈1). This
-// asserts a strict increase across points inside the lattice curve's
-// transition band, where a correctly-dispersed lognormal should still be
-// visibly rising rather than already saturated.
-func TestACurveStrictlyRisesThroughItsTransitionBand(t *testing.T) {
+// TestACurveIsNotSaturatedInsideItsTransitionBand catches a curve so steep it
+// behaves like a step function — which neither the bounded-and-monotone
+// check above nor a strict-increase check would catch, since a step function
+// is strictly increasing too, at every one of its steps
+// (β=0.0397 at {10, 14, 18, 20} → 1.98e-31, 0.00088, 0.9993, ~1 — each value
+// strictly exceeds the last, so a "strictly rises" assertion alone passes on
+// the wrong, halved dispersion just as readily as the right one; an earlier
+// version of this test asserted exactly that and did not catch the bug it
+// was written for).
+//
+// What distinguishes a lognormal of the right steepness from a step is
+// whether it is still visibly *in progress* at points inside its own
+// transition band, rather than already pinned to an extreme. This asserts
+// magnitude floors and ceilings at two such points for the lattice curve
+// (median 15.85 N/m): P(14) — one notch below the median — must be small but
+// not vanishing, and P(18) — one notch above — must be large but not yet
+// saturated. The correct dispersion (0.0794) gives P(14)=0.059 and
+// P(18)=0.945, comfortably inside both windows; the halved dispersion
+// (0.0397) this test was written to catch gives P(14)=0.00088 and
+// P(18)=0.9993, outside both.
+func TestACurveIsNotSaturatedInsideItsTransitionBand(t *testing.T) {
 	curve, ok := fragility.ByClass(fragility.Lattice)
 	if !ok {
 		t.Fatal("no curve for a lattice tower")
 	}
 
-	previous := -1.0
+	if got := curve.Probability(14); got < 0.01 || got > 0.20 {
+		t.Fatalf("P(14) = %v, want in [0.01, 0.20]; a value this close to 0 "+
+			"means the curve is already saturated below the median instead "+
+			"of still rising through it", got)
+	}
 
-	for _, intensity := range []float64{10, 14, 18, 20} {
-		got := curve.Probability(intensity)
-
-		if got <= previous {
-			t.Fatalf("P(%v) = %v did not strictly exceed the previous %v; "+
-				"the curve is not visibly rising through its own transition "+
-				"band, which is what a dispersion too small for the "+
-				"intensity measure's units looks like", intensity, got, previous)
-		}
-
-		previous = got
+	if got := curve.Probability(18); got < 0.80 || got > 0.999 {
+		t.Fatalf("P(18) = %v, want in [0.80, 0.999]; a value this close to 1 "+
+			"means the curve is already saturated above the median instead "+
+			"of still rising through it", got)
 	}
 }
 
