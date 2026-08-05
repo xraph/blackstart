@@ -42,11 +42,30 @@ import { routeTree } from "../router";
 import { CASCADE } from "../fixtures/derecho";
 
 /**
+ * The contract's own ratio between the domain's megawatts and the wire's
+ * watts — `extensions/cascade/api.go`'s `multiply` applies this same 1e6 on
+ * the Go side, and `wattsToMw` in `cascade.tsx` undoes it on this one.
+ *
+ * Every wire fixture below is built by multiplying a domain magnitude
+ * through this ratio, not by copying the domain number as-is into a wire
+ * field. Copying is exactly the bug: `CASCADE.loadLost.value` is `4187`,
+ * meaning `4187 MW`, and a wire field holding that same bare `4187` means
+ * `4187 W` — a number of the right SHAPE for the wire but 1e6 times too
+ * small, which is precisely what let a missing watts-to-megawatts
+ * conversion in `cascade.tsx` go uncaught. A fixture built this way cannot
+ * tell a real conversion from a missing one, because it never contains a
+ * value only the correct conversion produces.
+ */
+const WATTS_PER_MW = 1e6;
+
+/**
  * The cascade screen fetches the wire shape, not `CascadeRun` — bare numbers,
  * an island `condition` instead of `state`, and no island id at all. Building
  * this from `CASCADE` rather than writing it out twice keeps the two fixtures
  * from drifting apart, and exercises the same wire-to-domain translation the
- * screen runs against the real platform.
+ * screen runs against the real platform. The magnitudes themselves are
+ * carried through `WATTS_PER_MW` — see its own comment — so this fixture
+ * matches the wire's own unit rather than the domain's.
  */
 const WIRE_CASCADE = {
   id: CASCADE.run,
@@ -58,7 +77,7 @@ const WIRE_CASCADE = {
   steps: 812,
   outcome: "collapsed",
   initiating: [CASCADE.initiating],
-  loadLost: CASCADE.loadLost.value,
+  loadLost: CASCADE.loadLost.value * WATTS_PER_MW,
   events: CASCADE.events.map((e) => ({
     at: e.t,
     // The proto spells this "stabilize"; the schema spells it "stabilise".
@@ -73,7 +92,7 @@ const WIRE_CASCADE = {
     island: e.island === undefined ? undefined : e.island - 1,
   })),
   islands: CASCADE.islands.map((i) => ({
-    balance: i.balance.value,
+    balance: i.balance.value * WATTS_PER_MW,
     busCount: i.busCount,
     buses: [],
     condition: i.state,
@@ -108,10 +127,19 @@ const MINIMAL_RUN = {
   steps: 12,
   outcome: "collapsed",
   initiating: ["ln TULIA-LEVELLAND 345"],
-  loadLost: 4187,
+  // 4187 MW, in the wire's own watts — see WATTS_PER_MW's comment for why
+  // this is not the bare `4187` a domain `Quantity<"MW">` would carry.
+  loadLost: 4187 * WATTS_PER_MW,
   events: [{ at: 0, kind: "trip", element: "bkr NORTH JCT 230 A1", detail: "protection op" }],
   islands: [
-    { balance: 842, busCount: 61, buses: [], condition: "stable", verdict: "secure", shed: 0 },
+    {
+      balance: 842 * WATTS_PER_MW,
+      busCount: 61,
+      buses: [],
+      condition: "stable",
+      verdict: "secure",
+      shed: 0,
+    },
   ],
 };
 
@@ -132,13 +160,14 @@ const ISLAND_ZERO_RUN = {
   steps: 8,
   outcome: "collapsed",
   initiating: ["ln CHILDRESS-VERNON 230"],
-  loadLost: 4187,
+  // Wire watts, not domain megawatts — see WATTS_PER_MW's comment.
+  loadLost: 4187 * WATTS_PER_MW,
   events: [
     { at: 5.19, kind: "island", element: "9 buses separate", detail: "-1244 MW", island: 0 },
   ],
   islands: [
     {
-      balance: -1244,
+      balance: -1244 * WATTS_PER_MW,
       busCount: 9,
       buses: [],
       condition: "collapsed",
@@ -309,6 +338,60 @@ describe("cascade screen", () => {
     await screen.findByTestId("scene");
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getAllByText("Island 1").length).toBeGreaterThan(0);
+  });
+
+  // The magnitude only a real watts-to-megawatts conversion produces. A
+  // missing conversion renders the raw wire figure ("4187000000MW"), and a
+  // doubled one renders the MW figure divided by 1e6 again ("0MW", at the
+  // block's own zero decimals). `replace(/\s/g, "")` strips the thin space
+  // `formatQuantity` groups thousands with, so this compares digits and
+  // unit only, not the exact whitespace character between them.
+  it("converts the wire's watts to megawatts before rendering load lost", async () => {
+    cascadeQuery.current = loadedRun(MINIMAL_RUN);
+    await renderAt(RUN_URL);
+    await screen.findByTestId("scene");
+
+    const label = screen.getByText("Load lost");
+    const value = label.nextElementSibling;
+    expect(value?.textContent?.replace(/\s/g, "")).toBe("4187MW");
+  });
+
+  it("renders a cascade that split into more islands than the palette has colours for", async () => {
+    // IslandId used to cap at MAX_ISLANDS (8) — a purely visual limit on how
+    // many colours the palette has, not a bound the DATA should ever have
+    // carried. The severest cascades are the ones that split the most, so a
+    // ninth island used to fail safeParse and render this run as "failed to
+    // load" — the exact run most worth being able to see.
+    const nineIslands = Array.from({ length: 9 }, (_, i) => ({
+      balance: (i + 1) * 10 * WATTS_PER_MW,
+      busCount: 1,
+      buses: [],
+      condition: "stable",
+      verdict: "secure",
+      shed: 0,
+    }));
+    cascadeQuery.current = loadedRun({
+      ...MINIMAL_RUN,
+      events: [{ at: 0, kind: "island", element: "9-way split", detail: "-1 MW", island: 8 }],
+      islands: nineIslands,
+    });
+    await renderAt(RUN_URL);
+    await screen.findByTestId("scene");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getAllByText("Island 9").length).toBeGreaterThan(0);
+  });
+
+  it("tolerates a wire run with no initiating outages named", async () => {
+    // The engine allows a cascade with no initiating outage — engine.go's
+    // own Request.Validate does not require one — and the Go side now
+    // always serialises an empty list rather than null. The console still
+    // has to survive a payload that carries null anyway: `.join` on that
+    // throws inside render, well past the honest "failed to load" alert
+    // this screen takes for every other malformed field.
+    cascadeQuery.current = loadedRun({ ...MINIMAL_RUN, initiating: null });
+    await renderAt(RUN_URL);
+    await screen.findByTestId("scene");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 

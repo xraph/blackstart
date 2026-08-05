@@ -66,6 +66,21 @@ const WIRE_EVENT_KIND: Record<string, CascadeEventKind> = {
 };
 
 /**
+ * Watts to megawatts, a constant `1e6` — not the model's per-unit base.
+ *
+ * The wire publishes SI, exactly as the gRPC contract does (`extensions/
+ * cascade/api.go`'s `multiply` did the per-unit-to-watts conversion on the
+ * Go side; nothing here has, or needs, that base). This is a display
+ * scale, the same one `UNITS.MW.toSi` in `@blackstart/schema` names for
+ * every other megawatt on the console — dividing here is what stops a raw
+ * wire watt figure from being branded `mw()` and read as if it already were.
+ */
+const WATTS_PER_MW = 1e6;
+function wattsToMw(watts: number) {
+  return mw(watts / WATTS_PER_MW);
+}
+
+/**
  * Translates one fetched run into the domain shape the playback surface
  * expects.
  *
@@ -85,7 +100,13 @@ function toCascadeRun(wire: WireRun): CascadeRun | undefined {
     run: wire.id,
     // The wire lists every branch taken out at t=0; the domain names the run
     // by one descriptive string, which is what an operator actually reads.
-    initiating: wire.initiating.join(", ") || "unknown",
+    // `?? []` rather than assuming an array: a run with no initiating outage
+    // is legitimate (the engine's own Request.Validate allows it), and an
+    // older or malformed payload could still carry `null` here even though
+    // the Go side now always serialises an empty list — `.join` on that
+    // would throw inside render, well past the honest "failed to load"
+    // alert this same failure takes for every other malformed field.
+    initiating: (wire.initiating ?? []).join(", ") || "unknown",
     events: wire.events.map((e) => ({
       t: e.at,
       kind: WIRE_EVENT_KIND[e.kind] ?? e.kind,
@@ -106,14 +127,14 @@ function toCascadeRun(wire: WireRun): CascadeRun | undefined {
     // matching the +1 shift events.island gets above.
     islands: wire.islands.map((isl, i) => ({
       id: i + 1,
-      balance: mw(isl.balance),
+      balance: wattsToMw(isl.balance),
       frequency: isl.frequency === undefined ? undefined : hz(isl.frequency),
       nadir: isl.nadir === undefined ? undefined : hz(isl.nadir),
       state: isl.condition,
       busCount: isl.busCount,
       trace: isl.trace,
     })),
-    loadLost: mw(wire.loadLost),
+    loadLost: wattsToMw(wire.loadLost),
   });
 
   return result.success ? result.data : undefined;

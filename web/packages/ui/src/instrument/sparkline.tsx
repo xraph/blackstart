@@ -89,8 +89,13 @@ export function FrequencyTrace({
   readonly hiHz?: number;
 }): ReactElement {
   const y = (hz: number) => 42 - ((hz - loHz) / (hiHz - loHz)) * 40;
+  // `|| 1` rather than `points.length - 1` bare: a legitimate one-sample
+  // trace (an island observed for exactly one step) would otherwise divide
+  // by zero and put NaN in every point's x, which is an invalid path `d`
+  // rather than the single dot this should render as.
+  const span = points.length - 1 || 1;
   const d = points
-    .map((v, i) => `${i === 0 ? "M" : "L"}${((i / (points.length - 1)) * 100).toFixed(1)} ${y(v).toFixed(1)}`)
+    .map((v, i) => `${i === 0 ? "M" : "L"}${((i / span) * 100).toFixed(1)} ${y(v).toFixed(1)}`)
     .join(" ");
 
   return (
