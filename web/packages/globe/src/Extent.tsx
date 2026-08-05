@@ -17,23 +17,84 @@ const DEFAULT_LIFT = 0.0008;
 const DEFAULT_COLOR = "#ff8a3d";
 
 /**
+ * Reports whether a ring turns the same way at every vertex — the property a
+ * fan triangulation needs to be exact (see `buildExtentGeometry`).
+ *
+ * Checked in a flat local projection (longitude scaled by the cosine of the
+ * ring's mean latitude), the same approximation `shape.PolygonAreaM2` makes
+ * server-side: adequate at corridor scale, and only the sign of each turn is
+ * used here, so the projection's distortion cannot flip the answer. A closed
+ * ring (first point repeated last, as every `Corridor` is) works the same as
+ * an open one — the repeated vertex just produces a degenerate, collinear
+ * turn that contributes no sign.
+ */
+function isConvexRing(ring: readonly Geodetic[]): boolean {
+  if (ring.length < 3) return true;
+
+  const meanLat = ring.reduce((sum, p) => sum + p.lat, 0) / ring.length;
+  const cosLat = Math.cos((meanLat * Math.PI) / 180);
+
+  let sign = 0;
+
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]!;
+    const b = ring[(i + 1) % ring.length]!;
+    const c = ring[(i + 2) % ring.length]!;
+
+    const abx = (b.lon - a.lon) * cosLat;
+    const aby = b.lat - a.lat;
+    const bcx = (c.lon - b.lon) * cosLat;
+    const bcy = c.lat - b.lat;
+
+    const cross = abx * bcy - aby * bcx;
+    // Near-zero is a straight or degenerate turn — neither vertex nor its
+    // sign says anything about convexity, so it is skipped rather than
+    // treated as a sign of zero, which would falsely disagree with every
+    // real turn.
+    if (Math.abs(cross) < 1e-12) continue;
+
+    const turn = Math.sign(cross);
+    if (sign === 0) {
+      sign = turn;
+    } else if (turn !== sign) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * The vertex and index buffers for a set of polygons, fan-triangulated ring
  * by ring.
  *
  * Fan triangulation — vertex 0 joined to every edge (i, i+1) — is exact for
- * a convex ring and only wrong for a concave one where it can produce
- * triangles outside the ring. It is correct here: every ring this function
- * is fed is a `Corridor`, a buffer walked along a path and offset a fixed
- * distance to each side, which is convex at every straight run and turns
- * without folding back on itself at a bend. A general concave polygon
- * triangulator (ear clipping, ...) is more machinery than that shape needs.
+ * a convex ring and wrong for a concave one, where it can emit a triangle
+ * that covers ground outside the ring: the same over-claim `shape.Cover`'s
+ * doc rejects a convex hull over several corridors for, one layer further
+ * in. `shape.Corridor` is NOT guaranteed convex — it puts a reflex vertex at
+ * every bend in the path it buffers, so a corridor that turns is concave at
+ * that bend by construction. (An earlier version of this comment claimed
+ * otherwise; it was wrong, and every span this package draws today happens
+ * to be a straight two-point line — see `Line.Spans()` — which is why the
+ * bug it describes has not yet been seen on screen.)
  *
- * Each ring is triangulated into its own, disjoint slice of the index
- * buffer — no triangle's three vertices are ever drawn from two different
- * rings. A triangulation that reached across rings would fill the ground
- * between two unrelated extents with area nobody's corridor claims, the same
- * mistake a convex hull over several corridors makes one layer down (see
- * `shape.Cover`'s doc on the server), just committed here instead.
+ * Rather than build a general concave triangulator (ear clipping, ...),
+ * this makes the constraint an enforced check: a ring that is not convex is
+ * skipped — drawn as nothing — instead of fanned into triangles that would
+ * claim ground its own corridor never covered. That is the same choice
+ * `shape.Cover` makes about merging: a smaller result is preferable to a
+ * dishonest one. A skipped ring is invisible on the globe rather than
+ * reported, which is acceptable here because the input is server-computed
+ * geometry, not user data whose loss would need surfacing — see this
+ * function's tests for what a concave ring does instead of drawing wrong.
+ *
+ * Each surviving ring is triangulated into its own, disjoint slice of the
+ * index buffer — no triangle's three vertices are ever drawn from two
+ * different rings. A triangulation that reached across rings would fill the
+ * ground between two unrelated extents with area nobody's corridor claims,
+ * the same mistake a convex hull over several corridors makes one layer
+ * down, just committed here instead.
  *
  * Separate from the `<Extent>` component so the geometry is testable without
  * a WebGL context — a polygon fanned from the wrong vertex still renders, it
@@ -43,14 +104,17 @@ export function buildExtentGeometry(
   area: readonly (readonly Geodetic[])[],
   lift: number,
 ): { positions: Float32Array; index: Uint32Array } {
+  // Decided once, so the counting pass below and the building pass agree on
+  // exactly the same set of rings.
+  const keep = area.map((ring) => ring.length >= 3 && isConvexRing(ring));
+
   let vertexCount = 0;
   let triangleCount = 0;
 
-  for (const ring of area) {
-    // A degenerate ring (fewer than 3 distinct points to fan from) has no
-    // area and is skipped rather than emitted as zero-size triangles.
-    if (ring.length < 3) continue;
+  for (let i = 0; i < area.length; i++) {
+    if (!keep[i]) continue;
 
+    const ring = area[i]!;
     vertexCount += ring.length;
     triangleCount += ring.length - 2;
   }
@@ -62,26 +126,27 @@ export function buildExtentGeometry(
   let vertex = 0;
   let triangle = 0;
 
-  for (const ring of area) {
-    if (ring.length < 3) continue;
+  for (let i = 0; i < area.length; i++) {
+    if (!keep[i]) continue;
 
+    const ring = area[i]!;
     const base = vertex;
     const ecef = toEcefArray(ring);
 
-    for (let i = 0; i < ring.length; i++) {
-      positions[vertex * 3] = (ecef[i * 3] ?? 0) * scale;
-      positions[vertex * 3 + 1] = (ecef[i * 3 + 1] ?? 0) * scale;
-      positions[vertex * 3 + 2] = (ecef[i * 3 + 2] ?? 0) * scale;
+    for (let j = 0; j < ring.length; j++) {
+      positions[vertex * 3] = (ecef[j * 3] ?? 0) * scale;
+      positions[vertex * 3 + 1] = (ecef[j * 3 + 1] ?? 0) * scale;
+      positions[vertex * 3 + 2] = (ecef[j * 3 + 2] ?? 0) * scale;
       vertex += 1;
     }
 
-    // Fan from the ring's first vertex: (base, base+i+1, base+i+2) for every
+    // Fan from the ring's first vertex: (base, base+j+1, base+j+2) for every
     // interior edge. Indices are all within [base, base + ring.length), so
     // this ring's triangles can never reference another ring's vertices.
-    for (let i = 0; i < ring.length - 2; i++) {
+    for (let j = 0; j < ring.length - 2; j++) {
       index[triangle * 3] = base;
-      index[triangle * 3 + 1] = base + i + 1;
-      index[triangle * 3 + 2] = base + i + 2;
+      index[triangle * 3 + 1] = base + j + 1;
+      index[triangle * 3 + 2] = base + j + 2;
       triangle += 1;
     }
   }

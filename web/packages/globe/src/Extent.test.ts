@@ -52,4 +52,51 @@ describe("buildExtentGeometry", () => {
     expect(positions).toHaveLength(0);
     expect(index).toHaveLength(0);
   });
+
+  // THE assertion for this module. A fan from vertex 0 of a concave ring
+  // draws a triangle that covers ground outside the ring — here, the notch
+  // of an L-bend, exactly the over-claim `shape.Cover`'s doc rejects for a
+  // convex hull over two corridors, one layer further in. `shape.Corridor`
+  // puts a reflex vertex at every bend, so this is not a hypothetical input:
+  // it is what a corridor around a path with more than two points produces.
+  it("skips a concave ring rather than fanning it into an over-claiming triangle", () => {
+    // An L-shaped hexagon, reflex at (1, 1): the notch between the two arms
+    // (around (1.5, 1.5)) is outside the ring, but a fan from (0, 0) would
+    // draw a triangle straight across it.
+    const lShape = ring([
+      [0, 0],
+      [2, 0],
+      [2, 1],
+      [1, 1],
+      [1, 2],
+      [0, 2],
+    ]);
+
+    const { positions, index } = buildExtentGeometry([lShape], 0);
+
+    expect(index).toHaveLength(0);
+    expect(positions).toHaveLength(0);
+  });
+
+  it("still triangulates a convex ring alongside a concave one it skips", () => {
+    const lShape = ring([
+      [0, 0],
+      [2, 0],
+      [2, 1],
+      [1, 1],
+      [1, 2],
+      [0, 2],
+    ]);
+    const rectangle = ring([
+      [-101, 34],
+      [-100, 34],
+      [-100, 33],
+      [-101, 33],
+    ]);
+
+    const { index } = buildExtentGeometry([lShape, rectangle], 0);
+
+    // Only the rectangle contributes: two triangles, six indices.
+    expect(index).toHaveLength(2 * 3);
+  });
 });
