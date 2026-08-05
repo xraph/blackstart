@@ -176,10 +176,10 @@ spans; and per-span wind loading, ice accretion and IEEE 738 dynamic line rating
 derived from those samples. Every number traces back through a provenance run to the
 model version, the code commit, and the dataset versions it was computed from.
 
-What does not exist yet: everything downstream of a rating. There is no cascade
-simulation, no outage-history ingest, no risk model, no backtest harness, and the viewer
-renders the network but carries no weather or hazard layer — so the Phase 3 demonstrable
-is half-met, with ratings queryable through the API and CLI but not yet drawn on a map.
+What does not exist yet: outage-history ingest, the risk model, and the backtest
+harness. Cascade simulation and playback exist; the operator console renders a hazard
+layer — ampacity and mechanical loading over the network, with quantized severity
+coloring — covering 216 rated spans as of today.
 
 | Phase | Scope | State |
 |---|---|---|
