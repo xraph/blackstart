@@ -274,3 +274,41 @@ func TestHazardComputeFollowsTheWorkerFlag(t *testing.T) {
 		t.Error("a non-worker process enabled the rating loop")
 	}
 }
+
+// The solver-backed extensions are registered together, and scenario is one
+// of them.
+//
+// Not a formality: scenario orchestrates a sweep and a cascade, so an
+// application that served its API without those two would accept definitions
+// and fail every run at the stage it could not reach. The pairing is the
+// invariant, which is why both halves are asserted here rather than only the
+// new name.
+func TestTheSolverBackedExtensionsAreRegisteredTogether(t *testing.T) {
+	t.Parallel()
+
+	base := Config{DatabaseDSN: "postgres://localhost/blackstart"}
+
+	without, err := Build(base)
+	if err != nil {
+		t.Fatalf("Build without a solver: %v", err)
+	}
+
+	for _, name := range []string{"contingency", "cascade", "scenario"} {
+		if _, err := without.GetExtension(name); err == nil {
+			t.Errorf("%s was registered with no solver to reach", name)
+		}
+	}
+
+	base.SolverAddress = "localhost:50051"
+
+	with, err := Build(base)
+	if err != nil {
+		t.Fatalf("Build with a solver: %v", err)
+	}
+
+	for _, name := range []string{"contingency", "cascade", "scenario"} {
+		if _, err := with.GetExtension(name); err != nil {
+			t.Errorf("%s is not registered: %v", name, err)
+		}
+	}
+}

@@ -55,6 +55,8 @@ import (
 	pfmigrations "github.com/xraph/blackstart/extensions/powerflow/store/fabriq"
 	"github.com/xraph/blackstart/extensions/provenance"
 	pvmigrations "github.com/xraph/blackstart/extensions/provenance/store/fabriq"
+	"github.com/xraph/blackstart/extensions/scenario"
+	scnmigrations "github.com/xraph/blackstart/extensions/scenario/store/fabriq"
 	"github.com/xraph/blackstart/extensions/scl"
 	sclmigrations "github.com/xraph/blackstart/extensions/scl/store/fabriq"
 	"github.com/xraph/blackstart/extensions/topology"
@@ -228,6 +230,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 			wxmigrations.Group(),
 			hzmigrations.Group(),
 			cscmigrations.Group(),
+			scnmigrations.Group(),
 		),
 	)
 
@@ -335,6 +338,15 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 			powerflow.New(),
 			contingency.New(contingency.WithSolverVersion(cfg.SolverVersion)),
 			cascade.New(),
+			// Last of the group, and its Dependencies() names the other four
+			// rather than relying on that: it resolves a built engine from
+			// each of them at Start.
+			//
+			// Registered only where there is a solver, like its two
+			// collaborators — a scenario orchestrates a sweep and a cascade,
+			// so an extension serving one without them would accept
+			// definitions and fail every run.
+			scenario.New(scenario.WithWorker(cfg.RunWorker)),
 		)
 	}
 
