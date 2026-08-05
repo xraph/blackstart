@@ -21,14 +21,17 @@
  * Expected unserved energy and the reproducibility verdict are still not
  * served for either kind, and are still absent rather than approximated.
  *
- * What a scenario run does carry is weather coverage, and it is carried in two
- * distinguishable pieces: how many branches the run rated, and how many
- * branches there were. `weatherRated` *absent* means the rating step never
- * ran; `weatherRated: 0` against two thousand branches means the run rated
- * them and the weather touched none — a real finding. A `?? 0` anywhere in
- * this file collapses the first into the second at the last boundary in a
- * chain that goes back to a nullable Postgres column, so the rendering below
- * tests for `undefined` explicitly and never for falsiness.
+ * What a scenario run does carry is weather coverage, and it is carried in
+ * three distinguishable pieces: how many branches the run rated, how many
+ * branches there were, and how many of those ratings were computed against
+ * the model's own voltage base rather than the branch's. `weatherRated`
+ * *absent* means the rating step never ran; `weatherRated: 0` against two
+ * thousand branches means the run rated them and the weather touched none — a
+ * real finding. `baseVoltageFallback` splits the same way, and the reassuring
+ * value is the one a guess would produce. A `?? 0` anywhere in this file
+ * collapses absent into measured at the last boundary in a chain that goes
+ * back to a nullable Postgres column, so the renderings below test for
+ * `undefined` explicitly and never for falsiness.
  *
  * Selection stays in the URL, so a comparison can be linked rather than
  * described.
@@ -489,13 +492,47 @@ function isRunStatus(status: string): status is RunStatus {
  * `branchCount` is treated the same way for the same reason, and a run that
  * rated branches without recording how many there were reads "3 of —" rather
  * than inventing a denominator.
+ *
+ * `baseVoltageFallback` qualifies the same number and so is rendered with it
+ * rather than in a column of its own: it says how many of those ratings were
+ * computed against a voltage the branch's own bus never stated. See
+ * `voltageBasis`.
  */
 function weatherCoverage(run: ScenarioRun): string {
   if (run.weatherRated === undefined) return "not rated";
 
   const total = run.branchCount === undefined ? "—" : String(run.branchCount);
 
-  return `${run.weatherRated} of ${total}`;
+  return `${run.weatherRated} of ${total}${voltageBasis(run)}`;
+}
+
+/**
+ * What the rated branches were rated *against* — the qualifier, or nothing.
+ *
+ * `extensions/scenario/rate.go` converts an ampacity into volt-amperes with
+ * `S = √3 · V · I`, and picks `V` per branch: the from-bus's own nominal
+ * voltage where that bus states one, the model-level base where it does not.
+ * The substitution is not an error — a static rating for a line the weather
+ * did reach would be worse — but on a model spanning 345 kV and 138 kV it is
+ * a rating out by a factor of 2.5, and it is invisible in every other number
+ * on this screen, because volt-amperes computed against the wrong voltage
+ * look exactly like volt-amperes. This count is the only evidence.
+ *
+ * Three states, not two, and the third is why this is not a `?? 0`:
+ *
+ * - a count above zero is the qualifier, and reads "317 on base V";
+ * - a recorded zero is the well-formed model's answer and gets no qualifier,
+ *   because annotating every healthy run is how a reader learns to skip the
+ *   annotation;
+ * - *absent* is a run that never recorded the count — every run stored before
+ *   the platform counted them — and says so. `?? 0` would answer for it with
+ *   the reassuring claim, which is the one direction that cannot be allowed
+ *   to be a guess.
+ */
+function voltageBasis(run: ScenarioRun): string {
+  if (run.baseVoltageFallback === undefined) return ", base V unknown";
+
+  return run.baseVoltageFallback === 0 ? "" : `, ${run.baseVoltageFallback} on base V`;
 }
 
 /**

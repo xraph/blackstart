@@ -242,6 +242,11 @@ const SCENARIO_RATED_ZERO = {
   solverVersion: "0.3.1",
   branchCount: 2000,
   weatherRated: 0,
+  // Zero rated is zero fallen back, and the platform records that rather than
+  // omitting it: `execute.go` writes the count whenever the rating step runs,
+  // whatever it counted. A fixture leaving it out would be a run from before
+  // the column existed, which SCENARIO_BASIS_UNRECORDED is for.
+  baseVoltageFallback: 0,
   cascadeRunId: CASCADE.run,
   sweepRunId: SWEEP.id,
 };
@@ -261,6 +266,59 @@ const SCENARIO_UNRATED = {
   queuedAt: "2026-08-02T21:59:00Z",
   startedAt: "2026-08-02T22:00:00Z",
   solverVersion: "0.3.1",
+};
+
+/**
+ * A run whose ratings did not all rest on the voltage their own bus states.
+ *
+ * 317 of the 1841 rated branches were converted against the model-level base
+ * because their from-bus states no nominal voltage. Correct arithmetic, and
+ * on a model spanning two voltage levels a rating out by the ratio between
+ * them — invisible in every other field of this response, because
+ * volt-amperes computed against the wrong voltage look like volt-amperes.
+ */
+const SCENARIO_FELL_BACK = {
+  id: "run_01k3qf8m2xw7rb4n09yvtscnr5",
+  scenarioId: "tx-2026-0802-derecho",
+  manifest: MANIFEST,
+  status: "complete",
+  queuedAt: "2026-08-02T21:56:00Z",
+  startedAt: "2026-08-02T22:00:00Z",
+  finishedAt: "2026-08-02T22:04:02Z",
+  solverVersion: "0.3.1",
+  branchCount: 2000,
+  weatherRated: 1841,
+  baseVoltageFallback: 317,
+  cascadeRunId: CASCADE.run,
+  sweepRunId: SWEEP.id,
+};
+
+/**
+ * The same run against a model that states every bus's voltage.
+ *
+ * `baseVoltageFallback: 0` is a measurement, not an absence: the count was
+ * taken and every rated branch converted against a voltage its own bus
+ * stated. It is what a well-formed model answers, and the screen has nothing
+ * to flag about it.
+ */
+const SCENARIO_OWN_VOLTAGE = {
+  ...SCENARIO_FELL_BACK,
+  id: "run_01k3qf8m2xw7rb4n09yvtscnr6",
+  baseVoltageFallback: 0,
+};
+
+/**
+ * The same run again, stored before the platform counted fallbacks at all.
+ *
+ * `baseVoltageFallback` absent — the field the API omits for every run
+ * predating the column. Unknown is not zero here any more than it is for
+ * `weatherRated`, and it is the more dangerous of the two to guess at: zero
+ * is the reassuring answer.
+ */
+const SCENARIO_BASIS_UNRECORDED = {
+  ...SCENARIO_FELL_BACK,
+  id: "run_01k3qf8m2xw7rb4n09yvtscnr7",
+  baseVoltageFallback: undefined,
 };
 
 /**
@@ -644,6 +702,45 @@ describe("runs index, scenario runs", () => {
 
     expect(screen.getByText("0 of 2000")).toBeTruthy();
     expect(screen.queryByText("not rated")).toBeNull();
+  });
+
+  // ── The voltage a rating was computed against. ──────────────────────────
+
+  it("says how many ratings were computed against the model's own voltage base", async () => {
+    // The number nothing else on this screen can reveal. A rating converted
+    // against a substituted voltage is out by the ratio of the two levels —
+    // 2.5x between 345 kV and 138 kV — and it reaches the screen and the
+    // cascade looking exactly like every other volt-ampere. This count is the
+    // only place a reader learns that any of it happened.
+    scenarioQuery.current = loaded([SCENARIO_FELL_BACK]);
+    await renderAt("/runs?kind=scenario");
+
+    expect(screen.getByText("1841 of 2000, 317 on base V")).toBeTruthy();
+  });
+
+  it("says the voltage basis is unknown rather than printing a zero", async () => {
+    // A run stored before the platform counted fallbacks knows nothing about
+    // its own voltage basis, and `run.baseVoltageFallback ?? 0` would answer
+    // for it: "none of these ratings was substituted", which is the strongest
+    // claim on the screen and one nobody computed. Same collapse as
+    // `weatherRated ?? 0`, one field along.
+    scenarioQuery.current = loaded([SCENARIO_BASIS_UNRECORDED]);
+    await renderAt("/runs?kind=scenario");
+
+    expect(screen.getByText("1841 of 2000, base V unknown")).toBeTruthy();
+    expect(screen.queryByText(/0 on base V/)).toBeNull();
+  });
+
+  it("adds no qualifier when every rated branch used its own bus's voltage", async () => {
+    // The mirror image: a recorded zero is the well-formed model's answer and
+    // needs no annotation. Printing "0 on base V" on every healthy run would
+    // make the qualifier noise, and a qualifier nobody reads is one nobody
+    // reads when it says 317.
+    scenarioQuery.current = loaded([SCENARIO_OWN_VOLTAGE]);
+    await renderAt("/runs?kind=scenario");
+
+    expect(screen.getByText("1841 of 2000")).toBeTruthy();
+    expect(screen.queryByText(/base V/)).toBeNull();
   });
 
   // ── The listing itself. ─────────────────────────────────────────────────

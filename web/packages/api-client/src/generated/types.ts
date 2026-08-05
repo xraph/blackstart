@@ -284,6 +284,7 @@ export interface Scenario {
 }
 
 export interface ScenarioRun {
+  baseVoltageFallback?: number;
   branchCount?: number;
   cascadeRunId?: string;
   failure?: Failure;

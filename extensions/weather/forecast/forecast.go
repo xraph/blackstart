@@ -169,7 +169,14 @@ type Grid struct {
 	// omitzero rather than omitempty: omitempty does nothing on a struct, so
 	// an unsampled grid would serialize a zero time that reads as year 1
 	// rather than omitting the field.
-	SampledAt time.Time `json:"sampled_at,omitzero"`
+	//
+	// optional:"true" as well, and the tag is not decoration. Forge's schema
+	// generator reads `omitempty` and pointer-ness but not `omitzero`, so
+	// without it the specification declares sampled_at required while the
+	// encoder omits it — and a generated client then types it non-optional
+	// and reads undefined on exactly the grids that were never sampled, which
+	// are the ones the field exists to identify.
+	SampledAt time.Time `json:"sampled_at,omitzero" optional:"true"`
 
 	// Covered and Total are how many of the spans offered to the sampler fell
 	// inside this grid's domain.
