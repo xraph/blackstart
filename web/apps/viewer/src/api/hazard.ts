@@ -134,7 +134,7 @@ export function computationFor(
  * dropped rather than paired with somebody else's route.
  */
 export function basisByRoute(
-  assignments: readonly { branchId: string; basis: string }[],
+  assignments: readonly { carrierId: string; basis: string }[],
   routes: readonly ({ id: string } | null | undefined)[],
 ): Map<string, Basis> {
   const out = new Map<string, Basis>();

@@ -2,7 +2,7 @@
  * The hazard values behind the layer, fetched the cheap way.
  *
  * Assignment-driven rather than span-driven. `hazard/assignments` names the
- * branches that carry a conductor, and a span on a branch without one is
+ * carriers that have a conductor, and a span on a carrier without one is
  * *known* unrated without being asked — so this fetches values for the spans
  * that can have them and nothing else. On the platform this was written
  * against that is one assignment, twenty-one spans and twenty-three requests,
@@ -78,26 +78,26 @@ export function useHazardLayer(
 
   const issuance = cycle.data?.issuedAt ?? null;
 
-  /* A rating belongs to a branch and the map draws routes, so the branch has
+  /* A rating belongs to a carrier and the map draws routes, so the carrier has
    * to be resolved to one. One request per assignment, which is the smallest
    * this join can be. */
-  const branches = useMemo(() => assignments.data?.assignments ?? [], [assignments.data]);
+  const carriers = useMemo(() => assignments.data?.assignments ?? [], [assignments.data]);
 
-  const branchRoutes = useQueries({
-    queries: branches.map((a) => ({
-      queryKey: queryKeys.geoBranchesRoute(a.branchId),
+  const carrierRoutes = useQueries({
+    queries: carriers.map((a) => ({
+      queryKey: queryKeys.geoBranchesRoute(a.carrierId),
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        client.geo.branches.route(a.branchId, { signal }),
+        client.geo.branches.route(a.carrierId, { signal }),
     })),
   });
 
   const basisOf = useMemo(
     () =>
       basisByRoute(
-        branches,
-        branchRoutes.map((r) => r.data ?? null),
+        carriers,
+        carrierRoutes.map((r) => r.data ?? null),
       ),
-    [branches, branchRoutes],
+    [carriers, carrierRoutes],
   );
 
   /* Only the spans that can carry a value. Everything else is unrated as a
@@ -151,7 +151,7 @@ export function useHazardLayer(
       passes.error ??
       assignments.error ??
       (cycle.error as Error | null) ??
-      (branchRoutes.find((r) => r.error !== null)?.error as Error | undefined) ??
+      (carrierRoutes.find((r) => r.error !== null)?.error as Error | undefined) ??
       (series.find((s) => s.error !== null)?.error as Error | undefined) ??
       null;
 
@@ -164,7 +164,7 @@ export function useHazardLayer(
       isPending:
         passes.isPending ||
         assignments.isPending ||
-        branchRoutes.some((r) => r.isPending) ||
+        carrierRoutes.some((r) => r.isPending) ||
         series.some((s) => s.isPending),
       error: failure,
     };
@@ -181,6 +181,6 @@ export function useHazardLayer(
     assignments.error,
     assignments.isPending,
     cycle.error,
-    branchRoutes,
+    carrierRoutes,
   ]);
 }

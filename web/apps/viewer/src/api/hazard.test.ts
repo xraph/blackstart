@@ -83,10 +83,10 @@ describe("computationFor", () => {
 
 describe("basisByRoute", () => {
   const ASSIGNMENTS = [
-    { id: "hzasg_1", branchId: "nmdl_h27", conductorCode: "drake", basis: "surveyed" as const },
+    { id: "hzasg_1", carrierId: "nmdl_h27", conductorCode: "drake", basis: "surveyed" as const },
     {
       id: "hzasg_2",
-      branchId: "nmdl_k92",
+      carrierId: "nmdl_k92",
       conductorCode: "hawk",
       basis: "assumed_by_voltage" as const,
     },

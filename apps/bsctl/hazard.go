@@ -206,9 +206,11 @@ func hazardComputeCommand() cli.Command {
 
 			if result.Unrated > 0 {
 				ctx.Printf(
-					"\n%d spans produced nothing because their branch has no "+
-						"conductor. Assign one with `bsctl hazard assign`; nothing "+
-						"here guesses.\n", result.Unrated)
+					"\n%d spans produced nothing because their carrier has no "+
+						"conductor. `bsctl hazard assume` assigns one to every "+
+						"carrier that states a voltage; the rest need `bsctl hazard "+
+						"assign`, because nothing here guesses a voltage.\n",
+					result.Unrated)
 			}
 
 			return nil

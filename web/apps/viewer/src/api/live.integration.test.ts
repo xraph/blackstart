@@ -152,9 +152,9 @@ describe.runIf(BASE !== "" && PK !== "")("live platform", () => {
     // Every assignment must resolve to a route, or its ratings exist and
     // cannot be drawn.
     for (const assignment of assignments) {
-      const route = await client.geo.branches.route(assignment.branchId);
+      const route = await client.geo.branches.route(assignment.carrierId);
 
-      expect(route.id, `branch ${assignment.branchId} has a conductor but no route`).toBeTruthy();
+      expect(route.id, `carrier ${assignment.carrierId} has a conductor but no route`).toBeTruthy();
 
       const { spans } = await client.geo.routes.spans(route.id);
       expect(spans.length, "a rateable route with no spans cannot carry a value").toBeGreaterThan(
