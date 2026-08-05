@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { CascadeRun, ContingencyList, ScenarioRun, chainCompleteness } from "@blackstart/schema";
-import { CASCADE, CONTINGENCIES, FREQ_TRACES, INSPECTED, LAYERS, RUNS } from "./derecho";
+import { CASCADE, CONTINGENCIES, FREQ_TRACES, INSPECTED, RUNS } from "./derecho";
 
 describe("derecho fixture", () => {
   it("satisfies the contingency ordering invariant", () => {
@@ -80,9 +80,5 @@ describe("derecho fixture", () => {
   it("parses every run, including the incomplete ones", () => {
     expect(RUNS.every((r) => ScenarioRun.safeParse(r).success)).toBe(true);
     expect(RUNS.some((r) => r.status !== "complete")).toBe(true);
-  });
-
-  it("has a layer stack where every layer names its dataset version", () => {
-    for (const l of LAYERS) expect(l.source.length).toBeGreaterThan(0);
   });
 });

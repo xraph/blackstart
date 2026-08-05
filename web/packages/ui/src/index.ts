@@ -21,6 +21,7 @@ export * from "./lib/palette";
 
 export * from "./instrument/quantity";
 export * from "./instrument/identity";
+export * from "./instrument/measure";
 export * from "./instrument/risk";
 export * from "./instrument/sparkline";
 export * from "./instrument/status";

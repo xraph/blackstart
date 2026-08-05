@@ -37,6 +37,17 @@ export const consoleSearch = z.object({
    * does not exist.
    */
   lead: z.coerce.number().int().min(0).max(MAX_LEAD_HOUR).default(4),
+  /**
+   * Which hazard quantity is drawn over the network.
+   *
+   * In the URL because it is part of what a screenshot shows, and a figure in
+   * a review has to be reproducible from its link. Rejected rather than
+   * defaulted when it names something this build cannot draw: quietly falling
+   * back to the rating answers a question nobody asked, under a link that says
+   * otherwise.
+   */
+  layer: z.enum(["ampacity", "loading"]).default("ampacity"),
+
   /** The selected element, which is what opens the inspector. */
   sel: AnyTypeId.optional(),
 });

@@ -17,7 +17,6 @@ import {
   ContingencyList,
   ElementExplanation,
   ForecastHorizon,
-  LayerStack,
   ProvenanceChain,
   ScenarioRun,
   amps,
@@ -70,16 +69,6 @@ export const HORIZON = ForecastHorizon.parse({
   issued: "2026-08-02T18:52Z",
   leadHours: Array.from({ length: 19 }, (_, i) => i),
 });
-
-export const LAYERS = LayerStack.parse([
-  { id: "network", label: "Network", state: "on", opacity: 1, source: "ACTIVSg2000 v3" },
-  { id: "risk", label: "Risk surface", state: "on", opacity: 0.82, source: "haz-2026.08.02-18Z" },
-  { id: "clouds", label: "Clouds", state: "on", opacity: 0.64, source: "HRRR conus 18Z f04" },
-  { id: "wind", label: "Wind field", state: "partial", opacity: 0.4, source: "HRRR 10 m gust" },
-  { id: "precip", label: "Precip / hail", state: "off", opacity: 0, source: "MRMS 2 min" },
-  { id: "terrain", label: "Terrain", state: "on", opacity: 1, source: "3DEP 10 m · 3D Tiles" },
-  { id: "veg", label: "Vegetation", state: "off", opacity: 0, source: "LANDFIRE 2024" },
-]);
 
 /* ── ranked contingencies ─────────────────────────────────────────────
  * Ranks are assigned by rankByExpectedCost rather than written down, so the

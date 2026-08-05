@@ -57,7 +57,7 @@ function LayerRow({
           className="size-[11px] shrink-0 rounded-[2px] border border-dashed border-line-3"
         />
         <span className="w-[74px] shrink-0 text-[11px] text-fg-3">{layer.label}</span>
-        <span className="flex-1 text-right font-mono text-[9.5px] tabular text-fg-3">
+        <span className="flex-1 truncate text-right font-mono text-[9.5px] tabular text-fg-3">
           not in this build
         </span>
       </div>
@@ -105,7 +105,7 @@ function LayerRow({
         className="h-0.5 w-[38px] shrink-0 appearance-none rounded-[1px] bg-line-2 accent-[var(--bs-fg)]"
       />
 
-      <span className="flex-1 text-right font-mono text-[9.5px] tabular text-fg-3">
+      <span className="flex-1 truncate text-right font-mono text-[9.5px] tabular text-fg-3">
         {layer.source}
       </span>
     </div>

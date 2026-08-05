@@ -12,7 +12,7 @@
  * covering it defeats the panel it opens.
  */
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { AnyTypeId } from "@blackstart/schema";
 import { Scene, type Selection } from "@blackstart/globe";
@@ -22,7 +22,7 @@ import {
   ElementInspector,
   GlassPanel,
   LayerStackPanel,
-  RiskRamp,
+  MeasureRamp,
   RAIL_BREAKPOINT,
   SideRail,
   TimeAxis,
@@ -35,13 +35,10 @@ import { consoleRoute } from "../router";
 import { temporalOf } from "../search/params";
 import { useViewerModel } from "../model/use-viewer-model";
 import { useRouteGeometry } from "../api/use-route-geometry";
-import {
-  CONTINGENCIES,
-  HORIZON,
-  INSPECTED,
-  LAYERS,
-  LINE_TULIA_LEVELLAND,
-} from "../fixtures/derecho";
+import { useHazardLayer } from "../api/use-hazard-layer";
+import { AMPACITY, LOADING, colorOf } from "../api/hazard";
+import { hazardLayerStack } from "./layers";
+import { CONTINGENCIES, HORIZON, INSPECTED, LINE_TULIA_LEVELLAND } from "../fixtures/derecho";
 
 export function ConsoleScreen(): React.JSX.Element {
   const search = consoleRoute.useSearch();
@@ -50,6 +47,28 @@ export function ConsoleScreen(): React.JSX.Element {
   const geometry = useRouteGeometry();
   const [, setPicked] = useState<Selection | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  const encoding = search.layer === "loading" ? LOADING : AMPACITY;
+  const hazard = useHazardLayer(geometry.routes, encoding, search.valid, search.known);
+
+  /* Colour carries the quantity, alpha carries whether the conductor under it
+   * was surveyed or assumed. A span with no value draws neutral rather than at
+   * the safe end of the ramp — "nobody computed this" is not "this is fine". */
+  const spanColor = useCallback(
+    (spanId: string) => {
+      const found = hazard.lookup(spanId);
+      return colorOf(found?.value ?? null, found?.basis ?? null, encoding);
+    },
+    [hazard, encoding],
+  );
+
+  const layers = hazardLayerStack({
+    encoding,
+    issuance: hazard.issuance,
+    rated: hazard.rated,
+    unrated: hazard.unrated,
+    network: "ACTIVSg2000 v3",
+  });
 
   const temporal = temporalOf(search);
   /* An explicit knowledge time is the signal, not a clock comparison: the
@@ -96,26 +115,47 @@ export function ConsoleScreen(): React.JSX.Element {
     >
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1 overflow-hidden bg-stage">
-          <Scene model={model} routes={geometry.routes} onSelect={pick} />
+          <Scene model={model} routes={geometry.routes} colorOf={spanColor} onSelect={pick} />
 
           <GlassPanel
             title="Layers"
-            meta={layerSummary(LAYERS)}
+            meta={layerSummary(layers)}
             className="left-3 top-3 w-[264px] max-md:hidden"
           >
-            <LayerStackPanel layers={LAYERS} />
+            <LayerStackPanel
+              layers={layers}
+              onToggle={(id) =>
+                void (
+                  (id === "ampacity" || id === "loading") &&
+                  navigate({ search: (prev) => ({ ...prev, layer: id }) })
+                )
+              }
+            />
           </GlassPanel>
 
+          {/* The legend prints the unit and the breaks it is quantised to.
+              It used to print `P(fail | forecast)` over a `haz-gbst v0.4.2`
+              model line, and neither exists: `risk` is phase 6 and the
+              platform publishes no probability at all. */}
           <GlassPanel
-            title="Encoding — P(fail | forecast)"
+            title={`Encoding — ${encoding.label.toLowerCase()}`}
             className="bottom-10 left-3 w-[228px] max-md:hidden"
           >
             <div className="p-2.5">
-              <RiskRamp />
+              <MeasureRamp
+                label={encoding.label}
+                unit={encoding.unit}
+                breaks={encoding.breaks}
+                severity={encoding.severity}
+              />
               <div className="mt-2.5 border-t border-line-2 pt-2 font-mono text-[9px] leading-relaxed text-fg-3">
-                <span className="text-fg-2">width</span> voltage class 115 / 230 / 345 kV
+                <span className="text-fg-2">cycle</span>{" "}
+                {hazard.issuance === null ? "no pass has run" : `${hazard.issuance.slice(0, 16)}Z`}
                 <br />
-                <span className="text-fg-2">model</span> haz-gbst v0.4.2 · calib 0.031 ECE
+                <span className="text-fg-2">spans</span>{" "}
+                {hazard.isPending
+                  ? "loading…"
+                  : `${hazard.rated} rated · ${hazard.unrated} unrated`}
                 <br />
                 <span className="text-fg-2">routes</span>{" "}
                 {geometry.isPending
