@@ -102,10 +102,22 @@ type Run struct {
 	// Both exist because a scenario that weather-rated three branches out of
 	// two thousand would otherwise look identical, in a summary that only
 	// reports "rated", to one that rated all two thousand — and the second
-	// is what a reader assumes unless the record says otherwise. Absent
-	// means the rating step has not run yet, never zero coverage.
-	WeatherRated int `json:"weather_rated"`
-	BranchCount  int `json:"branch_count"`
+	// is what a reader assumes unless the record says otherwise.
+	//
+	// Both are pointers, and nil until the rating step runs, for the same
+	// reason run.CascadeRun.Island's Frequency/Nadir/Rocof are pointers: a
+	// plain int cannot tell "rated zero of two thousand" — a real finding,
+	// and the whole reason this pair exists — apart from "has not looked
+	// yet". A bare 0 would silently collapse those into the same value, on
+	// the struct and on the wire, exactly where the distinction matters
+	// most: a run that failed at StepScreen after rating nothing would read
+	// identically to one that never reached the rating step at all.
+	//
+	// The two are set together, at the point the rating step completes,
+	// because they are one observation about one run: Validate rejects a
+	// run where one is nil and the other is not.
+	WeatherRated *int `json:"weather_rated,omitempty"`
+	BranchCount  *int `json:"branch_count,omitempty"`
 
 	// SolverVersion is the solver that produced the cascade result, read
 	// from the solver's own response rather than configured into the engine
@@ -129,6 +141,11 @@ type Run struct {
 // alone does not say which one to look at. A complete run without both child
 // ids is a run with no answer attached to it: nothing links the scenario
 // back to the sweep and cascade that were supposedly its result.
+//
+// It is also strict about WeatherRated and BranchCount regardless of
+// status: they are one observation about one run, recorded together at the
+// point the rating step completes, so a run with one set and the other nil
+// is not a state the type should tolerate constructing.
 func (r Run) Validate() error {
 	if r.Status == StatusFailed {
 		if r.Failure == nil || r.Failure.Step == "" {
@@ -144,6 +161,12 @@ func (r Run) Validate() error {
 				"%w: a complete run must name both child runs, or nothing "+
 					"links the scenario to its own answer", bserr.ErrInvalid)
 		}
+	}
+
+	if (r.WeatherRated == nil) != (r.BranchCount == nil) {
+		return fmt.Errorf(
+			"%w: weather rated and branch count are one observation and must "+
+				"be set together", bserr.ErrInvalid)
 	}
 
 	return nil
