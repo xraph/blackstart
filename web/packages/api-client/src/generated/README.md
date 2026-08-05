@@ -57,8 +57,8 @@ This API supports the following authentication methods:
 
 ### Servers
 
-- **http://localhost:8099**: Development server
-- **http://localhost:8099**: This instance
+- **http://localhost:8080**: Development server
+- **http://localhost:8080**: This instance
 
 ## License
 

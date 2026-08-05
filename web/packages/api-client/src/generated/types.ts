@@ -48,6 +48,7 @@ export interface CascadeRun {
   loadLost: number;
   modelHash: string;
   outcome: string;
+  sBaseVa: number;
   solverVersion: string;
   startedAt: string;
   steps: number;
@@ -199,6 +200,16 @@ export interface Point {
   lon: number;
 }
 
+export interface ProvenanceRun {
+  finishedAt: string;
+  id: string;
+  kind: string;
+  modelVersionId: string;
+  resultHash: string;
+  seed: string;
+  startedAt: string;
+}
+
 export interface Publication {
   appId: string;
   cbName: string;
@@ -320,15 +331,6 @@ export interface Substation {
   name: string;
 }
 
-export interface SweepRun {
-  candidates: Candidate[];
-  finishedAt: string;
-  id: string;
-  modelHash: string;
-  solverVersion: string;
-  startedAt: string;
-}
-
 export interface TracedInput {
   dataset: DatasetVersion;
   role: string;
@@ -448,14 +450,14 @@ export interface substationsResponse {
 }
 
 export interface sweepRunsResponse {
-  runs: SweepRun[];
+  runs: Run[];
 }
 
 export interface traceResponse {
   inputs: TracedInput[];
   producer: ModelVersion;
   reproducible: boolean;
-  run: Run;
+  run: ProvenanceRun;
 }
 
 export interface valuesResponse {
