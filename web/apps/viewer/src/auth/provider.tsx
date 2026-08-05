@@ -22,7 +22,15 @@ import {
   type ReactNode,
 } from "react";
 
-import { me, signIn, signOut, signUp, type Credentials, type Session } from "./authsome";
+import {
+  me,
+  signIn,
+  signOut,
+  signUp,
+  type Credentials,
+  type Registration,
+  type Session,
+} from "./authsome";
 
 /** Where the answer to "is anyone signed in" has got to. */
 export type AuthStatus = "checking" | "anonymous" | "authenticated";
@@ -33,7 +41,7 @@ interface AuthState {
   readonly session: Session | null;
   readonly publishableKey: string;
   readonly signIn: (credentials: Credentials) => Promise<void>;
-  readonly signUp: (credentials: Credentials) => Promise<void>;
+  readonly signUp: (registration: Registration) => Promise<void>;
   readonly signOut: () => Promise<void>;
   /** The session could not be refreshed. Called by the API client, not by a screen. */
   readonly expire: () => void;
@@ -93,8 +101,8 @@ export function AuthProvider({ publishableKey, children }: AuthProviderProps): R
   );
 
   const doSignUp = useCallback(
-    async (credentials: Credentials) => {
-      adopt(await signUp(credentials, publishableKey));
+    async (registration: Registration) => {
+      adopt(await signUp(registration, publishableKey));
     },
     [adopt, publishableKey],
   );

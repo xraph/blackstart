@@ -7,7 +7,7 @@
  */
 
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { NavRail, TabBar, TopBar, type NavItem } from "@blackstart/ui";
+import { NavRail, TabBar, ThemeToggle, TopBar, useTheme, type NavItem } from "@blackstart/ui";
 
 import { useAuth } from "../auth/provider";
 
@@ -59,12 +59,38 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 /**
- * A badge from an address.
+ * A badge for whoever is signed in.
  *
- * Authsome's user carries no display name on a password sign-up, so the local
- * part is all there is. Dotted and hyphenated forms give two letters; anything
- * else gives one, which is honest — a manufactured second letter would look
- * like a name the platform never recorded.
+ * Prefers the recorded name. Registration asks for first and last, so most
+ * accounts have one — and initials derived from a name somebody gave are
+ * better than initials guessed from the shape of their address.
+ *
+ * Accounts predating that form, and any created by other means, still have
+ * none, so the address remains the fallback rather than the exception.
+ */
+export function initialsOfSession(
+  session: { firstName: string; lastName: string; email: string } | null,
+): string {
+  if (session === null) return "—";
+
+  const first = session.firstName.trim();
+  const last = session.lastName.trim();
+
+  if (first !== "" || last !== "") {
+    const letters = [first, last].filter((p) => p !== "").map((p) => p.charAt(0).toUpperCase());
+
+    return letters.join("");
+  }
+
+  return initialsOf(session.email);
+}
+
+/**
+ * A badge from an address, where no name was recorded.
+ *
+ * The local part is all there is. Dotted and hyphenated forms give two
+ * letters; anything else gives one, which is honest — a manufactured second
+ * letter would look like a name the platform never recorded.
  */
 export function initialsOf(email: string): string {
   const local = email.split("@")[0] ?? "";
@@ -84,6 +110,7 @@ function RootLayout(): React.JSX.Element {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const active = NAV_ITEMS.find((i) => pathname.startsWith(`/${i.id}`))?.id ?? "console";
   const { session, signOut } = useAuth();
+  const { theme, setTheme } = useTheme();
 
   /* Navigating without search drops the current params, which would lose the
    * valid time. The console and cascade screens share a schema, so carrying
@@ -101,8 +128,9 @@ function RootLayout(): React.JSX.Element {
           { label: "case", value: "ACTIVSg2000", menu: true },
         ]}
         clock="18:14:07 Z"
-        initials={initialsOf(session?.email ?? "")}
+        initials={initialsOfSession(session)}
         onSignOut={() => void signOut()}
+        aside={<ThemeToggle theme={theme} onChange={setTheme} />}
       />
 
       <div className="flex min-h-0 flex-1">

@@ -1,14 +1,14 @@
 /**
  * The identity badge's two letters.
  *
- * Authsome records no display name for a password sign-up, so an address is
- * all the badge has to work with. What matters here is that it never invents
- * a letter: a manufactured second initial reads as a name the platform holds,
- * and it does not hold one.
+ * Registration records a name, so the badge prefers it. Where there is none —
+ * an older account, or one created by other means — an address is all it has,
+ * and what matters there is that it never invents a letter: a manufactured
+ * second initial reads as a name the platform holds, and it does not hold one.
  */
 
 import { describe, expect, it } from "vitest";
-import { initialsOf } from "./root";
+import { initialsOf, initialsOfSession } from "./root";
 
 describe("initialsOf", () => {
   it("takes two letters from a separated local part", () => {
@@ -33,5 +33,36 @@ describe("initialsOf", () => {
     // empty box is indistinguishable from a broken one, so it says nothing
     // explicitly.
     expect(initialsOf("")).toBe("—");
+  });
+});
+
+describe("initialsOfSession", () => {
+  const session = (firstName: string, lastName: string, email = "operator@grid.test") => ({
+    firstName,
+    lastName,
+    email,
+  });
+
+  it("prefers the recorded name over the address", () => {
+    // The address would give "RI" here. A name somebody typed beats initials
+    // guessed from the shape of their email.
+    expect(initialsOfSession(session("Rex", "Raphael", "r.i.raphael@grid.test"))).toBe("RR");
+  });
+
+  it("takes one letter when only half a name was recorded", () => {
+    expect(initialsOfSession(session("Rex", ""))).toBe("R");
+    expect(initialsOfSession(session("", "Raphael"))).toBe("R");
+  });
+
+  it("falls back to the address when no name was recorded", () => {
+    expect(initialsOfSession(session("", "", "rex.raphael@grid.test"))).toBe("RR");
+  });
+
+  it("treats whitespace as no name rather than as initials", () => {
+    expect(initialsOfSession(session("  ", " ", "rex.raphael@grid.test"))).toBe("RR");
+  });
+
+  it("has nothing to show before anyone signs in", () => {
+    expect(initialsOfSession(null)).toBe("—");
   });
 });
