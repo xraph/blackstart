@@ -63,6 +63,34 @@ type overpassResponse struct {
 	Remark string `json:"remark"`
 }
 
+// overpassQuery builds the Overpass QL for every power line intersecting box,
+// with the structures standing on it.
+//
+// Extracted from Fetch so the query text is something a test can assert on
+// directly rather than something only a live HTTP call can observe.
+func overpassQuery(box BoundingBox) string {
+	// `out body` for the ways and `>` for their nodes: the node positions are
+	// the structures, and a query returning only ways would give a circuit
+	// with no towers on it.
+	//
+	// The node output is `out body qt`, not `out skel qt`. `skel` is
+	// Overpass's geometry-only mode — id and position, no tags — and it is
+	// the obvious choice for someone trying to shrink the payload, because
+	// the ways above already used `out body` and node *positions* are all a
+	// bare route needs. But a node's tags are where `power=tower` /
+	// `power=pole` / `power=portal` and `material` live, and this importer's
+	// entire purpose is classifying structures by those tags. `skel` silently
+	// empties that: every structure parses, every position is right, and
+	// every one of them comes back unclassed. Confirmed against the live API
+	// on the same bounding box: `skel` returned 1,132 nodes with 0 tagged,
+	// `body` returned the same 1,132 nodes with 1,002 tagged.
+	return fmt.Sprintf(`[out:json][timeout:120];
+way["power"="line"](%g,%g,%g,%g);
+out body;
+>;
+out body qt;`, box.MinLat, box.MinLon, box.MaxLat, box.MaxLon)
+}
+
 // Fetch reads every power line whose way intersects the box.
 //
 // # Errors
@@ -75,14 +103,7 @@ func (o Overpass) Fetch(ctx context.Context, box BoundingBox, limit int) ([]Line
 		return nil, err
 	}
 
-	// `out body` for the ways and `>` for their nodes: the node positions are
-	// the structures, and a query returning only ways would give a circuit
-	// with no towers on it.
-	query := fmt.Sprintf(`[out:json][timeout:120];
-way["power"="line"](%g,%g,%g,%g);
-out body;
->;
-out skel qt;`, box.MinLat, box.MinLon, box.MaxLat, box.MaxLon)
+	query := overpassQuery(box)
 
 	endpoint := o.Endpoint
 	if endpoint == "" {
