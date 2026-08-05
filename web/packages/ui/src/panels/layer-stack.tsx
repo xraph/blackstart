@@ -45,6 +45,25 @@ function LayerRow({
   readonly onToggle?: ((id: string) => void) | undefined;
   readonly onOpacity?: ((id: string, value: number) => void) | undefined;
 }): ReactElement {
+  /* A layer this build has no data for. The row stays, because the stack
+   * shows the intended shape of the system as well as its current state —
+   * but every control goes, since a checkbox that never checks reads as a
+   * broken panel rather than as absent data. */
+  if (layer.state === "unavailable") {
+    return (
+      <div className="flex h-[30px] items-center gap-2 border-b border-line-2 px-[9px] opacity-45 last:border-b-0">
+        <span
+          aria-hidden="true"
+          className="size-[11px] shrink-0 rounded-[2px] border border-dashed border-line-3"
+        />
+        <span className="w-[74px] shrink-0 text-[11px] text-fg-3">{layer.label}</span>
+        <span className="flex-1 text-right font-mono text-[9.5px] tabular text-fg-3">
+          not in this build
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-[30px] items-center gap-2 border-b border-line-2 px-[9px] last:border-b-0">
       <button
