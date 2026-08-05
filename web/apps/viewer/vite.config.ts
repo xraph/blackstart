@@ -42,6 +42,13 @@ export default defineConfig({
       // from its cause.
       "/api": { target: HOST },
       "/identity": { target: HOST },
+
+      // The signup form's field list comes from Authsome's dashboard-contract
+      // intent, which is mounted under the dashboard's base path rather than
+      // under /identity. Same host, third root — see auth/formconfig.ts for
+      // why the config is read there and the submission still goes to
+      // /identity.
+      "/_forge": { target: HOST },
     },
   },
 });

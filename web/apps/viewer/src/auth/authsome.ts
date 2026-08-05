@@ -80,6 +80,17 @@ export interface Credentials {
 export interface Registration extends Credentials {
   readonly firstName?: string;
   readonly lastName?: string;
+
+  /**
+   * Values for the fields a deployment declared, keyed as the FormConfig
+   * keyed them.
+   *
+   * These reach `User.Metadata`, and the engine validates them against the
+   * same active FormConfig the login screen rendered from — so a field
+   * declared required is enforced by the platform whether or not this client
+   * checked it first. See auth/formconfig.ts.
+   */
+  readonly metadata?: Record<string, string>;
 }
 
 /**
@@ -153,14 +164,23 @@ async function authenticate(
   path: string,
   publishableKey: string,
   body: Record<string, string>,
+  metadata?: Record<string, string>,
 ): Promise<Session> {
+  // Nested rather than merged into the body. Authsome binds metadata as its
+  // own object, and a declared field whose key happened to be "password"
+  // would otherwise overwrite the credential on its way out.
+  const sent =
+    metadata === undefined || Object.keys(metadata).length === 0
+      ? body
+      : { ...body, metadata };
+
   const response = await fetch(`${IDENTITY}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Publishable-Key": publishableKey,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(sent),
   });
 
   const payload = await bodyOf(response);
@@ -201,7 +221,7 @@ export function signUp(registration: Registration, publishableKey: string): Prom
   if (first !== "") body["first_name"] = first;
   if (last !== "") body["last_name"] = last;
 
-  return authenticate("/signup", publishableKey, body);
+  return authenticate("/signup", publishableKey, body, registration.metadata);
 }
 
 /**
