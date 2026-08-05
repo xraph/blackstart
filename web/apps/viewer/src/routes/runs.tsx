@@ -12,8 +12,11 @@
  * They exist now. A scenario binds a network model, a weather cycle,
  * hazard-derived line ratings, a contingency policy and a seed; executing it
  * screens contingencies and cascades the worst outage, producing up to two
- * child runs — and both listings are on this screen, each in its own section,
- * because they answer different questions and share no columns.
+ * child runs. So `kind` is honoured rather than declared: sweeps, scenario
+ * runs, or both. `cascade` and `validation` remain unlisted — the platform
+ * serves a cascade *by id* and no index of them — and the screen says that
+ * instead of quietly showing something else under a URL that promised
+ * cascades.
  *
  * Expected unserved energy and the reproducibility verdict are still not
  * served for either kind, and are still absent rather than approximated.
@@ -43,7 +46,10 @@ import { RUN_STATUSES, abbreviateTypeId, type RunStatus } from "@blackstart/sche
 
 import { runsRoute } from "../router";
 import { useApiClient } from "../api/provider";
-import { cascadeSearch, type CascadeSearch } from "../search/params";
+import { cascadeSearch, type CascadeSearch, type RunsSearch } from "../search/params";
+
+const KINDS = ["all", "sweep", "scenario", "cascade", "validation"] as const;
+const STATUSES = ["any", "complete", "running", "failed", "queued"] as const;
 
 export function RunsScreen(): React.JSX.Element {
   const search = runsRoute.useSearch();
@@ -51,13 +57,27 @@ export function RunsScreen(): React.JSX.Element {
   const client = useApiClient();
   const wide = useMediaQuery(RAIL_BREAKPOINT);
 
-  const sweeps = useContingencyRunsList(client, undefined, 50);
-  const scenarios = useScenarioRunsRecent(client, 50);
+  const showSweeps = search.kind === "all" || search.kind === "sweep";
+  const showScenarios = search.kind === "all" || search.kind === "scenario";
+  /** `cascade` and `validation`: named in the URL contract, served by no index. */
+  const unlisted = !showSweeps && !showScenarios;
 
-  const sweepRuns: readonly SweepRun[] = sweeps.data?.runs ?? [];
-  const scenarioRuns: readonly ScenarioRun[] = scenarios.data?.runs ?? [];
+  const sweeps = useContingencyRunsList(client, undefined, 50, { enabled: showSweeps });
+  const scenarios = useScenarioRunsRecent(client, 50, { enabled: showScenarios });
 
-  const pending = sweeps.isPending || scenarios.isPending;
+  const sweepRuns: readonly SweepRun[] = showSweeps ? (sweeps.data?.runs ?? []) : [];
+  /**
+   * A scenario run publishes a status, so the status filter is real here. A
+   * sweep publishes none at all — see `StatusNote` — so this is the only
+   * listing the filter touches.
+   */
+  const scenarioRuns: readonly ScenarioRun[] = showScenarios
+    ? (scenarios.data?.runs ?? []).filter(
+        (r) => search.status === "any" || r.status === search.status,
+      )
+    : [];
+
+  const pending = (showSweeps && sweeps.isPending) || (showScenarios && scenarios.isPending);
   const selected = new Set(search.compare);
 
   const toggle = (id: string): void => {
@@ -71,12 +91,26 @@ export function RunsScreen(): React.JSX.Element {
     });
   };
 
+  const setKind = (kind: RunsSearch["kind"]): void => {
+    void navigate({ search: (prev) => ({ ...prev, kind }) });
+  };
+  const setStatus = (status: RunsSearch["status"]): void => {
+    void navigate({ search: (prev) => ({ ...prev, status }) });
+  };
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-11 shrink-0 items-center gap-2 overflow-x-auto border-b border-line bg-panel px-3">
         <span className="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.13em] text-fg-3">
           Runs
         </span>
+        <Segmented label="Run kind" options={KINDS} value={search.kind} onChange={setKind} />
+        <Segmented
+          label="Run status"
+          options={STATUSES}
+          value={search.status}
+          onChange={setStatus}
+        />
         <span className="flex-1" />
         <span className="whitespace-nowrap font-mono text-[10px] tabular text-fg-3">
           {pending ? "loading…" : `${sweepRuns.length + scenarioRuns.length} runs`}
@@ -84,64 +118,82 @@ export function RunsScreen(): React.JSX.Element {
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto">
-        <Section title="Contingency sweeps">
-          {sweeps.isError ? (
-            <Notice tone="alarm" title="The platform is not reachable">
-              {sweeps.error.message}
-              <br />
-              Start the host with <code className="font-mono">./bin/blackstart</code>, or point the
-              viewer elsewhere with <code className="font-mono">VITE_API_BASE_URL</code>.
-            </Notice>
-          ) : sweeps.isPending ? (
-            <Notice title="Loading sweeps">Asking the platform for recent N-1 runs.</Notice>
-          ) : sweepRuns.length === 0 ? (
-            <Notice title="No sweeps recorded">
-              Run one with <code className="font-mono">bsctl contingency sweep</code>. The platform
-              is reachable and has nothing to show.
-            </Notice>
-          ) : wide ? (
-            <SweepTable runs={sweepRuns} selected={selected} onToggle={toggle} />
-          ) : (
-            <ul className="m-0 list-none p-0">
-              {sweepRuns.map((r) => (
-                <SweepCard
-                  key={r.id}
-                  run={r}
-                  selected={selected.has(r.id)}
-                  onToggle={() => toggle(r.id)}
-                />
-              ))}
-            </ul>
-          )}
-        </Section>
+        {unlisted ? (
+          <Notice title={`No ${search.kind} run index`}>
+            The platform serves a {search.kind} run by id — the cascade screen plays one back from{" "}
+            <code className="font-mono">?run=</code> — but publishes no listing of them. Rather than
+            show sweeps under a URL that says <code className="font-mono">kind={search.kind}</code>,
+            this screen shows nothing.
+          </Notice>
+        ) : (
+          <>
+            {showSweeps ? (
+              <Section title="Contingency sweeps" note={<StatusNote status={search.status} />}>
+                {sweeps.isError ? (
+                  <Notice tone="alarm" title="The platform is not reachable">
+                    {sweeps.error.message}
+                    <br />
+                    Start the host with <code className="font-mono">./bin/blackstart</code>, or
+                    point the viewer elsewhere with{" "}
+                    <code className="font-mono">VITE_API_BASE_URL</code>.
+                  </Notice>
+                ) : sweeps.isPending ? (
+                  <Notice title="Loading sweeps">Asking the platform for recent N-1 runs.</Notice>
+                ) : sweepRuns.length === 0 ? (
+                  <Notice title="No sweeps recorded">
+                    Run one with <code className="font-mono">bsctl contingency sweep</code>. The
+                    platform is reachable and has nothing to show.
+                  </Notice>
+                ) : wide ? (
+                  <SweepTable runs={sweepRuns} selected={selected} onToggle={toggle} />
+                ) : (
+                  <ul className="m-0 list-none p-0">
+                    {sweepRuns.map((r) => (
+                      <SweepCard
+                        key={r.id}
+                        run={r}
+                        selected={selected.has(r.id)}
+                        onToggle={() => toggle(r.id)}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </Section>
+            ) : null}
 
-        <Section title="Scenario runs">
-          {scenarios.isError ? (
-            <Notice tone="alarm" title="The platform is not reachable">
-              {scenarios.error.message}
-              <br />
-              Start the host with <code className="font-mono">./bin/blackstart</code>, or point the
-              viewer elsewhere with <code className="font-mono">VITE_API_BASE_URL</code>.
-            </Notice>
-          ) : scenarios.isPending ? (
-            <Notice title="Loading scenario runs">
-              Asking the platform for recent scenario executions.
-            </Notice>
-          ) : scenarioRuns.length === 0 ? (
-            <Notice title="No scenario runs recorded">
-              Execute one with <code className="font-mono">bsctl scenario run</code>. The platform
-              is reachable and has nothing to show.
-            </Notice>
-          ) : wide ? (
-            <ScenarioTable runs={scenarioRuns} />
-          ) : (
-            <ul className="m-0 list-none p-0">
-              {scenarioRuns.map((r) => (
-                <ScenarioCard key={r.id} run={r} />
-              ))}
-            </ul>
-          )}
-        </Section>
+            {showScenarios ? (
+              <Section title="Scenario runs">
+                {scenarios.isError ? (
+                  <Notice tone="alarm" title="The platform is not reachable">
+                    {scenarios.error.message}
+                    <br />
+                    Start the host with <code className="font-mono">./bin/blackstart</code>, or
+                    point the viewer elsewhere with{" "}
+                    <code className="font-mono">VITE_API_BASE_URL</code>.
+                  </Notice>
+                ) : scenarios.isPending ? (
+                  <Notice title="Loading scenario runs">
+                    Asking the platform for recent scenario executions.
+                  </Notice>
+                ) : scenarioRuns.length === 0 ? (
+                  <Notice title="No scenario runs recorded">
+                    {search.status === "any"
+                      ? "Execute one with bsctl scenario run. The platform is reachable and has nothing to show."
+                      : `No scenario run is ${search.status}. Widen the status filter to see the rest.`}
+                  </Notice>
+                ) : wide ? (
+                  <ScenarioTable runs={scenarioRuns} />
+                ) : (
+                  <ul className="m-0 list-none p-0">
+                    {scenarioRuns.map((r) => (
+                      <ScenarioCard key={r.id} run={r} />
+                    ))}
+                  </ul>
+                )}
+              </Section>
+            ) : null}
+          </>
+        )}
       </div>
 
       <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-t border-line bg-panel px-3.5 py-2">
@@ -163,17 +215,81 @@ export function RunsScreen(): React.JSX.Element {
   );
 }
 
+/**
+ * The status filter, where it cannot honestly be applied.
+ *
+ * A sweep run carries no status field at all: it is a completed record or it
+ * is not in the listing. Silently filtering it to nothing would claim the
+ * platform answered a question it was never asked, and silently ignoring the
+ * filter would let a reader believe these rows are the `failed` ones. So the
+ * filter is applied to scenario runs, where it is real, and this says out loud
+ * that the sweeps beside them are unfiltered.
+ */
+function StatusNote({ status }: { readonly status: RunsSearch["status"] }): React.JSX.Element {
+  if (status === "any") return <span className="text-fg-4">every sweep on record</span>;
+
+  return (
+    <span className="text-risk-3">
+      unfiltered — a sweep publishes no status, so “{status}” cannot be applied here
+    </span>
+  );
+}
+
+function Segmented<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  readonly label: string;
+  readonly options: readonly T[];
+  readonly value: T;
+  readonly onChange: (next: T) => void;
+}): React.JSX.Element {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className="flex shrink-0 overflow-hidden rounded-[2px] border border-line-2"
+    >
+      {options.map((option) => {
+        const on = option === value;
+
+        return (
+          <button
+            key={option}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => onChange(option)}
+            className={`h-[19px] border-r border-line-2 px-[7px] font-mono text-[9.5px] uppercase tracking-[0.08em] last:border-r-0 ${
+              on ? "bg-panel-3 text-fg" : "text-fg-3"
+            }`}
+          >
+            {option}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function Section({
   title,
+  note,
   children,
 }: {
   readonly title: string;
+  readonly note?: React.ReactNode;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   return (
     <section>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line-t bg-panel-2 px-3 py-1.5">
         <h2 className="m-0 font-mono text-[9px] uppercase tracking-[0.13em] text-fg-2">{title}</h2>
+        {note === undefined ? null : (
+          <span className="font-mono text-[9px] tracking-[0.02em]">{note}</span>
+        )}
       </div>
       {children}
     </section>

@@ -38,8 +38,9 @@ const extentQuery = vi.hoisted(() => ({
 }));
 /**
  * The global, most-recent-first scenario-run listing the index reads. Mocked
- * separately from `runsQuery` because the index now shows both listings at
- * once, and a test about one of them must be able to hold the other still.
+ * separately from `runsQuery` because the index shows both listings at once
+ * under `kind=all`, and a test about one of them must be able to hold the
+ * other still.
  */
 const scenarioQuery = vi.hoisted(() => ({
   current: { data: { runs: [] }, isPending: false, isError: false, error: null } as unknown,
@@ -579,6 +580,10 @@ describe("runs screen", () => {
 
 /**
  * The scenario-run listing — the last gap in the scenario extension's design.
+ *
+ * Every test here drives the screen through the URL rather than through props,
+ * because `kind` and `status` are the URL contract and a filter reachable only
+ * from component state is the state this work exists to fix.
  */
 describe("runs index, scenario runs", () => {
   beforeEach(() => {
@@ -594,7 +599,7 @@ describe("runs index, scenario runs", () => {
     // part of the platform ever computed. Mutating `weatherCoverage` to
     // `run.weatherRated ?? 0` is what this test exists to kill.
     scenarioQuery.current = loaded([SCENARIO_UNRATED]);
-    await renderAt("/runs");
+    await renderAt("/runs?kind=scenario");
 
     expect(screen.getByText("not rated")).toBeTruthy();
     // Not merely "no '0 of 2000'": with `branchCount` absent too, a `?? 0`
@@ -605,7 +610,7 @@ describe("runs index, scenario runs", () => {
   it("prints the zero when the run rated its branches and the weather touched none", async () => {
     // The mirror image, and the direction a falsy check breaks:
     // `if (!run.weatherRated) return "not rated"` erases a real finding.
-    await renderAt("/runs");
+    await renderAt("/runs?kind=scenario");
 
     expect(screen.getByText("0 of 2000")).toBeTruthy();
     expect(screen.queryByText("not rated")).toBeNull();
@@ -613,7 +618,20 @@ describe("runs index, scenario runs", () => {
 
   // ── The listing itself. ─────────────────────────────────────────────────
 
-  it("lists scenario runs beside the sweeps", async () => {
+  it("lists scenario runs when the URL asks for them", async () => {
+    await renderAt("/runs?kind=scenario");
+    expect(screen.getByText(SCENARIO_RATED_ZERO.id)).toBeTruthy();
+    // …and only them: `kind=scenario` is not `kind=all`.
+    expect(screen.queryByText(SWEEP.id)).toBeNull();
+  });
+
+  it("shows only sweeps when the URL asks for sweeps", async () => {
+    await renderAt("/runs?kind=sweep");
+    expect(screen.getByText(SWEEP.id)).toBeTruthy();
+    expect(screen.queryByText(SCENARIO_RATED_ZERO.id)).toBeNull();
+  });
+
+  it("shows both listings by default", async () => {
     await renderAt("/runs");
     expect(screen.getByText(SWEEP.id)).toBeTruthy();
     expect(screen.getByText(SCENARIO_RATED_ZERO.id)).toBeTruthy();
@@ -628,8 +646,29 @@ describe("runs index, scenario runs", () => {
     expect(screen.queryByText(/No sweeps recorded/i)).toBeNull();
   });
 
-  it("links a scenario run into the cascade it produced", async () => {
+  it("admits there is no cascade index rather than falling back to sweeps", async () => {
+    // `kind=cascade` and `kind=validation` are in the URL contract and have no
+    // listing endpoint. Showing sweeps under that URL would be answering a
+    // different question than the link asks.
+    await renderAt("/runs?kind=cascade");
+    expect(screen.getByText(/no cascade run index/i)).toBeTruthy();
+    expect(screen.queryByText(SWEEP.id)).toBeNull();
+    expect(screen.queryByText(SCENARIO_RATED_ZERO.id)).toBeNull();
+  });
+
+  it("offers the kind filter as a control, not only as a URL parameter", async () => {
     await renderAt("/runs");
+    const group = screen.getByRole("radiogroup", { name: /run kind/i });
+    expect(group).toBeTruthy();
+    // "all" is the default and must read as the selected one.
+    expect(screen.getByRole("radio", { name: "all" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: "scenario" }).getAttribute("aria-checked")).toBe(
+      "false",
+    );
+  });
+
+  it("links a scenario run into the cascade it produced", async () => {
+    await renderAt("/runs?kind=scenario");
     const link = screen.getByRole("link", { name: new RegExp(CASCADE.run) });
     // The cascade screen renders a run by id and sits on a time axis, so the
     // link has to carry both, and the valid time is the manifest's own.
@@ -641,17 +680,43 @@ describe("runs index, scenario runs", () => {
 
   it("offers no cascade link for a run that produced no cascade", async () => {
     scenarioQuery.current = loaded([SCENARIO_UNRATED]);
-    await renderAt("/runs");
+    await renderAt("/runs?kind=scenario");
     expect(screen.queryByRole("link", { name: /play back cascade/i })).toBeNull();
   });
 
   it("names the step a failed run stopped at", async () => {
     scenarioQuery.current = loaded([SCENARIO_FAILED]);
-    runsQuery.current = loaded([]);
-    await renderAt("/runs");
+    await renderAt("/runs?kind=scenario");
+    // Scoped to the table: "failed" is also a status the filter control
+    // offers, and a match on the control would prove nothing about the row.
     const row = within(screen.getByRole("table"));
     expect(row.getByText("failed")).toBeTruthy();
     expect(row.getByText("rate")).toBeTruthy();
+  });
+
+  // ── Status: applied where it is real, admitted where it is not. ─────────
+
+  it("filters scenario runs by status", async () => {
+    scenarioQuery.current = loaded([SCENARIO_RATED_ZERO, SCENARIO_FAILED]);
+    await renderAt("/runs?kind=scenario&status=failed");
+    expect(screen.getByText(SCENARIO_FAILED.id)).toBeTruthy();
+    expect(screen.queryByText(SCENARIO_RATED_ZERO.id)).toBeNull();
+  });
+
+  it("says a status filter cannot be applied to sweeps rather than pretending it was", async () => {
+    // A sweep publishes no status at all. Quietly filtering the sweeps to
+    // nothing would claim the platform answered a question nobody asked it;
+    // quietly ignoring the filter would let a reader believe these rows are
+    // the failed ones. The screen says which of the two listings it filtered.
+    await renderAt("/runs?kind=all&status=failed");
+    expect(screen.getByText(/a sweep publishes no status/i)).toBeTruthy();
+    // The sweep is still listed — unfiltered, and labelled as such.
+    expect(screen.getByText(SWEEP.id)).toBeTruthy();
+  });
+
+  it("makes no such claim when no status filter is set", async () => {
+    await renderAt("/runs");
+    expect(screen.queryByText(/a sweep publishes no status/i)).toBeNull();
   });
 });
 
@@ -672,7 +737,7 @@ describe("runs screen, narrow", () => {
     // The narrow layout is a second rendering of the same field, and a second
     // place the `?? 0` could live. `not rated` has to survive the reflow.
     scenarioQuery.current = loaded([SCENARIO_UNRATED]);
-    await renderAt("/runs");
+    await renderAt("/runs?kind=scenario");
     expect(screen.queryByRole("table")).toBeNull();
     expect(screen.getByText("not rated")).toBeTruthy();
     expect(screen.queryByText(/^0 of /)).toBeNull();
