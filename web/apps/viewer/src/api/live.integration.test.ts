@@ -117,12 +117,56 @@ describe.runIf(BASE !== "" && PK !== "")("live platform", () => {
 
     const line = polylineOfSpans(route?.id ?? "", route?.carrierId ?? "", spans.spans);
     expect(line, "spans did not assemble into a drawable path").not.toBeNull();
-    expect(line?.points.length).toBeGreaterThan(1);
+    expect(line?.spans.length).toBeGreaterThan(0);
 
-    for (const p of line?.points ?? []) {
+    for (const p of line?.spans.flatMap((s) => s.points) ?? []) {
       expect(Number.isFinite(p.lat) && Math.abs(p.lat) <= 90).toBe(true);
       expect(Number.isFinite(p.lon) && Math.abs(p.lon) <= 180).toBe(true);
     }
+  }, 30_000);
+
+  it("rates the branch route, not the circuits the console draws first", async () => {
+    // The trap this whole layer is shaped around. A rating belongs to a
+    // branch, because that is what carries a conductor assignment, and most
+    // of the routes on the map carry OSM circuits instead. Looking span ids
+    // up against the routes the console happens to draw first colours nothing
+    // and reads as a rendering fault rather than as a missing join.
+    expect(reachable, `no platform at ${BASE}`).toBe(true);
+
+    const email = `probe-${Date.now()}-hazard@blackstart.test`;
+    const signup = await fetch(`${BASE}/identity/v1/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Publishable-Key": PK },
+      body: JSON.stringify({ email, password: "Correct-Horse-Battery-9" }),
+    });
+
+    const cookie = pairOf(signup.headers.get("set-cookie") ?? "");
+    const client = new RESTClient({ baseURL: BASE, auth: { customHeaders: { Cookie: cookie } } });
+
+    const { assignments } = await client.hazard.assignments.list();
+
+    if (assignments.length === 0) {
+      throw new Error("no conductor assignments exist; nothing can rate, so nothing can be drawn");
+    }
+
+    // Every assignment must resolve to a route, or its ratings exist and
+    // cannot be drawn.
+    for (const assignment of assignments) {
+      const route = await client.geo.branches.route(assignment.branchId);
+
+      expect(route.id, `branch ${assignment.branchId} has a conductor but no route`).toBeTruthy();
+
+      const { spans } = await client.geo.routes.spans(route.id);
+      expect(spans.length, "a rateable route with no spans cannot carry a value").toBeGreaterThan(
+        0,
+      );
+    }
+
+    // The counts the panel reports have to come from somewhere real. A pass
+    // that rates nothing is a finding about the deployment, not a pass.
+    const { computations } = await client.hazard.computations.list();
+    expect(computations.length, "no hazard pass has run").toBeGreaterThan(0);
+    expect(computations[0]?.spans, "the last pass rated no spans").toBeGreaterThan(0);
   }, 30_000);
 
   it("rotates the session without a token from the page", async () => {
