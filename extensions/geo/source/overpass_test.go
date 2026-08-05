@@ -91,6 +91,47 @@ func TestParseOverpassIgnoresNonPowerWays(t *testing.T) {
 	}
 }
 
+func TestATowersClassSurvivesTheRead(t *testing.T) {
+	body := []byte(`{"elements":[
+		{"type":"node","id":1,"lat":30.30,"lon":-97.80,
+		 "tags":{"power":"tower","material":"steel"}},
+		{"type":"node","id":2,"lat":30.30,"lon":-97.7979,
+		 "tags":{"power":"pole"}},
+		{"type":"node","id":3,"lat":30.30,"lon":-97.7958},
+		{"type":"way","id":9,"nodes":[1,2,3],
+		 "tags":{"power":"line","voltage":"138000"}}
+	]}`)
+
+	lines, err := source.ParseOverpass(body)
+	if err != nil {
+		t.Fatalf("ParseOverpass: %v", err)
+	}
+
+	if len(lines) != 1 {
+		t.Fatalf("read %d lines, want 1", len(lines))
+	}
+
+	got := lines[0].Structures
+	if len(got) != 3 {
+		t.Fatalf("read %d structures, want 3", len(got))
+	}
+
+	if got[0].Kind != "tower" || got[0].Material != "steel" {
+		t.Errorf("structure 0 = %+v, want a steel tower", got[0])
+	}
+
+	if got[1].Kind != "pole" || got[1].Material != "" {
+		t.Errorf("structure 1 = %+v, want a pole of unsaid material", got[1])
+	}
+
+	// An untagged vertex is still a point the conductor passes over. It keeps
+	// its position and says nothing about what it is, which is not the same as
+	// claiming it is a tower.
+	if got[2].Kind != "" {
+		t.Errorf("structure 2 has kind %q, want empty", got[2].Kind)
+	}
+}
+
 func TestBoundingBoxRejectsWhatIsNotAnArea(t *testing.T) {
 	for _, tc := range []struct {
 		name string

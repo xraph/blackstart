@@ -31,13 +31,14 @@ type ImportRequest struct {
 	// Path is the digitized right-of-way, in order.
 	Path shape.Line
 
-	// Structures are the recorded structure positions along Path, in order.
+	// Structures are the recorded structures along Path, in order, with
+	// whatever the source said about each.
 	//
 	// Empty when the source publishes lines but not structures, which is the
 	// usual case: the transmission layers republished from HIFLD are polylines
 	// whose vertices are digitizing points, not towers. Supplying them is what
 	// makes the result Surveyed rather than Routed.
-	Structures shape.Line
+	Structures []source.Structure
 
 	// SpanM overrides the nominal distance between interpolated structures.
 	// Ignored when Structures is supplied, because then nothing is being
@@ -93,6 +94,31 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (asset.Route, err
 		return asset.Route{}, fmt.Errorf("geo: storing the imported route for %s: %w", in.CarrierID, err)
 	}
 
+	// Ordinal comes from the loop index, not from any sort: it is the source's
+	// own order, which is the same order resolveGeometry used to build path
+	// and the same order Spans() just numbered above it. The two numbers do
+	// not share a base, though — Ordinal counts from 0 and Span.Sequence
+	// counts from 1 — so the correspondence is an offset, not an equality:
+	// the span with Sequence s is bounded by the structures with Ordinal s-1
+	// and s. Sorting here would break that correspondence silently — nothing
+	// downstream could tell the two orders had diverged.
+	structures := make([]asset.Structure, 0, len(in.Structures))
+
+	for ordinal, recorded := range in.Structures {
+		structures = append(structures, asset.Structure{
+			ID:       gid.NewStructure(),
+			RouteID:  route.ID,
+			Ordinal:  ordinal,
+			Location: recorded.Position,
+			Kind:     recorded.Kind,
+			Material: recorded.Material,
+		})
+	}
+
+	if err := e.store.Structures().Put(ctx, route.ID, structures); err != nil {
+		return asset.Route{}, fmt.Errorf("geo: storing structures: %w", err)
+	}
+
 	e.emit(ctx, route, len(spans))
 
 	return route, nil
@@ -121,7 +147,12 @@ func (e *Engine) resolveGeometry(in ImportRequest) (shape.Line, asset.Provenance
 		return path, asset.Routed, nil
 	}
 
-	if err := in.Structures.Validate(); err != nil {
+	positions := make(shape.Line, len(in.Structures))
+	for index, recorded := range in.Structures {
+		positions[index] = recorded.Position
+	}
+
+	if err := positions.Validate(); err != nil {
 		return nil, "", fmt.Errorf("the supplied structures are not a line: %w", err)
 	}
 
@@ -129,7 +160,7 @@ func (e *Engine) resolveGeometry(in ImportRequest) (shape.Line, asset.Provenance
 	// two towers, so the towers are the vertices. Resampling here would insert
 	// imaginary structures between real ones and quietly downgrade the claim
 	// while still calling it Surveyed.
-	return in.Structures, asset.Surveyed, nil
+	return positions, asset.Surveyed, nil
 }
 
 // ImportLine stores a circuit and its geometry from a published source.

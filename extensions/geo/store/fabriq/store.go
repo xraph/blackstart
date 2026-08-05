@@ -149,6 +149,17 @@ func (r *routes) forget(ctx context.Context, carrier id.ID) error {
 		}
 	}
 
+	// A route's structures belong to it as surely as its spans do. Import
+	// mints a fresh route id on every call, so the structures filed under the
+	// id being forgotten here are the only copy of them — structures.Put's own
+	// cleanup only ever sees the new id, which is empty by construction, and
+	// would otherwise leave this exact set stranded under an id nothing can
+	// look up again. (*structures)(r) is a same-package conversion between two
+	// types over the identical underlying Store, not a second store.
+	if err := (*structures)(r).forget(ctx, existing.ID); err != nil {
+		return err
+	}
+
 	return r.base.Delete(ctx, RouteEntity, existing.ID)
 }
 

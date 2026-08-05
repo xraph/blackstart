@@ -33,5 +33,10 @@ func (Contributor) Specs() []registry.EntitySpec {
 			Kind:  registry.KindAggregate,
 			Model: (*circuitRow)(nil),
 		},
+		{
+			Name:  StructureEntity,
+			Kind:  registry.KindAggregate,
+			Model: (*structureRow)(nil),
+		},
 	}
 }

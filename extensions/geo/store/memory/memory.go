@@ -28,6 +28,14 @@ type Store struct {
 	// than scanned for on every import: an import re-runs over thousands of
 	// lines and a linear scan per line makes it quadratic.
 	byExternal map[externalKey]id.ID
+
+	structures map[id.ID]asset.Structure
+
+	// byRoute is the ordinal-ordered index of structure ids for a route, kept
+	// beside the structures rather than sorted on every read: ForRoute serves
+	// every per-span calculation downstream, and sorting on each call would
+	// make that path quadratic under repeated reads.
+	byRoute map[id.ID][]id.ID
 }
 
 // New builds an empty store.
@@ -37,6 +45,8 @@ func New() *Store {
 		spans:      map[id.ID][]asset.Span{},
 		circuits:   map[id.ID]asset.Circuit{},
 		byExternal: map[externalKey]id.ID{},
+		structures: map[id.ID]asset.Structure{},
+		byRoute:    map[id.ID][]id.ID{},
 	}
 }
 
@@ -82,6 +92,18 @@ func (s *routes) Put(_ context.Context, route asset.Route, spans []asset.Span) e
 		if held.CarrierID == route.CarrierID && existing != route.ID {
 			delete(s.routes, existing)
 			delete(s.spans, existing)
+
+			// A route's structures belong to it as surely as its spans, deleted
+			// above. Import mints a fresh route id on every call, so the
+			// structures filed under the id being replaced here are the only
+			// copy of them — structures.Put's own cleanup only ever sees the
+			// new id, which is empty by construction, and would otherwise leave
+			// this exact set stranded under an id nothing can look up again.
+			for _, structureID := range s.byRoute[existing] {
+				delete(s.structures, structureID)
+			}
+
+			delete(s.byRoute, existing)
 		}
 	}
 

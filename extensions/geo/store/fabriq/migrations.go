@@ -23,6 +23,7 @@ func Group() *migrate.Group {
 	g.MustRegister(migration0001Tables)
 	g.MustRegister(migration0002Carrier)
 	g.MustRegister(migration0003Circuits)
+	g.MustRegister(migration0004Structures)
 
 	return g
 }
@@ -233,5 +234,54 @@ func up0003(ctx context.Context, exec migrate.Executor) error {
 func down0003(ctx context.Context, exec migrate.Executor) error {
 	return execAll(ctx, exec, []string{
 		`DROP TABLE IF EXISTS ` + CircuitTable,
+	})
+}
+
+// Structures are the towers and poles a route stands on. No unique index on
+// (route_id, ordinal): two OpenStreetMap ways meeting at a shared tower each
+// carry a node there, and both are stored — this table counts recorded
+// positions, not distinct towers, so a unique constraint would reject a
+// legitimate import.
+var migration0004Structures = &migrate.Migration{
+	Name:    "geo_structures",
+	Version: "20260804000030",
+	Comment: "structures along a route, in order",
+	Up:      up0004,
+	Down:    down0004,
+}
+
+func up0004(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`CREATE TABLE IF NOT EXISTS ` + StructureTable + ` (
+			id         TEXT PRIMARY KEY,
+			tenant_id  TEXT NOT NULL,
+			version    BIGINT NOT NULL,
+			route_id   TEXT NOT NULL,
+			ordinal    INTEGER NOT NULL,
+			geom_wkt   TEXT NOT NULL,
+			height_m   DOUBLE PRECISION NOT NULL DEFAULT 0,
+			kind       TEXT NOT NULL DEFAULT '',
+			material   TEXT NOT NULL DEFAULT ''
+		)`,
+
+		`CREATE INDEX IF NOT EXISTS ` + StructureTable + `_tenant_idx
+			ON ` + StructureTable + ` (tenant_id)`,
+
+		// Structures are read as a whole route, in order, the same way spans
+		// are. A structure alone says nothing about the line it stands on.
+		`CREATE INDEX IF NOT EXISTS ` + StructureTable + `_route_idx
+			ON ` + StructureTable + ` (tenant_id, route_id, ordinal)`,
+
+		`ALTER TABLE ` + StructureTable + ` ENABLE ROW LEVEL SECURITY`,
+		`ALTER TABLE ` + StructureTable + ` FORCE ROW LEVEL SECURITY`,
+		`DROP POLICY IF EXISTS tenant_isolation ON ` + StructureTable,
+		`CREATE POLICY tenant_isolation ON ` + StructureTable + `
+			USING (tenant_id = current_setting('app.tenant_id', true))`,
+	})
+}
+
+func down0004(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`DROP TABLE IF EXISTS ` + StructureTable,
 	})
 }

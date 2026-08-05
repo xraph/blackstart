@@ -197,6 +197,16 @@ type Structure struct {
 	// ID identifies this structure.
 	ID id.ID `json:"id"`
 
+	// RouteID names the route it stands on.
+	RouteID id.ID `json:"route_id"`
+
+	// Ordinal orders structures along that route from its first end.
+	//
+	// A span is bounded by consecutive structures, and consecutive means
+	// nothing without an order — so this is what makes the set a line rather
+	// than a scatter of points near one.
+	Ordinal int `json:"ordinal"`
+
 	// Location is where it stands.
 	Location shape.Point `json:"location"`
 
@@ -207,6 +217,26 @@ type Structure struct {
 	// the vocabularies differ per source and forcing them into one enumeration
 	// would discard the distinction the source drew.
 	Kind string `json:"kind"`
+
+	// Material is what it is built of: "steel". Free text for the reason Kind
+	// is, and empty far more often — the phase-3 survey found 185 of 1,163
+	// sampled structures carrying one.
+	Material string `json:"material"`
+}
+
+// Validate reports whether a structure can be stored.
+func (s Structure) Validate() error {
+	if s.ID.IsZero() || s.RouteID.IsZero() {
+		return fmt.Errorf("%w: a structure needs both identifiers", bserr.ErrInvalid)
+	}
+
+	if s.Ordinal < 0 {
+		return fmt.Errorf(
+			"%w: structure %s has ordinal %d; position along a route counts "+
+				"from its first end", bserr.ErrInvalid, s.ID, s.Ordinal)
+	}
+
+	return s.Location.Validate()
 }
 
 // Circuit is a transmission line somebody actually built.

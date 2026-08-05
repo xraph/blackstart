@@ -6,6 +6,7 @@ import (
 
 	"github.com/xraph/blackstart/extensions/geo/asset"
 	gid "github.com/xraph/blackstart/extensions/geo/id"
+	"github.com/xraph/blackstart/extensions/geo/shape"
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
 )
@@ -105,5 +106,47 @@ func TestOnlyABranchCarriesElectrically(t *testing.T) {
 
 	if asset.CarriesElectrically(id.MustNew("circ")) {
 		t.Error("a circuit has no electrical parameters and must not be solvable")
+	}
+}
+
+func TestAStructureNeedsARouteAndAPlaceOnIt(t *testing.T) {
+	loose := asset.Structure{
+		ID:       gid.NewStructure(),
+		Location: shape.Point{Lon: -97.8, Lat: 30.3},
+	}
+
+	if err := loose.Validate(); err == nil {
+		t.Fatal("a structure on no route validated; a tower that stands on " +
+			"nothing is not part of any line")
+	}
+}
+
+func TestAStructureKeepsWhatTheSourceSaid(t *testing.T) {
+	structure := asset.Structure{
+		ID:       gid.NewStructure(),
+		RouteID:  gid.NewRoute(),
+		Ordinal:  0,
+		Location: shape.Point{Lon: -97.8, Lat: 30.3},
+		Kind:     "tower",
+		Material: "steel",
+	}
+
+	if err := structure.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+}
+
+func TestAnUnclassedStructureIsStillValid(t *testing.T) {
+	// 2.2% of OSM line-way vertices carry no class. They are still positions
+	// the conductor passes over, and refusing them would drop real geometry to
+	// avoid an empty string.
+	structure := asset.Structure{
+		ID:       gid.NewStructure(),
+		RouteID:  gid.NewRoute(),
+		Location: shape.Point{Lon: -97.8, Lat: 30.3},
+	}
+
+	if err := structure.Validate(); err != nil {
+		t.Fatalf("an unclassed structure was refused: %v", err)
 	}
 }
