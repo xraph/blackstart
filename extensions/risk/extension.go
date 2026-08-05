@@ -21,7 +21,7 @@ import (
 	"github.com/xraph/blackstart/pkg/hooks"
 )
 
-// Guarded at compile time. A reviewer matched these four method signatures
+// Guarded at compile time. A reviewer matched these five method signatures
 // against *hazard.Engine, *weather.Engine and *geo.Engine by hand; nothing
 // short of the compiler catches the next drift, and until this extension was
 // wired in, a mismatch would have surfaced at runtime — the first time
