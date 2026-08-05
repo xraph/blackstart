@@ -15,6 +15,16 @@ const (
 	// exist with their own identifiers — this extension computes about things
 	// rather than creating them.
 	Computation id.Prefix = "rskcmp"
+
+	// Value is one stored row of a computed probability series.
+	//
+	// This is row identity, not domain identity: ComponentValue names no
+	// identifier of its own, and nothing outside the store ever reads this
+	// one back. It exists because Fabriq's structural contract requires every
+	// managed table to carry one, the same reason a computation does — see
+	// Computation above for why that identifier is minted here rather than
+	// borrowed from the component it is about.
+	Value id.Prefix = "rskval"
 )
 
 //nolint:gochecknoinits // prefix registration is init-time by design
@@ -24,6 +34,7 @@ func init() {
 		name   string
 	}{
 		{Computation, "Computation"},
+		{Value, "Value"},
 	} {
 		id.MustRegister(p.prefix, Owner, p.name)
 	}
@@ -34,3 +45,6 @@ func NewComputation() id.ID { return id.MustNew(Computation) }
 
 // ParseComputation reads a computation identifier, rejecting any other type.
 func ParseComputation(s string) (id.ID, error) { return id.ParseWithPrefix(s, Computation) }
+
+// NewValue mints a value-row identifier.
+func NewValue() id.ID { return id.MustNew(Value) }
