@@ -125,11 +125,10 @@ describe.runIf(BASE !== "" && PK !== "")("live platform", () => {
     }
   }, 30_000);
 
-  it("rates the branch route, not the circuits the console draws first", async () => {
-    // The trap this whole layer is shaped around. A rating belongs to a
-    // branch, because that is what carries a conductor assignment, and most
-    // of the routes on the map carry OSM circuits instead. Looking span ids
-    // up against the routes the console happens to draw first colours nothing
+  it("resolves every assignment to a route with spans", async () => {
+    // The trap this layer is shaped around. A rating belongs to a carrier, and
+    // a carrier is not the route the console draws — it is what the route
+    // carries. Looking span ids up against the routes directly colours nothing
     // and reads as a rendering fault rather than as a missing join.
     expect(reachable, `no platform at ${BASE}`).toBe(true);
 
