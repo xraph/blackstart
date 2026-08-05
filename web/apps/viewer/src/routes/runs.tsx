@@ -18,7 +18,7 @@
  */
 
 import { useNavigate } from "@tanstack/react-router";
-import { useContingencyRunsList, type SweepRun } from "@blackstart/api-client";
+import { useContingencyRunsList, type Run as SweepRun } from "@blackstart/api-client";
 import { RAIL_BREAKPOINT, useMediaQuery } from "@blackstart/ui";
 
 import { runsRoute } from "../router";
