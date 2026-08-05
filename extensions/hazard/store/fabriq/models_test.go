@@ -191,7 +191,7 @@ func TestTheSeriesTableCarriesEveryColumnBulkWriteNames(t *testing.T) {
 func TestAssignmentModelNamesTheCarrierColumn(t *testing.T) {
 	t.Parallel()
 
-	field, ok := reflect.TypeOf(assignmentModel{}).FieldByName("CarrierID")
+	field, ok := reflect.TypeFor[assignmentModel]().FieldByName("CarrierID")
 	if !ok {
 		t.Fatal("assignmentModel has no CarrierID field")
 	}
