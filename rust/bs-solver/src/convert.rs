@@ -168,6 +168,24 @@ pub fn apply_overrides(case: &mut Case, overrides: &[proto::Override]) {
                     branch.rating = rating.rating_va / s_base;
                 }
             }
+            // `None` is not only an override that set no change. prost decodes
+            // an unrecognized oneof member into `None`, so this arm is also
+            // every override a NEWER caller sends that this binary does not
+            // know about — and it discards them without a word.
+            //
+            // That is how a rolling deploy misleads: a caller that sends
+            // `BranchRating` to a pod built before member 3 existed gets a
+            // clean response computed entirely on the ratings in the uploaded
+            // model, with nothing in it to say the weather never arrived.
+            //
+            // It cannot be fixed by failing here — this binary genuinely
+            // cannot tell an empty override from a future one, and rejecting
+            // both would refuse the empty case the field's own absence
+            // describes. It needs the response to state how many overrides
+            // were applied, so a caller can compare that against what it sent.
+            // Until then callers cannot detect the skew either; the scenario
+            // extension documents the same hole from its end, at the
+            // `SolverVersion` assignment in `extensions/scenario/execute.go`.
             None => {}
         }
     }
