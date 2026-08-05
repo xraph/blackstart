@@ -157,6 +157,11 @@ func ParseArcGIS(body []byte, origin string) ([]Line, error) {
 				external = fmt.Sprintf("%s#%d", external, pathIndex)
 			}
 
+			// No structures. This layer's vertices are digitizing points, not
+			// towers: the phase-3 survey measured gaps of over 40 km between
+			// consecutive ones, which no conductor crosses unsupported. Emitting
+			// them as classless structures would put a tower's fragility curve on
+			// a 40 km "span".
 			out = append(out, Line{
 				ExternalID: external,
 				Source:     origin,

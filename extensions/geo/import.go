@@ -167,10 +167,18 @@ func (e *Engine) ImportLine(ctx context.Context, line source.Line) (asset.Circui
 			"geo: reconciling %s from %s: %w", line.ExternalID, line.Source, err)
 	}
 
+	// ImportRequest wants positions: what an imported route's geometry may
+	// claim turns on whether structures exist, not on what the source called
+	// them.
+	structures := make(shape.Line, len(line.Structures))
+	for index, structure := range line.Structures {
+		structures[index] = structure.Position
+	}
+
 	route, err := e.Import(ctx, ImportRequest{
 		CarrierID:  circuit.ID,
 		Path:       line.Path,
-		Structures: line.Structures,
+		Structures: structures,
 	})
 	if err != nil {
 		return asset.Circuit{}, asset.Route{}, err

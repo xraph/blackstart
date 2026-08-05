@@ -194,11 +194,16 @@ func TestImportedStructuresBecomeTheVerticesThemselves(t *testing.T) {
 
 	towers := rightOfWay()
 
+	structures := make([]source.Structure, len(towers))
+	for index, position := range towers {
+		structures[index] = source.Structure{Position: position}
+	}
+
 	circuit, route, err := e.ImportLine(t.Context(), source.Line{
 		ExternalID: "way/318827441",
 		Source:     "openstreetmap",
 		Path:       towers,
-		Structures: towers,
+		Structures: structures,
 	})
 	if err != nil {
 		t.Fatalf("ImportLine: %v", err)

@@ -159,11 +159,15 @@ func ParseOverpass(body []byte) ([]Line, error) {
 		return nil, fmt.Errorf("source: overpass returned a remark: %s", parsed.Remark)
 	}
 
-	nodes := make(map[int64]shape.Point, len(parsed.Elements))
+	nodes := make(map[int64]Structure, len(parsed.Elements))
 
 	for _, element := range parsed.Elements {
 		if element.Type == "node" {
-			nodes[element.ID] = shape.Point{Lon: element.Lon, Lat: element.Lat}
+			nodes[element.ID] = Structure{
+				Position: shape.Point{Lon: element.Lon, Lat: element.Lat},
+				Kind:     element.Tags["power"],
+				Material: element.Tags["material"],
+			}
 		}
 	}
 
@@ -175,20 +179,22 @@ func ParseOverpass(body []byte) ([]Line, error) {
 		}
 
 		points := make(shape.Line, 0, len(element.Nodes))
+		structures := make([]Structure, 0, len(element.Nodes))
 
 		for _, ref := range element.Nodes {
-			point, ok := nodes[ref]
+			structure, ok := nodes[ref]
 			if !ok {
 				// A way referencing a node the response did not carry is
-				// truncated. Dropping the point would silently shorten the
+				// skipped whole. Dropping the point would silently shorten the
 				// span either side of it and move a structure that is really
-				// there, so the whole way is skipped.
+				// there.
 				points = nil
 
 				break
 			}
 
-			points = append(points, point)
+			points = append(points, structure.Position)
+			structures = append(structures, structure)
 		}
 
 		if len(points) < 2 {
@@ -202,7 +208,7 @@ func ParseOverpass(body []byte) ([]Line, error) {
 			// claim: in OSM the vertices of a power line *are* its towers, so
 			// there is nothing to interpolate between them.
 			Path:       points,
-			Structures: points,
+			Structures: structures,
 			VoltageKV:  voltageKV(element.Tags["voltage"]),
 			Owner:      element.Tags["operator"],
 		})

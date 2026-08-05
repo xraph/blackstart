@@ -31,6 +31,25 @@ type Fetcher interface {
 	Fetch(ctx context.Context, box BoundingBox, limit int) ([]Line, error)
 }
 
+// Structure is a recorded structure position with whatever the source said
+// about it.
+//
+// A position alone was what this used to be, and it is why the class tags on
+// an OSM tower reached this package and died here.
+type Structure struct {
+	// Position is where it stands.
+	Position shape.Point
+
+	// Kind is what the source called it: "tower", "pole", "portal". Empty
+	// when the source did not say, which is different from a default.
+	Kind string
+
+	// Material is what the source said it is built of: "steel". Empty when
+	// unsaid, which is most of the time — the phase-3 survey measured 185 of
+	// 1,163 structures carrying one.
+	Material string
+}
+
 // Line is one circuit as a source published it.
 type Line struct {
 	// ExternalID is the identifier the source used.
@@ -46,9 +65,10 @@ type Line struct {
 	// Path is the digitized right-of-way, in order.
 	Path shape.Line
 
-	// Structures are recorded structure positions, in order, when the source
-	// publishes them. Empty for a line layer.
-	Structures shape.Line
+	// Structures are recorded structure positions and what the source said
+	// about each, in order, when the source publishes them. Empty for a line
+	// layer whose vertices are digitizing points rather than structures.
+	Structures []Structure
 
 	// Voltage is the nominal voltage in kilovolts, zero when the source did
 	// not say. Not used for geometry; carried so an importer can filter to the
@@ -73,7 +93,15 @@ func (l Line) Validate() error {
 	}
 
 	if len(l.Structures) > 0 {
-		if err := l.Structures.Validate(); err != nil {
+		// Validated as positions, the same as Path: a structure's Kind and
+		// Material are opinions the source offered, not something that can be
+		// off the earth.
+		positions := make(shape.Line, len(l.Structures))
+		for index, structure := range l.Structures {
+			positions[index] = structure.Position
+		}
+
+		if err := positions.Validate(); err != nil {
 			return fmt.Errorf("source: line %s structures: %w", l.ExternalID, err)
 		}
 	}
