@@ -106,7 +106,7 @@ func (a *SpanAmpacities) Ampacities(
 	for _, value := range values {
 		// Checked rather than trusted to the window. A store whose read is
 		// inclusive at the far end, or one that rounds a timestamp to the
-		// resolution of its column, would return a neighbouring forecast hour
+		// resolution of its column, would return a neighboring forecast hour
 		// that the caller cannot tell apart from the pinned one.
 		if !value.ValidAt.Equal(validAt) {
 			continue
