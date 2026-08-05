@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/xraph/fabriq"
 
@@ -28,12 +29,24 @@ import (
 // extensions declare a dependency on it.
 const ExtensionName = "scenario"
 
-// Extension hosts the scenario engine in the Forge application.
+// Extension hosts the scenario engine and its run queue in the Forge
+// application.
 type Extension struct {
 	*forge.BaseExtension
 
 	store  scnstore.Store
 	engine *Engine
+
+	// runWorker drains the queue in this process. The server does; bsctl does
+	// not, for the reason it does not drain the outbox either — a short-lived
+	// command should not claim a run it will abandon partway through.
+	runWorker bool
+
+	// Worker lifecycle, guarded by the same mutex. Used only by runner.go,
+	// declared here because a struct's fields cannot live in two files.
+	mu     sync.Mutex
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 // Option configures the extension.
@@ -48,6 +61,17 @@ type Option func(*Extension)
 // because the thing that knew it was the person who typed it.
 func WithStore(s scnstore.Store) Option {
 	return func(e *Extension) { e.store = s }
+}
+
+// WithWorker starts the queue drainer in this process.
+//
+// One flag and no interval. DefaultWorkerInterval is not configuration: the
+// queue is durable state that a tick either finds work in or does not, so the
+// cost of asking often is one Claim query against an index built for it —
+// there is no remote call to pace and nothing for an operator to tune away
+// from.
+func WithWorker(enabled bool) Option {
+	return func(e *Extension) { e.runWorker = enabled }
 }
 
 // New builds the extension.
