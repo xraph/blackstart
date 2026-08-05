@@ -253,3 +253,28 @@ func TestABusThatStatesNoNominalVoltageSendsNone(t *testing.T) {
 		}
 	}
 }
+
+// An infinity is not a voltage, and it used to pass this boundary. The guard
+// here was `> 0`, which +Inf satisfies — so a bus whose voltage had been
+// computed by division crossed onto the wire, and the failure surfaced two
+// packages later in the viewer, where encoding/json refuses to marshal one.
+// Now the bus decides, with the same predicate the rest of the system uses.
+func TestAnUnusableNominalVoltageDoesNotReachTheWire(t *testing.T) {
+	for name, volts := range map[string]float64{
+		"positive infinity": math.Inf(1),
+		"negative infinity": math.Inf(-1),
+		"negative":          -138e3,
+		"not a number":      math.NaN(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			in := twoBus()
+			in.Buses[0].VNominalV = volts
+
+			got := build(t, in)
+
+			if bus := got.GetBuses()[0]; bus.VNominalV != nil {
+				t.Errorf("%v V crossed onto the wire as %v", volts, bus.GetVNominalV())
+			}
+		})
+	}
+}

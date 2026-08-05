@@ -108,6 +108,40 @@ type Bus struct {
 	VNominalV float64
 }
 
+// StatedNominalV is the voltage this bus states it sits at, and whether it
+// states one at all.
+//
+// The one definition of "stated", on the type that owns the field, because
+// there were three: two consumers checked `> 0` and one checked `> 0` and
+// finite, so a bus holding +Inf — which a builder computing a voltage by
+// division produces — read as *stated* in two of the three. It would have
+// crossed the wire, reached the viewer, and failed there in encoding/json,
+// which refuses to marshal an infinity: an error naming JSON rather than
+// voltage, from an endpoint, about a bus nobody was looking at.
+//
+// Zero is the absent value and is not the only one refused. Any non-positive
+// or non-finite number is a bus that states nothing: there is no bus at zero
+// volts, none at a negative voltage, and none at an infinite one, so none of
+// them is a measurement that could be confused with a real reading.
+func (b Bus) StatedNominalV() (float64, bool) {
+	return StatedNominalV(b.VNominalV)
+}
+
+// StatedNominalV is the same predicate as the method above, for a caller
+// holding the volts without a canonical.Bus around them.
+//
+// It exists because the solver's wire type is generated and cannot carry a
+// method, and extensions/scenario reads the voltage off that type — so the
+// alternative to exporting this is scenario spelling the rule a fourth time,
+// which is what the method exists to stop.
+func StatedNominalV(volts float64) (float64, bool) {
+	if volts > 0 && !math.IsInf(volts, 1) {
+		return volts, true
+	}
+
+	return 0, false
+}
+
 // Branch is the physics of one branch.
 type Branch struct {
 	// ID is the stable identifier, which fixes ordering.
@@ -179,6 +213,10 @@ func Encode(m Model) ([]byte, error) {
 			return nil, fmt.Errorf("canonical: bus %q appears twice", bus.ID)
 		}
 
+		if err := checkNominalV(bus); err != nil {
+			return nil, err
+		}
+
 		index[bus.ID] = uint32(position)
 	}
 
@@ -209,6 +247,37 @@ func Encode(m Model) ([]byte, error) {
 	}
 
 	return out, nil
+}
+
+// checkNominalV refuses a nominal voltage that no bus could have.
+//
+// Zero is legal and means the bus states none. Everything else non-positive or
+// non-finite is refused rather than tolerated, and the reason is the hash
+// rather than the physics. Every consumer reads −138 kV, NaN and +Inf as
+// "states nothing" — the same as zero — so a model carrying one behaves
+// identically to the model with a zero there, and hashes differently. That is
+// the deduplication collision the field was hashed to prevent, running
+// backwards: two networks nobody can tell apart, stored as two, with two
+// content hashes and two sets of results citing them.
+//
+// Refused at Encode rather than at the importer because Encode is what every
+// path goes through. A model assembled in memory and hashed without ever
+// touching a file would otherwise skip the check entirely.
+func checkNominalV(b Bus) error {
+	if b.VNominalV == 0 {
+		return nil
+	}
+
+	if _, stated := b.StatedNominalV(); !stated {
+		return fmt.Errorf(
+			"canonical: bus %q states a nominal voltage of %v V, which no bus "+
+				"can be at; zero is how a bus says it states none, and every "+
+				"other unusable value reads as zero downstream while hashing "+
+				"to a different model",
+			b.ID, b.VNominalV)
+	}
+
+	return nil
 }
 
 // Hash is the content hash of a model, hex-encoded lowercase.

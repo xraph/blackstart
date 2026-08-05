@@ -114,12 +114,12 @@ func busOf(bus canonical.Bus, sBase, vBase, zBase float64) *solverv1.Bus {
 	// and multiplying it by vBase — which every line above does — would put a
 	// 138 kV bus at 19 gigavolts.
 	//
-	// Absent stays absent. Zero in the canonical model means the bus states no
-	// nominal voltage, and sending a zero rather than nothing would be read
-	// downstream as a bus at zero volts: a rating of nothing, which every
-	// consumer treats as unrated and skips.
-	if bus.VNominalV > 0 {
-		nominal := bus.VNominalV
+	// Absent stays absent, and what counts as absent is the bus's own
+	// judgement rather than a comparison spelled here. Sending a zero — or an
+	// infinity, which this used to let through — rather than nothing would be
+	// read downstream as a bus at that voltage: a rating of nothing, or one
+	// that cannot be encoded at all.
+	if nominal, stated := bus.StatedNominalV(); stated {
 		out.VNominalV = &nominal
 	}
 

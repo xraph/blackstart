@@ -267,3 +267,93 @@ func TestOnlyPhysicsIsEncoded(t *testing.T) {
 		}
 	}
 }
+
+// One definition of "states a voltage", because there were three and +Inf
+// passed two of them. A builder computing a nominal voltage by division
+// produces +Inf, and a model carrying one used to hash, store, cross the wire
+// and reach the viewer — where encoding/json refuses to marshal an infinity
+// and the endpoint fails with an error naming JSON rather than voltage.
+func TestOnlyAUsableVoltageCountsAsStated(t *testing.T) {
+	cases := map[string]struct {
+		volts  float64
+		stated bool
+	}{
+		"a real voltage": {138e3, true},
+		"the smallest":   {math.SmallestNonzeroFloat64, true},
+		"unstated":       {0, false},
+		"negative":       {-138e3, false},
+		"negative zero":  {math.Copysign(0, -1), false},
+		"positive infin": {math.Inf(1), false},
+		"negative infin": {math.Inf(-1), false},
+		"not a number":   {math.NaN(), false},
+	}
+
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			volts, stated := canonical.Bus{ID: "b", VNominalV: c.volts}.StatedNominalV()
+
+			if stated != c.stated {
+				t.Errorf("stated = %v, want %v for %v V", stated, c.stated, c.volts)
+			}
+
+			// An unstated bus reports zero rather than the unusable value, so
+			// a caller that ignores the second return cannot convert against
+			// an infinity by accident.
+			if !stated && volts != 0 {
+				t.Errorf("an unstated bus reported %v V, want 0", volts)
+			}
+
+			if stated && volts != c.volts {
+				t.Errorf("a stated bus reported %v V, want %v", volts, c.volts)
+			}
+		})
+	}
+}
+
+// A nominal voltage no bus could have is refused rather than hashed.
+//
+// Every consumer reads −138 kV, NaN and +Inf the same way it reads zero: the
+// bus states nothing. So a model carrying one behaves identically to the model
+// with a zero there and hashes differently — two networks nobody can tell
+// apart, stored as two rows with two content hashes. That is the deduplication
+// collision this field was hashed to prevent, running backwards.
+func TestAnImpossibleNominalVoltageIsRefused(t *testing.T) {
+	for name, volts := range map[string]float64{
+		"negative":          -138e3,
+		"positive infinity": math.Inf(1),
+		"negative infinity": math.Inf(-1),
+		"not a number":      math.NaN(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := model()
+			m.Buses[1].VNominalV = volts
+
+			_, err := canonical.Encode(m)
+			if err == nil {
+				t.Fatalf("Encode accepted a bus at %v V", volts)
+			}
+
+			// Named, because a model has two thousand buses and "invalid
+			// voltage" sends a reader to look through all of them.
+			if !strings.Contains(err.Error(), "bus-b") {
+				t.Errorf("message %q does not name the bus", err)
+			}
+		})
+	}
+}
+
+// Zero stays legal, and it has to: it is how a bus says it states none, and
+// every model built before the field existed has it on every bus.
+func TestAnUnstatedNominalVoltageStillEncodes(t *testing.T) {
+	m := model()
+
+	for _, bus := range m.Buses {
+		if bus.VNominalV != 0 {
+			t.Fatalf("the fixture states a voltage for %s", bus.ID)
+		}
+	}
+
+	if _, err := canonical.Encode(m); err != nil {
+		t.Errorf("Encode refused a model whose buses state no voltage: %v", err)
+	}
+}

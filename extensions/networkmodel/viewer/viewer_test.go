@@ -1,6 +1,8 @@
 package viewer_test
 
 import (
+	"encoding/json"
+	"math"
 	"testing"
 
 	"github.com/xraph/blackstart/extensions/networkmodel/canonical"
@@ -58,5 +60,39 @@ func TestABusThatStatesNoVoltageFallsBackToTheModelBase(t *testing.T) {
 	if got.Buses.NominalKV[2] != 230 {
 		t.Errorf("bus-3 is drawn at %v kV, want the model base's 230",
 			got.Buses.NominalKV[2])
+	}
+}
+
+// The payload is marshaled by encoding/json, which returns an error for an
+// infinity rather than emitting one — so a single bus holding +Inf would fail
+// the whole viewer endpoint, with a message naming JSON rather than voltage,
+// about a bus nobody was looking at. It falls back instead.
+func TestAnUnusableNominalVoltageIsNotDrawn(t *testing.T) {
+	for name, volts := range map[string]float64{
+		"positive infinity": math.Inf(1),
+		"negative infinity": math.Inf(-1),
+		"negative":          -138e3,
+		"not a number":      math.NaN(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			model := mixedVoltage()
+			model.Buses[1].VNominalV = volts
+
+			got, err := viewer.Build("m", "h", model, nil)
+			if err != nil {
+				t.Fatalf("Build: %v", err)
+			}
+
+			// The model base, because the bus states nothing usable.
+			if kv := got.Buses.NominalKV[1]; kv != 345 {
+				t.Errorf("bus-2 is drawn at %v kV, want the base's 345", kv)
+			}
+
+			// And the whole payload still marshals, which is the failure this
+			// prevents rather than the value it corrects.
+			if _, err := json.Marshal(got); err != nil {
+				t.Errorf("the payload no longer marshals: %v", err)
+			}
+		})
 	}
 }

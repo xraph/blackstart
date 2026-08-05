@@ -112,12 +112,13 @@ func Build(modelID, contentHash string, model canonical.Model, at Placement) (Mo
 		out.Buses.IDs = append(out.Buses.IDs, bus.ID)
 		out.Buses.Names = append(out.Buses.Names, bus.ID)
 
-		// Non-positive means the bus states none, not that it sits at zero
-		// volts — a bus drawn at zero would be colored as though it were a
-		// voltage level of its own.
+		// The bus decides whether it states a voltage; this only decides what
+		// to draw when it does not. A bus drawn at zero would be colored as a
+		// voltage level of its own, and one drawn at an infinity would take
+		// the whole payload down in encoding/json, which cannot marshal one.
 		nominalKV := fallbackKV
-		if bus.VNominalV > 0 {
-			nominalKV = bus.VNominalV / 1e3
+		if volts, stated := bus.StatedNominalV(); stated {
+			nominalKV = volts / 1e3
 		}
 
 		out.Buses.NominalKV = append(out.Buses.NominalKV, nominalKV)

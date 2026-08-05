@@ -17,6 +17,7 @@ import (
 
 	"github.com/xraph/blackstart/extensions/geo"
 	"github.com/xraph/blackstart/extensions/geo/asset"
+	"github.com/xraph/blackstart/extensions/networkmodel/canonical"
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
 	"github.com/xraph/blackstart/pkg/quantity"
@@ -251,11 +252,13 @@ func branchVolts(
 	buses := model.GetBuses()
 
 	if from := int(branch.GetFromBus()); from >= 0 && from < len(buses) {
-		// Absent is nil on the wire and reads as zero through the getter, and
-		// a non-positive or infinite voltage is not a bus that sits at nothing
-		// — it is a bus that states nothing. Converting against it would emit
-		// a rating of zero, which every consumer reads as unrated and skips.
-		if volts := buses[from].GetVNominalV(); volts > 0 && !math.IsInf(volts, 0) {
+		// The same predicate the canonical model applies on the way out, not a
+		// second spelling of it: absent is nil on the wire and reads as zero
+		// through the getter, and zero, negative and infinite all mean a bus
+		// that states nothing rather than one that sits at nothing.
+		// Converting against any of them emits a rating of zero or one that
+		// cannot be encoded, and a zero rating is read everywhere as unrated.
+		if volts, stated := canonical.StatedNominalV(buses[from].GetVNominalV()); stated {
 			return volts, false
 		}
 	}
