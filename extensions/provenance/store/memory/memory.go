@@ -23,7 +23,7 @@ type Store struct {
 
 	datasets map[id.ID]record.DatasetVersion
 	models   map[id.ID]record.ModelVersion
-	runs     map[id.ID]record.Run
+	runs     map[id.ID]record.ProvenanceRun
 	lineage  []record.Lineage
 
 	// byHash indexes datasets by content hash, because "have we already
@@ -37,7 +37,7 @@ func New() *Store {
 	return &Store{
 		datasets: map[id.ID]record.DatasetVersion{},
 		models:   map[id.ID]record.ModelVersion{},
-		runs:     map[id.ID]record.Run{},
+		runs:     map[id.ID]record.ProvenanceRun{},
 		byHash:   map[string]id.ID{},
 	}
 }
@@ -160,23 +160,23 @@ func (s *records) GetModel(_ context.Context, want id.ID) (record.ModelVersion, 
 }
 
 // CreateRun records an execution.
-func (s *records) CreateRun(_ context.Context, in record.Run) (record.Run, error) {
+func (s *records) CreateRun(_ context.Context, in record.ProvenanceRun) (record.ProvenanceRun, error) {
 	if err := in.Validate(); err != nil {
-		return record.Run{}, err
+		return record.ProvenanceRun{}, err
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, exists := s.runs[in.ID]; exists {
-		return record.Run{}, fmt.Errorf(
+		return record.ProvenanceRun{}, fmt.Errorf(
 			"%w: run %s already exists", bserr.ErrConflict, in.ID)
 	}
 
 	// A run naming a producer that was never recorded would be a broken chain,
 	// and a broken chain is worse than a missing one: it looks traceable.
 	if _, ok := s.models[in.ModelVersionID]; !ok {
-		return record.Run{}, fmt.Errorf(
+		return record.ProvenanceRun{}, fmt.Errorf(
 			"%w: run %s names model version %s, which was never recorded",
 			bserr.ErrInvalid, in.ID, in.ModelVersionID)
 	}
@@ -187,13 +187,13 @@ func (s *records) CreateRun(_ context.Context, in record.Run) (record.Run, error
 }
 
 // GetRun retrieves one execution.
-func (s *records) GetRun(_ context.Context, want id.ID) (record.Run, error) {
+func (s *records) GetRun(_ context.Context, want id.ID) (record.ProvenanceRun, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	found, ok := s.runs[want]
 	if !ok {
-		return record.Run{}, fmt.Errorf("%w: run %s", bserr.ErrNotFound, want)
+		return record.ProvenanceRun{}, fmt.Errorf("%w: run %s", bserr.ErrNotFound, want)
 	}
 
 	return found, nil

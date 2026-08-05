@@ -289,7 +289,7 @@ func modelFromModel(m modelModel) (record.ModelVersion, error) {
 	return out, nil
 }
 
-func runToModel(in record.Run) *runModel {
+func runToModel(in record.ProvenanceRun) *runModel {
 	return &runModel{
 		ID:             in.ID.String(),
 		ModelVersionID: in.ModelVersionID.String(),
@@ -301,19 +301,19 @@ func runToModel(in record.Run) *runModel {
 	}
 }
 
-func runFromModel(m runModel) (record.Run, error) {
+func runFromModel(m runModel) (record.ProvenanceRun, error) {
 	parsed, err := id.Parse(m.ID)
 	if err != nil {
-		return record.Run{}, fmt.Errorf("provenance: stored run id %q: %w", m.ID, err)
+		return record.ProvenanceRun{}, fmt.Errorf("provenance: stored run id %q: %w", m.ID, err)
 	}
 
 	producer, err := id.Parse(m.ModelVersionID)
 	if err != nil {
-		return record.Run{}, fmt.Errorf(
+		return record.ProvenanceRun{}, fmt.Errorf(
 			"provenance: stored model version id %q on run %s: %w", m.ModelVersionID, m.ID, err)
 	}
 
-	out := record.Run{
+	out := record.ProvenanceRun{
 		ID:             parsed,
 		ModelVersionID: producer,
 		Kind:           m.Kind,

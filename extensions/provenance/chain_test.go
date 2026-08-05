@@ -19,7 +19,7 @@ func TestARunCannotNameAProducerThatDoesNotExist(t *testing.T) {
 	e := engine(t, nil)
 
 	_, err := e.RecordRun(t.Context(),
-		record.Run{ModelVersionID: pvid.NewModel(), Kind: "powerflow"}, nil)
+		record.ProvenanceRun{ModelVersionID: pvid.NewModel(), Kind: "powerflow"}, nil)
 
 	if err == nil {
 		t.Fatal("RecordRun accepted a run naming a producer that was never recorded")
@@ -41,7 +41,7 @@ func TestADanglingInputNamesTheRunItBroke(t *testing.T) {
 	}
 
 	_, err = e.RecordRun(t.Context(),
-		record.Run{ModelVersionID: solver.ID, Kind: "powerflow"},
+		record.ProvenanceRun{ModelVersionID: solver.ID, Kind: "powerflow"},
 		[]provenance.Input{{DatasetVersionID: pvid.NewDataset(), Role: record.RoleInput}},
 	)
 
@@ -65,7 +65,7 @@ func TestARunWithNoInputsIsStillReproducible(t *testing.T) {
 	}
 
 	run, err := e.RecordRun(t.Context(),
-		record.Run{ModelVersionID: solver.ID, Kind: "powerflow"}, nil)
+		record.ProvenanceRun{ModelVersionID: solver.ID, Kind: "powerflow"}, nil)
 	if err != nil {
 		t.Fatalf("RecordRun: %v", err)
 	}

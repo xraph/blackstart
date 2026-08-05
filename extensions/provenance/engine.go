@@ -39,7 +39,7 @@ type Recorder interface {
 	RecordModel(ctx context.Context, in record.ModelVersion) (record.ModelVersion, error)
 
 	// RecordRun notes one execution and the inputs it read.
-	RecordRun(ctx context.Context, in record.Run, inputs []Input) (record.Run, error)
+	RecordRun(ctx context.Context, in record.ProvenanceRun, inputs []Input) (record.ProvenanceRun, error)
 }
 
 // Input is one dataset a run read, and how it was used.
@@ -144,8 +144,8 @@ func (e *Engine) RecordModel(
 // its inputs is worse than no record: it looks traceable and is not. If an edge
 // fails, the error names the run so the half-written chain can be found.
 func (e *Engine) RecordRun(
-	ctx context.Context, in record.Run, inputs []Input,
-) (record.Run, error) {
+	ctx context.Context, in record.ProvenanceRun, inputs []Input,
+) (record.ProvenanceRun, error) {
 	if in.ID.IsZero() {
 		in.ID = pvid.NewRun()
 	}
@@ -160,7 +160,7 @@ func (e *Engine) RecordRun(
 
 	stored, err := e.store.Records().CreateRun(ctx, in)
 	if err != nil {
-		return record.Run{}, err
+		return record.ProvenanceRun{}, err
 	}
 
 	for _, input := range inputs {
@@ -173,7 +173,7 @@ func (e *Engine) RecordRun(
 		}
 
 		if _, err := e.store.Records().CreateLineage(ctx, edge); err != nil {
-			return record.Run{}, fmt.Errorf(
+			return record.ProvenanceRun{}, fmt.Errorf(
 				"provenance: run %s was recorded but its lineage to %s was not, "+
 					"so its chain is incomplete: %w",
 				stored.ID, input.DatasetVersionID, err)
@@ -196,7 +196,7 @@ func (e *Engine) GetModel(ctx context.Context, want id.ID) (record.ModelVersion,
 }
 
 // GetRun retrieves one execution.
-func (e *Engine) GetRun(ctx context.Context, want id.ID) (record.Run, error) {
+func (e *Engine) GetRun(ctx context.Context, want id.ID) (record.ProvenanceRun, error) {
 	return e.store.Records().GetRun(ctx, want)
 }
 
@@ -241,7 +241,7 @@ func (e *Engine) Trace(ctx context.Context, runID id.ID) (Trace, error) {
 // Trace is the full answer to "what produced this".
 type Trace struct {
 	// Run is the execution.
-	Run record.Run
+	Run record.ProvenanceRun
 
 	// Producer is what computed it.
 	Producer record.ModelVersion

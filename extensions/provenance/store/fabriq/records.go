@@ -130,9 +130,9 @@ func (r *records) GetModel(ctx context.Context, want id.ID) (record.ModelVersion
 }
 
 // CreateRun records one execution.
-func (r *records) CreateRun(ctx context.Context, in record.Run) (record.Run, error) {
+func (r *records) CreateRun(ctx context.Context, in record.ProvenanceRun) (record.ProvenanceRun, error) {
 	if err := in.Validate(); err != nil {
-		return record.Run{}, err
+		return record.ProvenanceRun{}, err
 	}
 
 	if err := r.base.Create(ctx, RunEntity, in.ID, runToModel(in)); err != nil {
@@ -143,24 +143,24 @@ func (r *records) CreateRun(ctx context.Context, in record.Run) (record.Run, err
 		// already reports them as ErrInvalid and ErrConflict respectively.
 		if errors.Is(err, bserr.ErrConflict) {
 			if _, missing := r.GetModel(ctx, in.ModelVersionID); missing != nil {
-				return record.Run{}, fmt.Errorf(
+				return record.ProvenanceRun{}, fmt.Errorf(
 					"%w: run %s names model version %s, which was never recorded",
 					bserr.ErrInvalid, in.ID, in.ModelVersionID)
 			}
 		}
 
-		return record.Run{}, err
+		return record.ProvenanceRun{}, err
 	}
 
 	return in, nil
 }
 
 // GetRun retrieves one execution.
-func (r *records) GetRun(ctx context.Context, want id.ID) (record.Run, error) {
+func (r *records) GetRun(ctx context.Context, want id.ID) (record.ProvenanceRun, error) {
 	var m runModel
 
 	if err := r.base.Get(ctx, RunEntity, want, &m); err != nil {
-		return record.Run{}, fmt.Errorf("provenance: run %s: %w", want, err)
+		return record.ProvenanceRun{}, fmt.Errorf("provenance: run %s: %w", want, err)
 	}
 
 	return runFromModel(m)

@@ -110,7 +110,7 @@ func TestTheProvenanceChainIsOneTraversal(t *testing.T) {
 		t.Fatalf("CreateModel: %v", err)
 	}
 
-	run := record.Run{
+	run := record.ProvenanceRun{
 		ID: pvid.NewRun(), ModelVersionID: producer.ID, Kind: "import",
 		StartedAt: time.Now().UTC(),
 	}
@@ -158,7 +158,7 @@ func TestTrainingInputsProjectAsADistinctEdge(t *testing.T) {
 		t.Fatalf("CreateModel: %v", err)
 	}
 
-	run := record.Run{
+	run := record.ProvenanceRun{
 		ID: pvid.NewRun(), ModelVersionID: producer.ID, Kind: "fit",
 		StartedAt: time.Now().UTC(),
 	}

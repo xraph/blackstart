@@ -128,8 +128,8 @@ func (r *fakeRecorder) RecordModel(
 }
 
 func (r *fakeRecorder) RecordRun(
-	_ context.Context, in record.Run, _ []provenance.Input,
-) (record.Run, error) {
+	_ context.Context, in record.ProvenanceRun, _ []provenance.Input,
+) (record.ProvenanceRun, error) {
 	return in, nil
 }
 

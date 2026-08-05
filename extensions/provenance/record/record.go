@@ -177,8 +177,20 @@ func (m ModelVersion) Validate() error {
 	return nil
 }
 
-// Run is one execution that produced a result.
-type Run struct {
+// ProvenanceRun is one execution that produced a result.
+//
+// Named ProvenanceRun rather than the bare Run this package once used: Forge
+// keys an OpenAPI component by Go type, not by the label passed to
+// WithResponseSchema, so this collided with contingency's sweep.Run under one
+// "Run" schema regardless of what either endpoint's registration called it —
+// the same defect already fixed once for cascade's run.Run, in 2580898.
+// Graph labels have carried the equivalent "ProvenanceRun" disambiguation
+// since store/fabriq/entities.go's GraphNode/SourceLabel/TargetLabel fields,
+// for the identical reason: a contingency sweep and a power-flow solve are
+// also runs, so an unqualified name is ambiguous the first time either of
+// them projects too. This rename makes the Go type say what the graph
+// already did.
+type ProvenanceRun struct {
 	// ID identifies this run.
 	ID id.ID
 
@@ -206,7 +218,7 @@ type Run struct {
 }
 
 // Validate reports whether a run can be recorded.
-func (r Run) Validate() error {
+func (r ProvenanceRun) Validate() error {
 	if r.ID.IsZero() {
 		return fmt.Errorf("%w: a run needs an identifier", bserr.ErrInvalid)
 	}
@@ -350,8 +362,8 @@ type Store interface {
 	CreateModel(ctx context.Context, in ModelVersion) (ModelVersion, error)
 	GetModel(ctx context.Context, want id.ID) (ModelVersion, error)
 
-	CreateRun(ctx context.Context, in Run) (Run, error)
-	GetRun(ctx context.Context, want id.ID) (Run, error)
+	CreateRun(ctx context.Context, in ProvenanceRun) (ProvenanceRun, error)
+	GetRun(ctx context.Context, want id.ID) (ProvenanceRun, error)
 
 	CreateLineage(ctx context.Context, in Lineage) (Lineage, error)
 
