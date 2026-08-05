@@ -14,15 +14,6 @@ if (!root) {
 }
 
 /**
- * The API base.
- *
- * Empty means same origin, which is the deployed case: the gateway serves both
- * the bundle and the API. A development build points at a host running
- * elsewhere, and that is the only arrangement that needs CORS.
- */
-const API_BASE = import.meta.env["VITE_API_BASE_URL"] ?? "";
-
-/**
  * Which Authsome app a credential belongs to.
  *
  * Publishable by design — it names the app and grants nothing on its own,
@@ -32,22 +23,42 @@ const API_BASE = import.meta.env["VITE_API_BASE_URL"] ?? "";
 const PUBLISHABLE_KEY = import.meta.env["VITE_AUTHSOME_PUBLISHABLE_KEY"] ?? "";
 
 /**
+ * What the page shows while `/me` is still answering.
+ *
+ * Not a blank page. A white screen for the length of a cold request reads as a
+ * failed build, and this is the first thing anyone sees.
+ */
+function Checking(): React.JSX.Element {
+  return (
+    <div className="flex h-full items-center justify-center bg-bg">
+      <span role="status" className="font-mono text-[11.5px] font-bold tracking-[0.16em] text-fg-3">
+        BLACKSTART
+      </span>
+    </div>
+  );
+}
+
+/**
  * The console, once somebody is signed in.
  *
- * The API client is built from the session, so it does not exist before there
- * is one. That is deliberate: a console mounted without a credential issues a
- * screenful of requests that all answer 401, and the reader ends up reading
- * error panels instead of a login form.
+ * Three states, because there are three. Rendering the login form during
+ * `checking` would flash it at an operator who is already signed in on every
+ * reload, and rendering the router would issue a screenful of requests that
+ * all answer 401.
+ *
+ * Note what does not happen here: no redirect. The address bar is never
+ * rewritten, so a link carrying `?valid=…&sel=…` is still exactly itself after
+ * a sign-in — the citable URL survives by not being touched rather than by
+ * being carefully preserved.
  */
 function Console(): React.JSX.Element {
-  const { session } = useAuth();
+  const { status, expire } = useAuth();
 
-  if (session === null) {
-    return <LoginScreen />;
-  }
+  if (status === "checking") return <Checking />;
+  if (status === "anonymous") return <LoginScreen />;
 
   return (
-    <ApiProvider baseUrl={API_BASE} token={session.token}>
+    <ApiProvider onExpired={expire}>
       <RouterProvider router={router} />
     </ApiProvider>
   );
@@ -55,7 +66,7 @@ function Console(): React.JSX.Element {
 
 createRoot(root).render(
   <StrictMode>
-    <AuthProvider publishableKey={PUBLISHABLE_KEY} baseUrl={API_BASE}>
+    <AuthProvider publishableKey={PUBLISHABLE_KEY}>
       <Console />
     </AuthProvider>
   </StrictMode>,

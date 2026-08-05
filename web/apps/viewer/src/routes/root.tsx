@@ -9,6 +9,8 @@
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { NavRail, TabBar, TopBar, type NavItem } from "@blackstart/ui";
 
+import { useAuth } from "../auth/provider";
+
 /* Inline SVG rather than an icon dependency: four of them do not justify
  * shipping a set, and these are drawn at the shell's own stroke weight. */
 const icon = (paths: React.ReactNode): React.ReactElement => (
@@ -56,10 +58,32 @@ export const NAV_ITEMS: NavItem[] = [
   },
 ];
 
+/**
+ * A badge from an address.
+ *
+ * Authsome's user carries no display name on a password sign-up, so the local
+ * part is all there is. Dotted and hyphenated forms give two letters; anything
+ * else gives one, which is honest — a manufactured second letter would look
+ * like a name the platform never recorded.
+ */
+export function initialsOf(email: string): string {
+  const local = email.split("@")[0] ?? "";
+  const parts = local.split(/[._-]+/).filter((p) => p.length > 0);
+
+  if (parts.length === 0) return "—";
+
+  // First and last, not first and second: "rex.i.raphael" is a person with a
+  // middle initial, and "RI" names nobody.
+  const letters = parts.length === 1 ? [parts[0]] : [parts[0], parts[parts.length - 1]];
+
+  return letters.map((p) => (p ?? "").charAt(0).toUpperCase()).join("");
+}
+
 function RootLayout(): React.JSX.Element {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const active = NAV_ITEMS.find((i) => pathname.startsWith(`/${i.id}`))?.id ?? "console";
+  const { session, signOut } = useAuth();
 
   /* Navigating without search drops the current params, which would lose the
    * valid time. The console and cascade screens share a schema, so carrying
@@ -77,7 +101,8 @@ function RootLayout(): React.JSX.Element {
           { label: "case", value: "ACTIVSg2000", menu: true },
         ]}
         clock="18:14:07 Z"
-        initials="RR"
+        initials={initialsOf(session?.email ?? "")}
+        onSignOut={() => void signOut()}
       />
 
       <div className="flex min-h-0 flex-1">

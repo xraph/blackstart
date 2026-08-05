@@ -133,7 +133,7 @@ export function LoginScreen(): React.JSX.Element {
         </div>
 
         <p className="mt-3 text-center text-[10.5px] leading-relaxed text-fg-3">
-          Sessions are held in memory only, so reloading signs you out.
+          Sessions are held in a cookie this page cannot read. Sign out to end one.
         </p>
       </form>
     </div>

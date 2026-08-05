@@ -22,10 +22,7 @@ describe("api client", () => {
   });
 
   it("exposes the grid API groups the console reads", () => {
-    const client = createApiClient({ baseUrl: "http://localhost:8080" }) as unknown as Record<
-      string,
-      unknown
-    >;
+    const client = createApiClient() as unknown as Record<string, unknown>;
 
     // One group per domain extension. A regeneration that drops one of these
     // is a change to what the platform serves, not a formatting difference.

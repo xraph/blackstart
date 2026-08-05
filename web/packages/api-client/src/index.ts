@@ -20,40 +20,30 @@ import type { ClientConfig } from "./generated/types";
 /**
  * Where the API lives.
  *
- * Same-origin by default, because the client is served by the gateway that
- * serves the API. An absolute URL is for development against a host running
- * somewhere else, and is the only case that needs CORS.
+ * Same origin, always. A deployed build is served by the gateway that serves
+ * the API; a development build reaches the host through the Vite dev server's
+ * proxy. There is deliberately no absolute base: an absolute one would make
+ * the API cross-origin, and a cross-origin request does not carry the session
+ * cookie without both `credentials: "include"` here and a credentialed CORS
+ * surface on the host — two things to configure in order to arrive back where
+ * a proxy starts.
  */
 export interface ApiOptions {
-  readonly baseUrl?: string;
   readonly timeoutMs?: number;
-
-  /**
-   * The session token, sent as `Authorization: Bearer`.
-   *
-   * The platform issues a bearer token rather than setting a cookie, so the
-   * caller holds it and passes it here. Omitted, the client sends no
-   * credential and every guarded endpoint answers 401 — which is the correct
-   * behaviour for a console with nobody signed in.
-   */
-  readonly bearerToken?: string;
 }
 
 /**
  * Builds a configured client.
  *
- * The credential is a bearer token, not a cookie. That was an open question
- * when this package was written and the platform has since answered it:
- * Authsome returns a session token in the body of a sign-in and the guard
- * expects it in an Authorization header. So the caller holds the token, and
- * the only remaining decision is where — see the console's auth provider,
- * which keeps it in memory for exactly this reason.
+ * No credential is passed, and there is no option to pass one. The session is
+ * an HttpOnly cookie the platform sets on sign-in, so `fetch` attaches it to
+ * these same-origin requests on its own and the page never holds a token it
+ * could leak. See `web/apps/viewer/src/auth`.
  */
 export function createApiClient(options: ApiOptions = {}): RESTClient {
   const config: ClientConfig = {
-    baseURL: options.baseUrl ?? "",
+    baseURL: "",
     timeout: options.timeoutMs ?? 30_000,
-    ...(options.bearerToken === undefined ? {} : { auth: { bearerToken: options.bearerToken } }),
   };
 
   return new RESTClient(config);

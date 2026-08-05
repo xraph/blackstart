@@ -2,10 +2,16 @@
  * The identity calls the console makes.
  *
  * Hand-written against the contract rather than taken from `@authsome/ui-core`.
- * It is two POSTs, and the published React layer for that package is not the
+ * It is five calls, and the published React layer for that package is not the
  * one its README advertises — adopting an API I would have to discover, to
- * replace sixty lines whose behaviour I have verified against a running host,
- * is the more expensive of the two options.
+ * replace this, is the more expensive of the two options.
+ *
+ * The session is a cookie. The platform sets it `HttpOnly` on sign-in, deletes
+ * it on sign-out, and rotates it cookie-first on refresh, so nothing here ever
+ * sees the credential and nothing here can store one. `fetch` attaches it
+ * because every one of these is same-origin — in a deployed build because the
+ * gateway serves both, in development because the Vite dev server proxies
+ * `/identity` to the host.
  *
  * The publishable key is exactly that: publishable. It identifies which app a
  * credential belongs to and grants nothing on its own, which is why it can sit
@@ -14,14 +20,16 @@
 
 const IDENTITY = "/identity/v1";
 
-/** The token the platform issues, and what it is good for. */
+/**
+ * Who is signed in.
+ *
+ * An identity, not a credential. There is deliberately no field for a token:
+ * the cookie is HttpOnly, so a token here could only be a second copy of
+ * something this page is not supposed to be able to read.
+ */
 export interface Session {
-  readonly token: string;
-  readonly refreshToken: string;
-  /** ISO instant. The console does not currently refresh on it. */
-  readonly expiresAt: string;
-  readonly email: string;
   readonly userId: string;
+  readonly email: string;
 }
 
 export interface Credentials {
@@ -48,63 +56,70 @@ export class IdentityError extends Error {
   }
 }
 
-interface AuthsomeSession {
-  session_token?: string;
-  refresh_token?: string;
-  expires_at?: string;
-  user?: { id?: string; email?: string };
+/** A user as the platform serialises one, wherever it appears. */
+interface WireUser {
+  id?: string;
+  email?: string;
 }
 
-async function post(
+/** Sign-in and sign-up wrap the user; `/me` returns one bare. */
+interface WireAuth {
+  user?: WireUser;
+}
+
+async function bodyOf(response: Response): Promise<unknown> {
+  return response.json().catch(() => ({}));
+}
+
+/** The platform's own refusal, or a generic one when it offered none. */
+function refusal(status: number, payload: unknown): IdentityError {
+  const err = payload as { error?: string; type?: string };
+
+  return new IdentityError(
+    status,
+    err.error ?? `identity returned ${status}`,
+    err.type ?? "unknown",
+  );
+}
+
+/**
+ * A user, or a refusal to accept a response that names none.
+ *
+ * A 2xx with no user is not a session. Failing here beats reporting an
+ * operator signed in as nobody and discovering it three screens later as a
+ * 401 that points at nothing.
+ */
+function sessionOf(status: number, user: WireUser | undefined): Session {
+  if (user?.id === undefined || user.id === "") {
+    throw new IdentityError(status, "identity returned no user", "no_user");
+  }
+
+  return { userId: user.id, email: user.email ?? "" };
+}
+
+async function authenticate(
   path: string,
   publishableKey: string,
-  baseUrl: string,
-  body: unknown,
+  credentials: Credentials,
 ): Promise<Session> {
-  const response = await fetch(`${baseUrl}${IDENTITY}${path}`, {
+  const response = await fetch(`${IDENTITY}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Publishable-Key": publishableKey,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(credentials),
   });
 
-  const payload: unknown = await response.json().catch(() => ({}));
+  const payload = await bodyOf(response);
 
-  if (!response.ok) {
-    const err = payload as { error?: string; type?: string };
+  if (!response.ok) throw refusal(response.status, payload);
 
-    throw new IdentityError(
-      response.status,
-      err.error ?? `identity returned ${response.status}`,
-      err.type ?? "unknown",
-    );
-  }
-
-  const data = payload as AuthsomeSession;
-
-  if (data.session_token === undefined || data.session_token === "") {
-    // A 2xx with no token is not a session. Failing here beats storing an
-    // empty credential and discovering it on the next request as a 401.
-    throw new IdentityError(response.status, "identity returned no session token", "no_token");
-  }
-
-  return {
-    token: data.session_token,
-    refreshToken: data.refresh_token ?? "",
-    expiresAt: data.expires_at ?? "",
-    email: data.user?.email ?? "",
-    userId: data.user?.id ?? "",
-  };
+  return sessionOf(response.status, (payload as WireAuth).user);
 }
 
-export function signIn(
-  credentials: Credentials,
-  publishableKey: string,
-  baseUrl = "",
-): Promise<Session> {
-  return post("/signin", publishableKey, baseUrl, credentials);
+export function signIn(credentials: Credentials, publishableKey: string): Promise<Session> {
+  return authenticate("/signin", publishableKey, credentials);
 }
 
 /**
@@ -116,10 +131,66 @@ export function signIn(
  * That asymmetry is Authsome's, and the login screen says so rather than
  * letting it read as a broken password.
  */
-export function signUp(
-  credentials: Credentials,
-  publishableKey: string,
-  baseUrl = "",
-): Promise<Session> {
-  return post("/signup", publishableKey, baseUrl, credentials);
+export function signUp(credentials: Credentials, publishableKey: string): Promise<Session> {
+  return authenticate("/signup", publishableKey, credentials);
+}
+
+/**
+ * Who the cookie says is signed in, or null.
+ *
+ * A 401 is the answer to the question rather than a failure to answer it, so
+ * it returns null. Throwing would put an error panel in front of a first-time
+ * visitor whose only mistake was not having signed in yet. Anything else is a
+ * genuine fault and is raised.
+ *
+ * Note the shape: `/me` returns a user at the top level, where sign-in wraps
+ * one under `user`.
+ */
+export async function me(): Promise<Session | null> {
+  const response = await fetch(`${IDENTITY}/me`, { method: "GET" });
+
+  if (response.status === 401) return null;
+
+  const payload = await bodyOf(response);
+
+  if (!response.ok) throw refusal(response.status, payload);
+
+  return sessionOf(response.status, payload as WireUser);
+}
+
+/**
+ * Ends the session on the host.
+ *
+ * Clearing local state alone would leave a live session the next page load
+ * silently resumes. A 401 is not raised: the operator asked to be signed out,
+ * and a session that is already gone is not a failure to report to them.
+ */
+export async function signOut(): Promise<void> {
+  const response = await fetch(`${IDENTITY}/signout`, { method: "POST" });
+
+  if (!response.ok && response.status !== 401) {
+    throw refusal(response.status, await bodyOf(response));
+  }
+}
+
+/**
+ * Rotates the session.
+ *
+ * An empty object, not an empty body, and the difference is the whole call.
+ * The platform binds its request struct before the handler runs, so a bodyless
+ * POST fails at `failed to decode JSON: EOF` with a 400 and never reaches the
+ * cookie-first branch that makes this work at all. Verified against a running
+ * host, having first been written the other way.
+ *
+ * The object stays empty because the page holds no refresh token to put in it
+ * — the cookie is the credential, and rotating it is the platform's job.
+ */
+export async function refresh(): Promise<void> {
+  const response = await fetch(`${IDENTITY}/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+
+  if (!response.ok) throw refusal(response.status, await bodyOf(response));
 }

@@ -17,34 +17,30 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createApiClient } from "@blackstart/api-client";
 
+import { refresh } from "../auth/authsome";
+import { withReauth } from "./reauth";
+
 type ApiClient = ReturnType<typeof createApiClient>;
 
 const ApiContext = createContext<ApiClient | null>(null);
 
 export interface ApiProviderProps {
-  /** Absolute only for development against a host elsewhere; same-origin otherwise. */
-  readonly baseUrl?: string;
-
   /**
-   * The session token, sent as a bearer credential on every platform call.
+   * Called when the session could not be refreshed.
    *
-   * Authsome issues a token rather than setting a cookie, so it has to be
-   * attached here. The client is rebuilt when it changes, because the
-   * generated client stamps the header once at construction.
+   * The provider does not clear the session itself — it does not own it. It
+   * reports the expiry and the auth provider decides, which keeps one answer
+   * to "who is signed in" rather than two that can disagree.
    */
-  readonly token?: string | undefined;
+  readonly onExpired?: () => void;
 
   readonly children: ReactNode;
 }
 
-export function ApiProvider({ baseUrl, token, children }: ApiProviderProps): React.JSX.Element {
+export function ApiProvider({ onExpired, children }: ApiProviderProps): React.JSX.Element {
   const client = useMemo(
-    () =>
-      createApiClient({
-        ...(baseUrl === undefined ? {} : { baseUrl }),
-        ...(token === undefined || token === "" ? {} : { bearerToken: token }),
-      }),
-    [baseUrl, token],
+    () => withReauth(createApiClient(), refresh, onExpired ?? ((): void => undefined)),
+    [onExpired],
   );
 
   const queryClient = useMemo(

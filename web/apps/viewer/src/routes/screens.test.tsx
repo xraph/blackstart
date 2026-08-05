@@ -38,6 +38,7 @@ vi.mock("@blackstart/api-client", async () => {
 });
 
 import { ApiProvider } from "../api/provider";
+import { AuthProvider } from "../auth/provider";
 import { routeTree } from "../router";
 import { CASCADE } from "../fixtures/derecho";
 
@@ -250,9 +251,15 @@ async function renderAt(url: string): Promise<void> {
   });
   await router.load();
   render(
-    <ApiProvider baseUrl="http://localhost:8080">
-      <RouterProvider router={router} />
-    </ApiProvider>,
+    // The shell reads the signed-in operator for its identity badge, so the
+    // auth provider is part of the frame every screen renders inside. Nothing
+    // answers /me here, which settles it anonymous — the badge shows a dash
+    // and the screens under test are unaffected.
+    <AuthProvider publishableKey="pk_test">
+      <ApiProvider>
+        <RouterProvider router={router} />
+      </ApiProvider>
+    </AuthProvider>,
   );
 }
 

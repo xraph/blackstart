@@ -21,6 +21,7 @@ vi.mock("@blackstart/globe", async () => {
 });
 
 import { ApiProvider } from "../api/provider";
+import { AuthProvider } from "../auth/provider";
 import { routeTree } from "../router";
 import { LINE_TULIA_LEVELLAND } from "../fixtures/derecho";
 
@@ -61,9 +62,15 @@ async function renderAt(url: string): Promise<void> {
   // supplies in main.tsx. The stubbed fetch below fails those requests, which
   // is the honest default for a test with no platform behind it.
   render(
-    <ApiProvider baseUrl="http://localhost:8080">
-      <RouterProvider router={router} />
-    </ApiProvider>,
+    // The shell reads the signed-in operator for its identity badge, so the
+    // auth provider is part of the frame every screen renders inside. Nothing
+    // answers /me here, which settles it anonymous — the badge shows a dash
+    // and the screens under test are unaffected.
+    <AuthProvider publishableKey="pk_test">
+      <ApiProvider>
+        <RouterProvider router={router} />
+      </ApiProvider>
+    </AuthProvider>,
   );
   await screen.findByTestId("scene");
 }
