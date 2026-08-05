@@ -84,6 +84,83 @@ func (s *scenarios) Get(ctx context.Context, scenarioID id.ID) (scenario.Scenari
 	return row.toDomain()
 }
 
+// Update replaces a stored scenario.
+//
+// The read before the write is for the version, not for existence: fabriq's
+// executor already refuses to update an aggregate it holds no version for,
+// which is what makes a scenario nobody defined come back not-found. What the
+// read buys is the expected version, so that two people editing one scenario
+// produce a conflict rather than one of the two edits vanishing — the same
+// optimistic check Claim relies on, used here for the ordinary lost-update
+// case rather than for a hand-off.
+func (s *scenarios) Update(
+	ctx context.Context, in scenario.Scenario,
+) (scenario.Scenario, error) {
+	if err := in.Manifest.Validate(); err != nil {
+		return scenario.Scenario{}, err
+	}
+
+	var current scenarioRow
+	if err := s.base.Get(ctx, ScenarioEntity, in.ID, &current); err != nil {
+		return scenario.Scenario{}, err
+	}
+
+	row, err := scenarioFromDomain(in)
+	if err != nil {
+		return scenario.Scenario{}, err
+	}
+
+	// The version read a moment ago, so a concurrent edit of the same
+	// scenario fails rather than silently overwriting the other one.
+	version := current.Version
+
+	if err := s.base.Update(ctx, ScenarioEntity, in.ID, row, &version); err != nil {
+		return scenario.Scenario{}, err
+	}
+
+	return in, nil
+}
+
+// List returns scenarios, most recently created first.
+//
+// A limit of zero or less returns everything, matching scenario.Store's own
+// documentation and the memory store's behavior. No clamp to some default:
+// a caller that asked for everything and silently got the newest fifty of
+// sixty has no way to tell it happened.
+func (s *scenarios) List(ctx context.Context, limit int) ([]scenario.Scenario, error) {
+	var rows []scenarioRow
+
+	// Identifier breaks the tie so two scenarios defined in the same instant
+	// still order reproducibly, the same rule the memory store sorts by.
+	query := `SELECT * FROM ` + ScenarioTable + `
+		 WHERE tenant_id = current_setting('app.tenant_id', true)
+		 ORDER BY created_at DESC, id DESC`
+
+	var args []any
+
+	if limit > 0 {
+		query += ` LIMIT $1`
+		args = append(args, limit)
+	}
+
+	if err := s.base.Query(ctx, &rows, query, args...); err != nil {
+		return nil, err
+	}
+
+	out := make([]scenario.Scenario, 0, len(rows))
+
+	for _, row := range rows {
+		mapped, err := row.toDomain()
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, mapped)
+	}
+
+	return out, nil
+}
+
 type runs Store
 
 // Create records a run, rejecting a duplicate identifier rather than

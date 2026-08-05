@@ -554,6 +554,90 @@ func TestClaimIsAtomicUnderConcurrency(t *testing.T) {
 	}
 }
 
+// Updating a stored scenario replaces it in Postgres, and the replacement is
+// what a later Get returns.
+func TestUpdateReplacesAStoredScenario(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	sc := aScenario("sha256:before-the-edit")
+	if _, err := s.Scenarios().Create(ctx, sc); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	edited := sc
+	edited.Name = "renamed"
+	edited.Manifest.ModelHash = "sha256:after-the-edit"
+	edited.UpdatedAt = createdAt.Add(time.Hour)
+
+	if _, err := s.Scenarios().Update(ctx, edited); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	got, err := s.Scenarios().Get(ctx, sc.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if got.Name != edited.Name || got.Manifest.ModelHash != edited.Manifest.ModelHash {
+		t.Errorf("the edit did not land: %q / %q", got.Name, got.Manifest.ModelHash)
+	}
+}
+
+// An Update naming a scenario nobody defined is not found rather than a
+// quiet insert. This pins fabriq's contract rather than this store's code —
+// the refusal comes from the executor having no version for the aggregate —
+// and it is the half of the rule the memory store has to implement itself.
+func TestUpdateRefusesAScenarioThatDoesNotExist(t *testing.T) {
+	s := harness(t)
+
+	_, err := s.Scenarios().Update(context.Background(), aScenario("sha256:never-defined"))
+	if !errors.Is(err, bserr.ErrNotFound) {
+		t.Fatalf("Update error = %v, want bserr.ErrNotFound", err)
+	}
+}
+
+// Listing returns scenarios newest first, and a limit of zero returns every
+// one of them rather than some store-chosen default.
+func TestListOrdersScenariosNewestFirst(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	for hour := range 3 {
+		sc := aScenario("sha256:listed")
+		sc.CreatedAt = createdAt.Add(time.Duration(hour) * time.Hour)
+		sc.UpdatedAt = sc.CreatedAt
+
+		if _, err := s.Scenarios().Create(ctx, sc); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+	}
+
+	got, err := s.Scenarios().List(ctx, 0)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	if len(got) != 3 {
+		t.Fatalf("listed %d scenarios, want 3 — a limit of zero means everything", len(got))
+	}
+
+	for index := 1; index < len(got); index++ {
+		if got[index].CreatedAt.After(got[index-1].CreatedAt) {
+			t.Errorf("row %d is newer than the one before it", index)
+		}
+	}
+
+	limited, err := s.Scenarios().List(ctx, 2)
+	if err != nil {
+		t.Fatalf("List(2): %v", err)
+	}
+
+	if len(limited) != 2 {
+		t.Errorf("listed %d scenarios for a limit of 2", len(limited))
+	}
+}
+
 // aClaimedRun stores a queued run and claims it, which is the only state
 // Finish accepts.
 func aClaimedRun(t *testing.T, s *scnfabriq.Store, modelHash string) scenario.Run {

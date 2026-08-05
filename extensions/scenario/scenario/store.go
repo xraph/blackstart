@@ -20,6 +20,30 @@ type Store interface {
 
 	// Get retrieves one scenario by identifier.
 	Get(ctx context.Context, scenarioID id.ID) (Scenario, error)
+
+	// Update replaces a stored scenario.
+	//
+	// A scenario is editable — the design calls it named, editable, reusable —
+	// and this is the only method that edits one. It cannot reach a run that
+	// already exists: Engine.Enqueue freezes a deep copy of the manifest into
+	// the run at the moment it is queued, and that is the whole reason a
+	// stored run stays citable after the scenario it came from has moved on.
+	//
+	// Returns an error satisfying errors.Is(err, bserr.ErrNotFound) for a
+	// scenario nothing has defined. An Update that created one would turn a
+	// mistyped identifier into a second scenario nobody meant to define,
+	// which is the same class of quiet wrong answer Create refuses when it
+	// rejects a duplicate rather than overwriting.
+	Update(ctx context.Context, in Scenario) (Scenario, error)
+
+	// List returns scenarios, most recently created first.
+	//
+	// A limit of zero or less returns everything, the same rule
+	// ListByScenario states and for the same reason: a caller that asked for
+	// everything and silently got the newest fifty of sixty has no way to
+	// tell it happened, so the bound belongs at the caller that knows what it
+	// wants.
+	List(ctx context.Context, limit int) ([]Scenario, error)
 }
 
 // RunStore persists scenario runs and carries them through their lifecycle.

@@ -2,6 +2,7 @@ package scenario_test
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -103,5 +104,48 @@ func TestManifestJSONKeysAreExact(t *testing.T) {
 
 	if string(got) != want {
 		t.Errorf("Manifest marshaled as:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// Cloning a manifest breaks the sharing a plain copy leaves behind.
+//
+// Manifest is a value type, so every scalar it holds is copied by assignment
+// and the compiler makes that look total. Branches is a slice, and a copied
+// struct shares its backing array — which is the one way an edit to a
+// scenario can still reach a run that was frozen before it.
+func TestCloneDoesNotShareTheBranchList(t *testing.T) {
+	t.Parallel()
+
+	original := validManifest()
+	original.Policy = scenario.PolicyExplicit
+	original.Branches = []string{"nmdl_one", "nmdl_two"}
+
+	frozen := original.Clone()
+
+	original.Branches[0] = "nmdl_edited"
+
+	if frozen.Branches[0] != "nmdl_one" {
+		t.Errorf("the clone followed the original: got %q, want %q",
+			frozen.Branches[0], "nmdl_one")
+	}
+}
+
+// A nil branch list clones to a nil one rather than to an empty slice, so a
+// cloned manifest still serializes to the bytes the original did — the JSON
+// keys are pinned, and `[]` where `null` was is a stored manifest that no
+// longer round-trips to itself.
+func TestCloningAManifestWithoutBranchesChangesNothing(t *testing.T) {
+	t.Parallel()
+
+	original := validManifest()
+
+	frozen := original.Clone()
+
+	if frozen.Branches != nil {
+		t.Errorf("Branches cloned to %#v, want nil", frozen.Branches)
+	}
+
+	if !reflect.DeepEqual(frozen, original) {
+		t.Errorf("the clone differs from the original: %+v", frozen)
 	}
 }

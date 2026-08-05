@@ -6,6 +6,7 @@ package scenario
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/xraph/blackstart/pkg/bserr"
@@ -70,6 +71,21 @@ type Manifest struct {
 
 	// Seed is the random seed for reproducibility.
 	Seed int64 `json:"seed"`
+}
+
+// Clone returns a manifest that shares no memory with this one.
+//
+// The freeze that makes a run citable depends on it. A Manifest is a value,
+// so assigning one copies every scalar it holds — but Branches is a slice,
+// and a copied struct shares its backing array with the original. Without
+// this, editing a scenario's branch list would reach every run already queued
+// from it, through the copy, and "same manifest, same result" would be a
+// claim nobody could check. The one field that needs it today is the one the
+// compiler cannot warn about.
+func (m Manifest) Clone() Manifest {
+	m.Branches = slices.Clone(m.Branches)
+
+	return m
 }
 
 // Validate reports whether a manifest is coherent enough to use.

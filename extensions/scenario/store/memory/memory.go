@@ -13,8 +13,10 @@
 package memory
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/xraph/blackstart/extensions/scenario/scenario"
@@ -106,4 +108,59 @@ func (s *scenarios) Get(_ context.Context, scenarioID id.ID) (scenario.Scenario,
 	}
 
 	return found, nil
+}
+
+// Update replaces a stored scenario, refusing to create one that is not
+// already there — the same rule the Fabriq store enforces, backed here by a
+// map lookup rather than by the row count of an UPDATE.
+func (s *scenarios) Update(
+	_ context.Context, in scenario.Scenario,
+) (scenario.Scenario, error) {
+	if err := in.Manifest.Validate(); err != nil {
+		return scenario.Scenario{}, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.scenarios[in.ID]; !exists {
+		return scenario.Scenario{}, fmt.Errorf(
+			"%w: scenario %s", bserr.ErrNotFound, in.ID)
+	}
+
+	s.scenarios[in.ID] = in
+
+	return in, nil
+}
+
+// List returns scenarios, most recently created first.
+//
+// A limit of zero or less returns everything, matching scenario.Store's own
+// documentation and the Fabriq store's behavior.
+func (s *scenarios) List(_ context.Context, limit int) ([]scenario.Scenario, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]scenario.Scenario, 0, len(s.scenarioOrder))
+	for _, key := range s.scenarioOrder {
+		out = append(out, s.scenarios[key])
+	}
+
+	// Ties on CreatedAt break on identifier, which is chronologically
+	// sortable, so two scenarios defined in the same instant still order
+	// reproducibly — and so this store and the Fabriq one, which asks
+	// Postgres for `ORDER BY created_at DESC, id DESC`, agree.
+	slices.SortStableFunc(out, func(left, right scenario.Scenario) int {
+		if by := right.CreatedAt.Compare(left.CreatedAt); by != 0 {
+			return by
+		}
+
+		return cmp.Compare(right.ID.String(), left.ID.String())
+	})
+
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+
+	return out, nil
 }
