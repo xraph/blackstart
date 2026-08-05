@@ -17,10 +17,12 @@
  * page first to be allowed to change it.
  */
 
-import { useState, type FormEvent, type ReactElement } from "react";
+import { useEffect, useState, type FormEvent, type ReactElement } from "react";
 import { AdvisoryChip, ThemeToggle, useTheme } from "@blackstart/ui";
 
 import { IdentityError } from "./authsome";
+import { DynamicFields } from "./DynamicFields";
+import { initialValues, signupForm, validate, type SignupForm } from "./formconfig";
 import { useAuth } from "./provider";
 
 type Mode = "signin" | "register";
@@ -59,16 +61,67 @@ export function LoginScreen(): React.JSX.Element {
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  /**
+   * The declared form, once the host has been asked.
+   *
+   * Null while unasked. The fetch is not awaited before the static fields
+   * render — a deployment with no custom fields is the common case, and
+   * blocking sign-in on a request that will almost always answer "nothing to
+   * add" would put a spinner in front of everyone to serve a few.
+   */
+  const [form, setForm] = useState<SignupForm | null>(null);
+  const [extra, setExtra] = useState<Record<string, string>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
   const registering = mode === "register";
+
+  // Asked once, and only when registering: signing in never reads it.
+  useEffect(() => {
+    if (!registering || form !== null) return;
+
+    const abort = new AbortController();
+
+    void signupForm(abort.signal).then((found) => {
+      setForm(found);
+      setExtra(initialValues(found.fields));
+    });
+
+    return () => abort.abort();
+  }, [registering, form]);
+
+  const declared = form?.active === true ? form : null;
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     setProblem(null);
     setBusy(true);
 
+    if (declared !== null) {
+      // Checked before the request so a reader is told which box is wrong,
+      // rather than getting one sentence about a form they must re-scan. The
+      // host validates the same rules regardless — this only decides where
+      // the message appears.
+      const failures = validate(declared.fields, extra);
+
+      setFieldErrors(failures);
+
+      if (Object.keys(failures).length > 0) {
+        setBusy(false);
+
+        return;
+      }
+    }
+
     try {
-      if (registering) await signUp({ email, password, firstName, lastName });
-      else await signIn({ email, password });
+      if (registering) {
+        await signUp({
+          email,
+          password,
+          firstName,
+          lastName,
+          ...(declared === null ? {} : { metadata: extra }),
+        });
+      } else await signIn({ email, password });
     } catch (error: unknown) {
       // Authsome distinguishes an unverified address from a wrong password,
       // and so should this: one is fixed by checking your email, the other by
@@ -104,11 +157,17 @@ export function LoginScreen(): React.JSX.Element {
             BLACKSTART
           </div>
           <h1 className="mt-1 text-[15px] font-semibold tracking-[-0.018em] text-fg">
-            {registering ? "Register an operator" : "Sign in"}
+            {registering
+              ? (declared?.title !== undefined && declared.title !== ""
+                  ? declared.title
+                  : "Register an operator")
+              : "Sign in"}
           </h1>
           <p className="mt-1 text-[11px] leading-relaxed text-fg-3">
             {registering
-              ? "Your name is attributed to the runs and decisions you record."
+              ? (declared?.description !== undefined && declared.description !== ""
+                  ? declared.description
+                  : "Your name is attributed to the runs and decisions you record.")
               : "Weather-driven outage risk for the transmission network."}
           </p>
 
@@ -162,6 +221,32 @@ export function LoginScreen(): React.JSX.Element {
                 className={FIELD}
               />
             </Field>
+
+            {/* Below the credential, because email and password are what
+                create the account and everything the deployment added is
+                about the person, not the sign-in. */}
+            {registering && declared !== null && (
+              <DynamicFields
+                fields={declared.fields}
+                values={extra}
+                errors={fieldErrors}
+                disabled={busy}
+                onChange={(key, value) => {
+                  setExtra((prev) => ({ ...prev, [key]: value }));
+
+                  // Cleared as they type. Leaving a message under a box that
+                  // has since been corrected is worse than never showing one.
+                  setFieldErrors((prev) => {
+                    if (prev[key] === undefined) return prev;
+
+                    const next = { ...prev };
+                    delete next[key];
+
+                    return next;
+                  });
+                }}
+              />
+            )}
           </div>
 
           {problem !== null && (
