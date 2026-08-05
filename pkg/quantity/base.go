@@ -5,6 +5,15 @@ import (
 	"math"
 )
 
+// Sqrt3 is the three-phase line-to-line factor. Go's math package offers
+// Sqrt2, SqrtE, SqrtPi and SqrtPhi, but not this one.
+//
+// Exported because it is not only per-unit machinery: anything converting
+// between a line current and a three-phase apparent power needs the same
+// factor, and a second spelling of it elsewhere in the tree is how the two
+// drift apart. bs-quantity states the identical relationship on the Rust side.
+const Sqrt3 = 1.7320508075688772935
+
 // Base is the reference against which per-unit values are normalized.
 //
 // Power-systems models are almost always expressed in per-unit: impedances,
@@ -24,10 +33,6 @@ import (
 // A system typically has one SBase (100 MVA is conventional) and a different
 // VBase per voltage level, so a network model carries a Base per voltage
 // level, all sharing an SBase.
-// sqrt3 is the three-phase line-to-line factor. Go's math package offers
-// Sqrt2, SqrtE, SqrtPi and SqrtPhi, but not this one.
-const sqrt3 = 1.7320508075688772935
-
 type Base struct {
 	// sBase is three-phase apparent power in volt-amperes.
 	sBase float64
@@ -85,7 +90,7 @@ func (b *Base) YBase() float64 { return b.sBase / (b.vBase * b.vBase) }
 // The sqrt(3) is the three-phase line-to-line convention. Omitting it is a
 // classic error that produces currents wrong by 73%, which is large enough to
 // look like a modelling mistake rather than a units mistake.
-func (b *Base) IBase() float64 { return b.sBase / (sqrt3 * b.vBase) }
+func (b *Base) IBase() float64 { return b.sBase / (Sqrt3 * b.vBase) }
 
 // scaleFor returns the SI value of one per-unit of the given dimension.
 //

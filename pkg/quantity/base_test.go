@@ -14,7 +14,7 @@ func closeTo(got, want, tolerance float64) bool {
 // Worked example from any power-systems text: 100 MVA, 138 kV.
 //
 //	ZBase = 138^2 / 100      = 190.44 ohm
-//	IBase = 100e6 / (sqrt3 * 138e3) = 418.37 A
+//	IBase = 100e6 / (Sqrt3 * 138e3) = 418.37 A
 func TestBaseDerivedQuantities(t *testing.T) {
 	t.Parallel()
 
@@ -69,7 +69,7 @@ func TestIBaseUsesTheThreePhaseConvention(t *testing.T) {
 		t.Fatal("IBase omits the sqrt(3) three-phase factor")
 	}
 
-	if got, want := singlePhaseWrong/b.IBase(), sqrt3; !closeTo(got, want, 1e-12) {
+	if got, want := singlePhaseWrong/b.IBase(), Sqrt3; !closeTo(got, want, 1e-12) {
 		t.Errorf("ratio to the single-phase form is %v, want sqrt(3) = %v", got, want)
 	}
 }
