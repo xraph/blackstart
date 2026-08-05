@@ -3,7 +3,6 @@ package shape
 import (
 	"fmt"
 	"math"
-	"sort"
 
 	"github.com/xraph/blackstart/pkg/bserr"
 )
@@ -13,9 +12,9 @@ import (
 // cut out of it.
 type Polygon []Point
 
-// MultiPolygon is zero or more disjoint polygons. More than one element
-// means more than one piece of affected ground with nothing claimed to be
-// affected in between — the distinction Union exists to preserve.
+// MultiPolygon is zero or more polygons. Nothing here guarantees they are
+// disjoint or even distinct pieces of ground — see Cover, presently the
+// only producer of a MultiPolygon in this package, for why.
 type MultiPolygon []Polygon
 
 // Corridor is the ground within halfWidthM of a path, on both sides.
@@ -29,7 +28,7 @@ type MultiPolygon []Polygon
 // not rounded.
 //
 // This is the shape a blast radius is built from, one path at a time. What
-// several corridors add up to is Union's job, not this one's.
+// several corridors add up to is Cover's job, not this one's.
 //
 // # Errors
 //
@@ -111,93 +110,35 @@ func PolygonAreaM2(p Polygon) float64 {
 	return math.Abs(sum) / 2
 }
 
-// Union groups polygons by whether they actually overlap and merges each
-// group, leaving polygons that don't touch any other as separate entries.
+// Cover is every conductor's corridor, unmerged: one polygon per input, in
+// the same order, and nothing else.
 //
-// Not a convex hull. A hull drawn around the result would claim as affected
-// every point between two groups that never overlapped — the exact mistake
-// a blast radius cannot make, because area is the figure a reader takes from
-// it. Two corridors forty kilometers apart stay two polygons here.
+// An earlier version of this function attempted to merge overlapping
+// corridors into one polygon, using a convex hull to stand in for a true
+// polygonal union. Measured against two real corridors meeting at a right
+// angle — the ordinary case for a branch that turns, not a rare one — that
+// hull filled the entire concave notch between them with ground that was
+// never within any conductor's buffer: about 18x the sum of the two
+// corridors' own areas. A hull over conductors that turn is exactly the
+// mistake Corridor's package doc rejects for a whole cascade, just scoped
+// down to two conductors. Scoped down, it was still false.
 //
-// Overlap is decided per pair by a bounding-box intersection (cheap
-// pre-filter) then a real test on the rings: do any two edges cross, or does
-// either ring contain a vertex of the other (the case edges alone miss when
-// one ring sits entirely inside the other, as happens when the same path is
-// buffered at two widths). Grouping is by connectivity — A can pull in C
-// through B even if A and C don't overlap directly.
-//
-// A group that does overlap is not merged into a true polygonal union —
-// exact, with shared edges and possible holes, is more geometry than this
-// task carries and still would not be exact on a sphere. It is represented
-// instead by the convex hull of its members' vertices. That over-states the
-// group's own area somewhat, but never reaches into a group that did not
-// overlap it, which is what the tests — and a blast radius — depend on.
-func Union(in []Polygon) MultiPolygon {
+// So there is no merge, and the guarantee is smaller but honest: every point
+// inside some returned polygon is within halfWidthM of some conductor, and
+// no point outside every returned polygon is claimed to be affected. What
+// this does NOT guarantee is a partition. Where two input corridors overlap,
+// both are returned whole, so summing PolygonAreaM2 across the result counts
+// that overlap twice — it gives total corridor area, not distinct ground
+// covered. A caller that needs the latter cannot get it by summing; that
+// would require a real union, which this package does not attempt.
+func Cover(in []Polygon) MultiPolygon {
 	if len(in) == 0 {
 		return nil
 	}
 
-	parent := make([]int, len(in))
-	for i := range parent {
-		parent[i] = i
-	}
+	out := make(MultiPolygon, 0, len(in))
 
-	var find func(int) int
-	find = func(x int) int {
-		if parent[x] != x {
-			parent[x] = find(parent[x])
-		}
-		return parent[x]
-	}
-
-	join := func(a, b int) {
-		if ra, rb := find(a), find(b); ra != rb {
-			parent[ra] = rb
-		}
-	}
-
-	boxes := make([][4]float64, len(in))
-	for i, p := range in {
-		boxes[i] = boundingBox(p)
-	}
-
-	for i := range in {
-		for j := i + 1; j < len(in); j++ {
-			if bboxesOverlap(boxes[i], boxes[j]) && polygonsOverlap(in[i], in[j]) {
-				join(i, j)
-			}
-		}
-	}
-
-	groups := make(map[int][]int, len(in))
-	order := make([]int, 0, len(in))
-
-	for i := range in {
-		root := find(i)
-		if _, seen := groups[root]; !seen {
-			order = append(order, root)
-		}
-
-		groups[root] = append(groups[root], i)
-	}
-
-	out := make(MultiPolygon, 0, len(order))
-	for _, root := range order {
-		members := groups[root]
-		if len(members) == 1 {
-			out = append(out, in[members[0]])
-			continue
-		}
-
-		var pts []Point
-		for _, idx := range members {
-			pts = append(pts, in[idx]...)
-		}
-
-		out = append(out, convexHull(pts))
-	}
-
-	return out
+	return append(out, in...)
 }
 
 // destinationPoint is the point reached by travelling distanceM meters from
@@ -241,142 +182,4 @@ func meanBearing(a, b float64) float64 {
 	}
 
 	return math.Mod(math.Atan2(y, x)*180/math.Pi+360, 360)
-}
-
-// boundingBox is the polygon's axis-aligned extent in (minLon, minLat,
-// maxLon, maxLat) order.
-func boundingBox(p Polygon) [4]float64 {
-	minLon, minLat := math.Inf(1), math.Inf(1)
-	maxLon, maxLat := math.Inf(-1), math.Inf(-1)
-
-	for _, pt := range p {
-		minLon = math.Min(minLon, pt.Lon)
-		maxLon = math.Max(maxLon, pt.Lon)
-		minLat = math.Min(minLat, pt.Lat)
-		maxLat = math.Max(maxLat, pt.Lat)
-	}
-
-	return [4]float64{minLon, minLat, maxLon, maxLat}
-}
-
-func bboxesOverlap(a, b [4]float64) bool {
-	return a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]
-}
-
-// polygonsOverlap is the real test bboxesOverlap only pre-filters for: do
-// the two rings share ground, either by crossing or by one containing the
-// other (which edges alone miss — see Union's doc comment).
-func polygonsOverlap(a, b Polygon) bool {
-	for i := 0; i+1 < len(a); i++ {
-		for j := 0; j+1 < len(b); j++ {
-			if segmentsIntersect(a[i], a[i+1], b[j], b[j+1]) {
-				return true
-			}
-		}
-	}
-
-	return (len(a) > 0 && pointInPolygon(a[0], b)) || (len(b) > 0 && pointInPolygon(b[0], a))
-}
-
-// segmentsIntersect reports whether segments p1q1 and p2q2 cross or touch,
-// by the standard orientation test.
-func segmentsIntersect(p1, q1, p2, q2 Point) bool {
-	o1, o2 := orientation(p1, q1, p2), orientation(p1, q1, q2)
-	o3, o4 := orientation(p2, q2, p1), orientation(p2, q2, q1)
-
-	if o1 != o2 && o3 != o4 {
-		return true
-	}
-
-	return (o1 == 0 && onSegment(p1, p2, q1)) ||
-		(o2 == 0 && onSegment(p1, q2, q1)) ||
-		(o3 == 0 && onSegment(p2, p1, q2)) ||
-		(o4 == 0 && onSegment(p2, q1, q2))
-}
-
-// orientation is the turn from p to q to r: 0 colinear, 1 clockwise,
-// 2 counterclockwise. Lon/Lat stand in for plane coordinates, used here only
-// to decide topology, not distance.
-func orientation(p, q, r Point) int {
-	val := (q.Lat-p.Lat)*(r.Lon-q.Lon) - (q.Lon-p.Lon)*(r.Lat-q.Lat)
-
-	switch {
-	case val > 0:
-		return 1
-	case val < 0:
-		return 2
-	default:
-		return 0
-	}
-}
-
-// onSegment reports whether q, known colinear with p and r, lies within the
-// bounding box of segment pr.
-func onSegment(p, q, r Point) bool {
-	return q.Lon <= math.Max(p.Lon, r.Lon) && q.Lon >= math.Min(p.Lon, r.Lon) &&
-		q.Lat <= math.Max(p.Lat, r.Lat) && q.Lat >= math.Min(p.Lat, r.Lat)
-}
-
-// pointInPolygon reports whether pt lies within the ring, by ray casting.
-func pointInPolygon(pt Point, ring Polygon) bool {
-	inside := false
-
-	for i, j := 0, len(ring)-1; i < len(ring); j, i = i, i+1 {
-		pi, pj := ring[i], ring[j]
-		if (pi.Lat > pt.Lat) != (pj.Lat > pt.Lat) {
-			atX := (pj.Lon-pi.Lon)*(pt.Lat-pi.Lat)/(pj.Lat-pi.Lat) + pi.Lon
-			if pt.Lon < atX {
-				inside = !inside
-			}
-		}
-	}
-
-	return inside
-}
-
-// convexHull is the smallest convex ring containing every point, by Andrew's
-// monotone chain. points is never empty: Union's only caller passes the
-// concatenated vertices of two or more already-nonempty polygons. Used only
-// to represent a group Union has determined overlaps — see its doc comment
-// for why that is honest and a hull over the whole result would not be.
-func convexHull(points []Point) Polygon {
-	pts := append([]Point(nil), points...)
-	sort.Slice(pts, func(i, j int) bool {
-		if pts[i].Lon != pts[j].Lon {
-			return pts[i].Lon < pts[j].Lon
-		}
-
-		return pts[i].Lat < pts[j].Lat
-	})
-
-	cross := func(o, a, b Point) float64 {
-		return (a.Lon-o.Lon)*(b.Lat-o.Lat) - (a.Lat-o.Lat)*(b.Lon-o.Lon)
-	}
-
-	lower := make([]Point, 0, len(pts))
-	for _, p := range pts {
-		for len(lower) >= 2 && cross(lower[len(lower)-2], lower[len(lower)-1], p) <= 0 {
-			lower = lower[:len(lower)-1]
-		}
-		lower = append(lower, p)
-	}
-
-	upper := make([]Point, 0, len(pts))
-	for i := len(pts) - 1; i >= 0; i-- {
-		p := pts[i]
-		for len(upper) >= 2 && cross(upper[len(upper)-2], upper[len(upper)-1], p) <= 0 {
-			upper = upper[:len(upper)-1]
-		}
-		upper = append(upper, p)
-	}
-
-	hull := make([]Point, 0, len(lower)+len(upper))
-	hull = append(hull, lower[:len(lower)-1]...)
-	hull = append(hull, upper[:len(upper)-1]...)
-
-	if len(hull) == 0 {
-		return nil
-	}
-
-	return append(Polygon(hull), hull[0])
 }
