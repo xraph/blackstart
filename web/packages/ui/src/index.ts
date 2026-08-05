@@ -28,6 +28,7 @@ export * from "./instrument/status";
 export * from "./instrument/provenance";
 
 export * from "./shell/app-shell";
+export * from "./shell/theme";
 export * from "./shell/time-axis";
 export * from "./shell/responsive";
 
