@@ -32,6 +32,44 @@ var createdAt = time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
 func harness(t *testing.T) *scnfabriq.Store {
 	t.Helper()
 
+	return openStore(t, false)
+}
+
+// planIndependentHarness is harness with the planner's index paths switched
+// off for the application role.
+//
+// For the ordering tests, and only those. RunTable_recent_idx is
+// (tenant_id, queued_at DESC, id DESC) — exactly the order List asks for — so
+// Postgres walking it returns sorted rows whether or not the query said to
+// sort. Both surviving mutants in this file's ordering coverage lived there: a
+// List with no ORDER BY at all, and one with no `, id DESC`, each passed
+// against the real database because the plan supplied what the clause had
+// stopped asking for. Neither is correct — a different plan on a larger table,
+// a parallel sequential scan or a bitmap heap scan, breaks both — but a test
+// that only fails when the planner cooperates is a test that stops biting
+// silently, and nothing announces it.
+//
+// Switching the index paths off forces a sequential scan, which returns rows
+// in heap order, which is insertion order. The ordering then comes from the
+// ORDER BY clause or from nowhere, and the tests below can tell the
+// difference.
+//
+// Set on the role rather than per statement because the store issues its
+// query through Fabriq's pool: there is no seam to reach a session from here,
+// and `SET LOCAL` needs a transaction this test does not own. A role-level
+// setting applies to every session the pool opens afterwards, which is why it
+// has to happen before fabriq.Open. It cannot leak into another test —
+// testsupport.Postgres starts a container per call and terminates it on
+// cleanup, so the role this alters exists only inside this test's database.
+func planIndependentHarness(t *testing.T) *scnfabriq.Store {
+	t.Helper()
+
+	return openStore(t, true)
+}
+
+func openStore(t *testing.T, withoutIndexScans bool) *scnfabriq.Store {
+	t.Helper()
+
 	superDSN := testsupport.Postgres(t)
 
 	testsupport.Migrate(t, superDSN, scnfabriq.Group())
@@ -40,6 +78,10 @@ func harness(t *testing.T) *scnfabriq.Store {
 	// security never constrains a superuser — a test that connected as one
 	// would pass every isolation check while proving nothing.
 	appDSN := testsupport.AppDSN(t, superDSN)
+
+	if withoutIndexScans {
+		disableIndexScans(t, superDSN, appDSN)
+	}
 
 	reg, err := entities.Build(scnfabriq.Contributor{})
 	if err != nil {
@@ -61,6 +103,46 @@ func harness(t *testing.T) *scnfabriq.Store {
 	}
 
 	return s
+}
+
+// plannerSwitches are the three that can produce sorted output from an index.
+//
+// enable_sort is deliberately left alone: the point is to remove the plan that
+// orders rows for free, not the one that carries out an ORDER BY.
+var plannerSwitches = []string{"enable_indexscan", "enable_indexonlyscan", "enable_bitmapscan"}
+
+// disableIndexScans turns the planner's index paths off for the application
+// role, then checks on a fresh session that they really are off.
+//
+// The check is the point. A silently ineffective ALTER ROLE — a renamed role,
+// a driver that opened its pool before this ran, a setting Postgres refused —
+// would leave every assertion below passing for exactly the reason this
+// function exists to remove, and the mutation that proves the coverage would
+// have to be re-run by hand to notice.
+func disableIndexScans(t *testing.T, superDSN, appDSN string) {
+	t.Helper()
+
+	stmts := make([]string, 0, len(plannerSwitches))
+	for _, switched := range plannerSwitches {
+		stmts = append(stmts, `ALTER ROLE fabriq_app SET `+switched+` = off`)
+	}
+
+	testsupport.ApplyDDL(t, superDSN, stmts)
+
+	// Read back over appDSN, not superDSN: the setting is attached to the
+	// application role, and the superuser's session would report its own.
+	// scalar lives in migrations_integration_test.go, alongside the rest of
+	// this package's raw-inspection plumbing.
+	for _, switched := range plannerSwitches {
+		off := scalar(t, appDSN,
+			`SELECT count(*) AS n FROM pg_settings
+			 WHERE name = '`+switched+`' AND setting = 'off'`)
+
+		if off != 1 {
+			t.Fatalf("%s is not off on a fresh application session; the ordering "+
+				"tests below would pass on whatever plan Postgres picked", switched)
+		}
+	}
 }
 
 func aManifest(modelHash string) scenario.Manifest {
@@ -442,8 +524,13 @@ func TestListReturnsRunsFromEveryScenario(t *testing.T) {
 // expectation. Two stores compared to one written-down answer rather than to
 // each other, because comparing them to each other passes when both are wrong
 // — which is how Claim came to scan insertion order here and queued_at there.
+//
+// planIndependentHarness, so what is under test is the ORDER BY clause rather
+// than the plan Postgres happened to choose. With RunTable_recent_idx
+// available this test passed against a List with no ORDER BY at all; with the
+// index paths switched off it does not. See that harness for why.
 func TestListOrdersRunsAcrossScenariosNewestFirst(t *testing.T) {
-	s := harness(t)
+	s := planIndependentHarness(t)
 	ctx := context.Background()
 
 	// Hours 2, 0, 3, 1 — neither insertion order nor its reverse is the
@@ -492,8 +579,13 @@ func TestListOrdersRunsAcrossScenariosNewestFirst(t *testing.T) {
 // the memory store's newestFirst applies. Without `id DESC` in the ORDER BY,
 // Postgres returns them in whatever order it read the heap and the two stores
 // answer differently for any pair sharing a timestamp.
+//
+// planIndependentHarness for the reason the ordering test above uses it, and
+// here the accident was even easier to mistake for coverage: `id DESC` is in
+// RunTable_recent_idx's key, so an index walk breaks ties correctly on its own
+// and this test passed against a query that had stopped asking it to.
 func TestListBreaksTiesOnIdentifierDescending(t *testing.T) {
-	s := harness(t)
+	s := planIndependentHarness(t)
 	ctx := context.Background()
 
 	sc := aScenario("sha256:tied")
