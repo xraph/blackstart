@@ -116,11 +116,40 @@ func TestTheWindowIsTheExactInstant(t *testing.T) {
 		t.Errorf("the window starts at %v, want the pinned %v", series.from, valid)
 	}
 
-	// Half-open, so the end has to be after the start for the store to select
-	// anything at all — and no further, or the next forecast hour is in range.
-	if !series.to.After(valid) || series.to.Sub(valid) > time.Second {
-		t.Errorf("the window ends at %v, %v after the pinned instant; that is wide "+
-			"enough to catch another forecast hour", series.to, series.to.Sub(valid))
+	// Exactly one microsecond: the resolution of the TIMESTAMPTZ column the
+	// series lives in. Narrower and both bounds land on the same value on the
+	// wire, so `time >= X AND time < X` selects nothing and every span comes
+	// back unrated. Wider and the next forecast hour is in range.
+	if width := series.to.Sub(series.from); width != time.Microsecond {
+		t.Errorf("the window is %v wide, want exactly %v — the resolution of the "+
+			"column it is read from", width, time.Microsecond)
+	}
+}
+
+// A valid time finer than the column can store still finds its row. The
+// driver truncates on the way in, so a window starting at the untruncated
+// value would begin after the row it is looking for.
+func TestASubMicrosecondValidTimeStillMatches(t *testing.T) {
+	t.Parallel()
+
+	span := id.MustNew(gid.Span)
+	stored := valid.Add(3 * time.Microsecond)
+	asked := stored.Add(500 * time.Nanosecond)
+
+	series := &fakeSeries{values: []hazardstore.SpanValue{ampacityAt(span, stored, 900)}}
+
+	got, err := spanAmpacities(t, series).Ampacities(t.Context(), []id.ID{span}, issued, asked)
+	if err != nil {
+		t.Fatalf("Ampacities: %v", err)
+	}
+
+	if got[span] != 900 {
+		t.Errorf("got %v, want the value stored at the microsecond this instant "+
+			"truncates to", got)
+	}
+
+	if !series.from.Equal(stored) {
+		t.Errorf("the window starts at %v, want the truncated %v", series.from, stored)
 	}
 }
 

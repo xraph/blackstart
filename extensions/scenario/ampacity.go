@@ -52,18 +52,26 @@ func NewSpanAmpacities(series SeriesReader) (*SpanAmpacities, error) {
 	return &SpanAmpacities{series: series}, nil
 }
 
-// instant is the width of the read window.
+// instant is the width of the read window, and the resolution it aligns to.
 //
-// The narrowest window a half-open [from, to) can express, so the read
-// selects the value AT validAt and nothing else. This is the whole point of
-// the adapter and not a tuning choice: a hazard series is keyed by (span,
-// quantity, issuance) with the valid time as the position inside it, so a
-// wider window returns several members of one series — several forecast hours
-// — and something downstream would then have to pick among them. Picking
-// silently is the wrong-forecast-hour failure the manifest pins two time axes
-// to prevent, and it would be invisible: every number returned is a real
-// ampacity for a real moment, just not the one that was asked for.
-const instant = time.Nanosecond
+// A microsecond because that is what a TIMESTAMPTZ column stores: hazard's
+// series table declares `time TIMESTAMPTZ` and its read is
+// `time >= $1 AND time < $2`. A nanosecond-wide window puts both bounds on
+// the same microsecond on the wire, so the predicate becomes
+// `time >= X AND time < X` and matches nothing — every span comes back
+// unrated and the run fails blaming the forecast for an arithmetic mistake in
+// this file. That was the first version of this constant, and only a test
+// against the real store could have caught it.
+//
+// One microsecond and no wider. A hazard series is keyed by (span, quantity,
+// issuance) with the valid time as the position inside it, so a window
+// covering more than one instant returns several members of one series —
+// several forecast hours — and something downstream would then have to pick
+// among them. Picking silently is the wrong-forecast-hour failure the
+// manifest pins two time axes to prevent, and it would be invisible: every
+// number returned is a real ampacity for a real moment, just not the one that
+// was asked for.
+const instant = time.Microsecond
 
 // Ampacities reads the thermal rating computed for each span, in AMPERES.
 //
@@ -93,7 +101,13 @@ func (a *SpanAmpacities) Ampacities(
 		keys = append(keys, hazardstore.ValueKey(span, hazardstore.QuantityAmpacity, issuedAt))
 	}
 
-	values, err := a.series.Read(ctx, keys, validAt, validAt.Add(instant))
+	// Aligned to the column's resolution rather than used as given. A valid
+	// time carrying sub-microsecond precision is truncated by the driver on
+	// the way in, so a window starting at the untruncated value would begin
+	// after the row it is looking for.
+	at := validAt.Truncate(instant)
+
+	values, err := a.series.Read(ctx, keys, at, at.Add(instant))
 	if err != nil {
 		return nil, fmt.Errorf(
 			"scenario: reading the ampacity of %d span(s) from the forecast issued "+
@@ -105,10 +119,12 @@ func (a *SpanAmpacities) Ampacities(
 
 	for _, value := range values {
 		// Checked rather than trusted to the window. A store whose read is
-		// inclusive at the far end, or one that rounds a timestamp to the
-		// resolution of its column, would return a neighboring forecast hour
-		// that the caller cannot tell apart from the pinned one.
-		if !value.ValidAt.Equal(validAt) {
+		// inclusive at the far end would return a neighboring forecast hour
+		// that the caller cannot tell apart from the pinned one. Compared at
+		// the column's resolution, on both sides, for the reason the window
+		// is aligned to it: an equality against an untruncated valid time
+		// would reject the very row that was asked for.
+		if !value.ValidAt.Truncate(instant).Equal(at) {
 			continue
 		}
 
