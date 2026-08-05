@@ -3,6 +3,7 @@ package scenario
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"time"
 
@@ -43,14 +44,23 @@ type Rated struct {
 // span's ampacity at the pinned forecast times, the weakest of those, and the
 // conversion of that current into the volt-amperes the solver contract states.
 //
-// A branch whose chain breaks anywhere keeps its static rating and emits no
-// override. That is not leniency: a rating of zero would make the branch
-// infinitely overloaded and trip the whole network on the first screen, and an
-// incomplete asset record for one line is a gap in the geometry rather than a
-// reason to abandon the scenario. §4.2 of the design is what makes the
-// *aggregate* case loud — a cycle that rated nothing is the run's failure to
-// raise, not this function's, because only the caller knows which cycle was
-// pinned.
+// A branch whose chain breaks keeps its static rating and emits no override.
+// That is not leniency: an incomplete asset record for one line is a gap in
+// the geometry rather than a reason to abandon the scenario, and an override
+// of zero would be worse than nothing — every consumer reads a non-positive
+// rating as unrated and skips the branch, so a zero would remove that line
+// from every violation check instead of failing one. §4.2 of the design is
+// what makes the *aggregate* case loud: a cycle that rated nothing is the
+// run's failure to raise, not this function's, because only the caller knows
+// which cycle was pinned.
+//
+// A gap is not a failure, though, and the difference is the whole safety
+// argument here. Anything that is not a documented absence — a dropped
+// connection, an expired deadline — fails the run rather than being counted
+// as one more line without geometry. Two thousand branches coming back with
+// six hundred rated and no error would record the scenario as weather-bound
+// with fourteen hundred lines silently on nameplate, and re-running the same
+// pinned cycle would produce a different answer.
 func rate(
 	ctx context.Context,
 	model *solverv1.NetworkModel,
@@ -95,7 +105,21 @@ func rate(
 	// branch restored mid-screen needs the rating the weather gives it as much
 	// as any other. Skipping them would leave exactly those on nameplate.
 	for index, branch := range branches {
-		amperes, ok := weakestSpan(ctx, geo, hazard, branch.GetId(), issuedAt, validAt)
+		// Checked per branch rather than trusted to the stores. A canceled
+		// run that kept walking would return a Rated whose coverage counts
+		// describe how far it got rather than what the weather reached, and
+		// nothing downstream could tell the two apart.
+		if err := ctx.Err(); err != nil {
+			return Rated{}, fmt.Errorf(
+				"scenario: rating stopped at branch %d of %d: %w", index, len(branches), err)
+		}
+
+		amperes, ok, err := weakestSpan(ctx, geo, hazard, branch.GetId(), issuedAt, validAt)
+		if err != nil {
+			return Rated{}, fmt.Errorf(
+				"scenario: rating branch %d (%s): %w", index, branch.GetId(), err)
+		}
+
 		if !ok {
 			continue
 		}

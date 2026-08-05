@@ -1,6 +1,9 @@
 package scenario
 
 import (
+	"context"
+	"errors"
+	"math"
 	"testing"
 
 	"github.com/xraph/blackstart/extensions/geo/asset"
@@ -103,6 +106,26 @@ func TestTheWeatherRatedCountReflectsReality(t *testing.T) {
 		t.Fatalf("got %d overrides, want 2 — one per rated branch", len(got.Overrides))
 	}
 
+	// The rating on the emit site itself, which is the only path that ships.
+	// rateOneBranch exercises weakestSpan and voltAmperes side by side; it
+	// cannot see rate wiring the two together wrongly, and putting raw
+	// amperes in this field would hand the solver a branch reading as a
+	// hundred thousand times overloaded.
+	//
+	// Spelled with the stdlib's sqrt while the implementation uses
+	// pkg/quantity's, so this asserts a value it did not compute the same way.
+	wantVA := math.Sqrt(3) * 345_000 * 900
+	if rated := got.Overrides[0].GetBranchRating().GetRatingVa(); math.Abs(rated-wantVA) > 1 {
+		t.Errorf("rating = %v VA, want %v — %v A unconverted would be the bug", rated,
+			wantVA, 900.0)
+	}
+
+	// One read per rated branch. Three spans each, so a per-span reader would
+	// show six.
+	if haz.calls != 2 {
+		t.Errorf("%d ampacity reads for 2 rated branches, want 2", haz.calls)
+	}
+
 	// The override names the branch by index into this same model's branch
 	// list. Rating the right number of branches while naming the wrong ones
 	// would move a storm onto lines it never touched, and every count above
@@ -154,5 +177,47 @@ func TestAModelWithNoVoltageBaseIsRefused(t *testing.T) {
 		issued, valid,
 	); err == nil {
 		t.Error("rate accepted a model with no voltage base")
+	}
+}
+
+// The failure the counts cannot describe.
+//
+// Five branches and a connection pool that gives out after two. Read as five
+// lines of which two had geometry, this returns success with WeatherRated 2
+// of 5 and the scenario is recorded as weather-bound with three lines quietly
+// on nameplate. §4.2's "rated nothing" check does not fire, because two is not
+// nothing — and the same pinned cycle answers differently on the next attempt.
+func TestAFailurePartwayThroughFailsTheRunRatherThanTheCoverage(t *testing.T) {
+	t.Parallel()
+
+	geo := &fakeGeo{route: aRoute, spans: threeSpans, breakAfter: 2}
+
+	got, err := rate(
+		t.Context(), fiveBranchModel(345_000), geo, &fakeHazard{ampacity: 900},
+		issued, valid,
+	)
+	if !errors.Is(err, errBroken) {
+		t.Fatalf("rate returned WeatherRated %d of %d with err %v; want the transport error",
+			got.WeatherRated, got.BranchCount, err)
+	}
+}
+
+// A canceled run fails rather than reporting how far it got. Nothing
+// downstream can tell a Rated built from a truncated walk from one built from
+// a whole network, so the walk must not produce it.
+func TestACancelledRunIsNotAPartialRating(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	got, err := rate(
+		ctx, fiveBranchModel(345_000),
+		&fakeGeo{route: aRoute, spans: threeSpans}, &fakeHazard{ampacity: 900},
+		issued, valid,
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("rate returned WeatherRated %d with err %v; want context.Canceled",
+			got.WeatherRated, err)
 	}
 }

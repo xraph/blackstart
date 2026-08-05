@@ -10,10 +10,14 @@ package scenario
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
 	"time"
 
+	"github.com/xraph/blackstart/extensions/geo"
 	"github.com/xraph/blackstart/extensions/geo/asset"
+	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
 	"github.com/xraph/blackstart/pkg/quantity"
 )
@@ -23,7 +27,7 @@ import (
 // Narrow because the traversal below is the only geometry a scenario has any
 // business doing: a wider interface would let the rating step reach for a
 // route's provenance or a span's azimuth and quietly acquire opinions about
-// the asset record. *geo.Engine satisfies it as it stands.
+// the asset record.
 type GeoReader interface {
 	// RouteForBranch finds the route carrying an electrical branch.
 	RouteForBranch(ctx context.Context, branch id.ID) (asset.Route, error)
@@ -32,21 +36,74 @@ type GeoReader interface {
 	Spans(ctx context.Context, route id.ID) ([]asset.Span, error)
 }
 
-// HazardReader reads one computed ampacity, in AMPERES.
+// The real engine satisfies it, checked here rather than asserted in prose:
+// a comment claiming the shapes match is enforced by nothing, and the two
+// drift the first time geo changes a signature.
+var _ GeoReader = (*geo.Engine)(nil)
+
+// HazardReader reads computed ampacities, in AMPERES.
 //
 // Both time axes are parameters rather than defaults. hazard stores its values
 // under a series key of (span, quantity, issuance) with the valid time as the
 // position inside that series, so naming only one axis selects an arbitrary
-// member of a series rather than a specific number — a rating quietly taken
-// from the wrong forecast hour is exactly the failure this pipeline must not
-// have.
+// member of a series rather than a specific number.
 type HazardReader interface {
-	// Ampacity is the thermal rating computed for this span, from the weather
-	// issued at issuedAt, describing the moment validAt.
+	// Ampacities reads the thermal rating computed for each of these spans,
+	// from the weather issued at issuedAt, describing the moment validAt.
 	//
-	// A span with no computed value returns an error rather than a zero: the
-	// caller has to be able to tell "unknown" from "cannot carry anything".
-	Ampacity(ctx context.Context, span id.ID, issuedAt, validAt time.Time) (float64, error)
+	// A batch rather than a call per span, because hazard's own store is
+	// shaped for it: ValueStore.Read takes a list of series keys so that "a
+	// caller composes the keys it wants and asks once, rather than issuing one
+	// round trip per series". A per-span reader would put two thousand
+	// branches times twenty spans of sequential queries against a store built
+	// to answer that in a few dozen — and a connection pool that saturates
+	// partway through is precisely how a run comes back having rated half a
+	// network without saying so.
+	//
+	// A span absent from the returned map has no computed value. An
+	// implementation must read the EXACT instant validAt and let a miss be a
+	// miss: never the nearest sample, never the enclosing hour. Widening the
+	// window returns several members of one series and picking among them
+	// silently is the wrong-forecast-hour failure both time axes exist to
+	// prevent. If snapping is ever wanted it belongs in a named step with its
+	// own test, not in the width of a window chosen inside an adapter.
+	//
+	// An error means the platform could not answer and fails the run. Absence
+	// is the map; failure is the error. An implementation that collapses the
+	// two turns a saturated pool into a network quietly left on nameplate.
+	Ampacities(
+		ctx context.Context, spans []id.ID, issuedAt, validAt time.Time,
+	) (map[id.ID]float64, error)
+}
+
+// isRatingGap reports whether an error means the asset record is incomplete
+// rather than that the platform failed to answer.
+//
+// The whole safety argument of this file rests on that distinction. A branch
+// with no route is a known, permanent state and the run continues past it; a
+// dropped connection or an expired deadline is neither, and reading one as
+// the other is how two thousand branches come back with six hundred rated,
+// no error, and a different answer every time the same pinned cycle is run.
+//
+// ErrInvalid counts as a gap because geo returns it for a carrier that cannot
+// be solved — a circuit rather than a branch. That is a statement about the
+// asset, not about the platform's health, and retrying will not change it.
+func isRatingGap(err error) bool {
+	return errors.Is(err, bserr.ErrNotFound) || errors.Is(err, bserr.ErrInvalid)
+}
+
+// parseBranch reads the wire's branch identifier as a platform one.
+//
+// The parse error is deliberately dropped rather than propagated.
+// solverv1.Branch.id is a free string on the wire, so an importer that never
+// minted platform identifiers produces a model this cannot join to the asset
+// record at all — a permanent gap that would fail identically on every retry,
+// which is the one thing it has in common with a branch that has no route and
+// nothing in common with a dropped connection.
+func parseBranch(branchID string) (id.ID, bool) {
+	parsed, err := id.Parse(branchID)
+
+	return parsed, err == nil
 }
 
 // weakestSpan is the lowest ampacity across a branch's spans, in AMPERES.
@@ -58,53 +115,80 @@ type HazardReader interface {
 // current that one of its own spans cannot. Selection, not computation — the
 // number returned is one hazard already computed, unaltered.
 //
-// Reports false for any break in the chain: an identifier the platform cannot
-// parse, no route, no spans, or any span without a usable computed value. A
-// partial answer is refused rather than returned, because a minimum taken over
-// the spans that happened to resolve is a rating for a shorter line than the
-// one being rated.
+// Three outcomes, not two. A rating; a gap in the asset record, which is
+// (0, false, nil) and leaves the branch on its static rating; or an error,
+// which fails the whole run. A partial rating is never returned: a minimum
+// taken over the spans that happened to resolve is a rating for a shorter
+// line than the one being rated.
 func weakestSpan(
 	ctx context.Context,
 	geo GeoReader,
 	hazard HazardReader,
 	branchID string,
 	issuedAt, validAt time.Time,
-) (float64, bool) {
-	branch, err := id.Parse(branchID)
-	if err != nil {
-		return 0, false
+) (float64, bool, error) {
+	branch, named := parseBranch(branchID)
+	if !named {
+		return 0, false, nil
 	}
 
 	route, err := geo.RouteForBranch(ctx, branch)
 	if err != nil {
-		return 0, false
+		if isRatingGap(err) {
+			return 0, false, nil
+		}
+
+		return 0, false, fmt.Errorf("reading the route carrying %s: %w", branch, err)
 	}
 
 	spans, err := geo.Spans(ctx, route.ID)
-	if err != nil || len(spans) == 0 {
-		return 0, false
+	if err != nil {
+		if isRatingGap(err) {
+			return 0, false, nil
+		}
+
+		return 0, false, fmt.Errorf("reading the spans of route %s: %w", route.ID, err)
+	}
+
+	if len(spans) == 0 {
+		return 0, false, nil
+	}
+
+	ids := make([]id.ID, 0, len(spans))
+	for _, span := range spans {
+		ids = append(ids, span.ID)
+	}
+
+	amperes, err := hazard.Ampacities(ctx, ids, issuedAt, validAt)
+	if err != nil {
+		if isRatingGap(err) {
+			return 0, false, nil
+		}
+
+		return 0, false, fmt.Errorf("reading the ampacities of route %s: %w", route.ID, err)
 	}
 
 	weakest := math.Inf(1)
 
 	for _, span := range spans {
-		amperes, ampErr := hazard.Ampacity(ctx, span.ID, issuedAt, validAt)
-		if ampErr != nil {
-			return 0, false
+		value, ok := amperes[span.ID]
+		if !ok {
+			return 0, false, nil
 		}
 
 		// A non-positive or non-finite ampacity is not a measurement of a line
 		// that can carry nothing; it is a value that should not exist. Letting
-		// one through would make it the minimum and hand the solver a branch
-		// that is overloaded by construction.
-		if !(amperes > 0) || math.IsInf(amperes, 0) {
-			return 0, false
+		// one through would make it the minimum and emit an override of zero,
+		// which every consumer reads as unrated and skips — so the branch
+		// would drop out of every violation check rather than fail one.
+		if !(value > 0) || math.IsInf(value, 0) {
+			return 0, false, nil
 		}
 
-		weakest = math.Min(weakest, amperes)
+		weakest = math.Min(weakest, value)
 	}
 
-	return weakest, true
+	return weakest, true, nil
 }
 
 // voltAmperes converts a line current into three-phase apparent power.

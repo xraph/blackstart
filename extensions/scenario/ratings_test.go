@@ -6,6 +6,7 @@ package scenario
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -46,6 +47,11 @@ var (
 	}
 )
 
+// errBroken stands for everything that is not a documented absence: a reset
+// connection, a saturated pool, an expired statement timeout. Deliberately
+// wrapping neither bserr sentinel, because that is what makes it a failure.
+var errBroken = errors.New("dial tcp 10.0.0.1:5432: connection reset by peer")
+
 // fakeGeo is one route and one span list, or a route per branch when a test
 // needs the chain complete for some branches and broken for others.
 type fakeGeo struct {
@@ -54,9 +60,21 @@ type fakeGeo struct {
 	routesByBranch map[string]asset.Route
 	spans          []asset.Span
 	spansErr       error
+
+	// breakAfter makes RouteForBranch fail with errBroken once it has been
+	// called this many times, which is how a connection pool gives out
+	// partway through a model.
+	breakAfter int
+	calls      int
 }
 
 func (g *fakeGeo) RouteForBranch(_ context.Context, branch id.ID) (asset.Route, error) {
+	g.calls++
+
+	if g.breakAfter > 0 && g.calls > g.breakAfter {
+		return asset.Route{}, errBroken
+	}
+
 	if g.routesByBranch != nil {
 		route, ok := g.routesByBranch[branch.String()]
 		if !ok {
@@ -82,30 +100,43 @@ func (g *fakeGeo) Spans(_ context.Context, _ id.ID) ([]asset.Span, error) {
 }
 
 // fakeHazard answers with one ampacity for every span, or with a per-span
-// number when a test cares which span is the weak one.
+// number when a test cares which span is the weak one. A span it has no
+// number for is simply absent from the map, which is the interface's way of
+// saying no value was computed.
 type fakeHazard struct {
 	ampacity float64
 	bySpan   map[id.ID]float64
 	err      error
+
+	// calls counts round trips, so a test can pin that one branch costs one
+	// read rather than one per span.
+	calls int
 }
 
-func (h *fakeHazard) Ampacity(
-	_ context.Context, span id.ID, _, _ time.Time,
-) (float64, error) {
+func (h *fakeHazard) Ampacities(
+	_ context.Context, spans []id.ID, _, _ time.Time,
+) (map[id.ID]float64, error) {
+	h.calls++
+
 	if h.err != nil {
-		return 0, h.err
+		return nil, h.err
 	}
 
-	if h.bySpan != nil {
-		amperes, ok := h.bySpan[span]
-		if !ok {
-			return 0, errNotFound
+	out := make(map[id.ID]float64, len(spans))
+
+	for _, span := range spans {
+		if h.bySpan == nil {
+			out[span] = h.ampacity
+
+			continue
 		}
 
-		return amperes, nil
+		if amperes, ok := h.bySpan[span]; ok {
+			out[span] = amperes
+		}
 	}
 
-	return h.ampacity, nil
+	return out, nil
 }
 
 // spansCarrying builds a span per ampacity, in order, and the lookup a
@@ -130,12 +161,16 @@ func rateOneBranch(t *testing.T, amperes []float64, volts float64) float64 {
 
 	spans, bySpan := spansCarrying(amperes)
 
-	weakest, ok := weakestSpan(
+	weakest, ok, err := weakestSpan(
 		t.Context(),
 		&fakeGeo{route: aRoute, spans: spans},
 		&fakeHazard{bySpan: bySpan},
 		lines[0].String(), issued, valid,
 	)
+	if err != nil {
+		t.Fatalf("weakestSpan: %v", err)
+	}
+
 	if !ok {
 		t.Fatal("the chain is complete, so weakestSpan must report a rating")
 	}
@@ -203,9 +238,16 @@ func TestAChainThatBreaksYieldsNoRating(t *testing.T) {
 			haz:  &fakeHazard{ampacity: 900},
 		},
 		{
-			name: "spans have no computed ampacity",
+			name: "the ampacity read reports the span is unknown",
 			geo:  &fakeGeo{route: aRoute, spans: threeSpans},
 			haz:  &fakeHazard{err: errNotFound},
+		},
+		{
+			// Absence in this interface is a span missing from the map, not
+			// an error, and it has to read as the same gap.
+			name: "spans have no computed ampacity",
+			geo:  &fakeGeo{route: aRoute, spans: threeSpans},
+			haz:  &fakeHazard{bySpan: map[id.ID]float64{}},
 		},
 		{
 			// Not a gap in the record but a value that should not exist. It
@@ -219,8 +261,12 @@ func TestAChainThatBreaksYieldsNoRating(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, ok := weakestSpan(
+			got, ok, err := weakestSpan(
 				t.Context(), tc.geo, tc.haz, lines[0].String(), issued, valid)
+			if err != nil {
+				t.Fatalf("a documented absence is a gap, not a run failure: %v", err)
+			}
+
 			if ok {
 				t.Errorf("weakestSpan reported %v A from a broken chain", got)
 			}
@@ -235,12 +281,84 @@ func TestAChainThatBreaksYieldsNoRating(t *testing.T) {
 func TestABranchIdentifierThePlatformCannotParseIsARatingGap(t *testing.T) {
 	t.Parallel()
 
-	if got, ok := weakestSpan(
+	got, ok, err := weakestSpan(
 		t.Context(),
 		&fakeGeo{route: aRoute, spans: threeSpans},
 		&fakeHazard{ampacity: 900},
 		"ln1", issued, valid,
-	); ok {
+	)
+	if err != nil {
+		t.Fatalf("an identifier that will never parse is a gap, not a failure: %v", err)
+	}
+
+	if ok {
 		t.Errorf("weakestSpan reported %v A for the unparsable branch %q", got, "ln1")
+	}
+}
+
+// A dropped connection is not a line without geometry, and the difference has
+// to survive every step of the chain.
+//
+// Read as a gap, a saturated pool would leave each remaining branch on its
+// static rating, the run would return no error, and the same pinned cycle
+// would produce a different override set on every attempt — the reproducibility
+// invariant broken by an infrastructure hiccup, silently.
+func TestAPlatformFailureIsNotAGapInTheAssetRecord(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		geo  *fakeGeo
+		haz  *fakeHazard
+	}{
+		{
+			name: "the route read fails",
+			geo:  &fakeGeo{routeErr: errBroken},
+			haz:  &fakeHazard{ampacity: 900},
+		},
+		{
+			name: "the span read fails",
+			geo:  &fakeGeo{route: aRoute, spansErr: errBroken},
+			haz:  &fakeHazard{ampacity: 900},
+		},
+		{
+			name: "the ampacity read fails",
+			geo:  &fakeGeo{route: aRoute, spans: threeSpans},
+			haz:  &fakeHazard{err: errBroken},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, ok, err := weakestSpan(
+				t.Context(), tc.geo, tc.haz, lines[0].String(), issued, valid)
+			if !errors.Is(err, errBroken) {
+				t.Fatalf("weakestSpan returned (ok=%v, err=%v), want the transport error",
+					ok, err)
+			}
+		})
+	}
+}
+
+// One read per branch, not one per span. hazard's store takes a list of series
+// keys precisely so a caller asks once; a per-span loop would put two thousand
+// branches times twenty spans of sequential queries against it, which is both
+// slow and the condition under which a pool times out midway.
+func TestABranchCostsOneAmpacityRead(t *testing.T) {
+	t.Parallel()
+
+	haz := &fakeHazard{ampacity: 900}
+
+	if _, _, err := weakestSpan(
+		t.Context(),
+		&fakeGeo{route: aRoute, spans: threeSpans}, haz,
+		lines[0].String(), issued, valid,
+	); err != nil {
+		t.Fatalf("weakestSpan: %v", err)
+	}
+
+	if haz.calls != 1 {
+		t.Errorf("%d ampacity reads for a %d-span branch, want 1",
+			haz.calls, len(threeSpans))
 	}
 }
