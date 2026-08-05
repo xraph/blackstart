@@ -10,6 +10,25 @@
 // Split across two files by domain rather than kept in one: this one holds
 // the composite and the scenario accessor, runs.go holds the run accessor.
 // Both still add up to one implementation of one package.
+//
+// # This store aliases slices and the Fabriq one does not
+//
+// A read here returns the stored struct by value, so a caller holding the
+// result shares the backing array of every slice in it — Manifest.Branches
+// above all. Editing that slice edits the stored record. The Fabriq store
+// cannot behave this way: its manifest round-trips through a JSON column, so
+// every read is a fresh allocation.
+//
+// The divergence is left in place deliberately. It is what makes
+// TestEnqueueFreezesTheBranchListToo bite: that test edits a scenario's
+// branch list in place and asserts a run frozen beforehand did not follow,
+// and it is the only test in the extension that can catch Enqueue taking a
+// shallow copy of a manifest. Cloning on read here would make it pass
+// vacuously and remove the guard on the invariant the extension exists for.
+//
+// So: a test relying on this aliasing is relying on a memory-store property,
+// not on a store contract. Anything that must hold for both stores has to be
+// written so it holds against a store that copies.
 package memory
 
 import (

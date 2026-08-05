@@ -56,8 +56,24 @@ type Manifest struct {
 	// protecting the reproducibility invariant the type exists to defend.
 	ValidAt time.Time `json:"valid_at"`
 
-	// HazardConfig identifies the hazard configuration to use: which wind
-	// model, thermal model, ice model, etc. Absent means use defaults.
+	// HazardConfig names the hazard configuration a run should use: which
+	// wind model, thermal model, ice model.
+	//
+	// RECORDED, NOT YET APPLIED. Nothing in the pipeline reads it. The rating
+	// step consumes ampacities hazard has ALREADY computed and stored, so a
+	// run takes whatever configuration that computation pass used and this
+	// field changes nothing: two scenarios differing only here produce
+	// byte-identical results while each claims a binding it did not use. It
+	// is kept rather than dropped because the manifest is the place that
+	// pin belongs, and removing it would have to be undone.
+	//
+	// Honoring it needs a hazard surface that does not exist: computed
+	// values are keyed (span, quantity, issuance) with no configuration in
+	// the key, so hazard cannot store two configurations of one cycle side by
+	// side, and there is nothing for this extension to select between. Until
+	// that key grows a configuration — or hazard offers a compute-on-demand
+	// call — this field must stay documented as inert. A manifest that
+	// over-claims is the failure this whole extension exists to prevent.
 	HazardConfig string `json:"hazard_config,omitempty"`
 
 	// Policy determines which contingencies to analyze. See Policy's own
