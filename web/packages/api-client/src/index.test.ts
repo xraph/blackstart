@@ -70,25 +70,23 @@ describe("api client", () => {
 });
 
 describe("query hooks", () => {
-  // A bare count would only say the generator ran. Naming keys says the
-  // generator kept up with the API — and these three groups are the ones the
-  // console screens are waiting on, so a regeneration that silently dropped
-  // them would look like the screens being unwireable rather than like a
-  // stale client.
-  it("exposes a cache key builder per read endpoint", async () => {
+  it("exposes a cache key builder per read endpoint the viewer depends on", async () => {
     const { queryKeys } = await import("./index");
-    expect(Object.keys(queryKeys).length).toBe(41);
 
+    // Named endpoints rather than a total count: a count breaks on every
+    // legitimate addition to the platform and proves nothing about behaviour,
+    // where naming the ones the viewer actually calls catches the failure
+    // that matters — one of these silently disappearing from the generator's
+    // output.
     for (const key of [
-      "geoRoutesList",
-      "geoCircuitsList",
-      "geoCircuitsRoute",
+      "cascadeRunsGet",
       "cascadeRunsList",
       "cascadeRunsIslands",
-      "hazardSpansLoading",
-      "weatherSpansForecast",
+      "contingencyRunsGet",
+      "contingencyRunsList",
+      "contingencyRunsRanked",
     ]) {
-      expect(queryKeys).toHaveProperty(key);
+      expect(queryKeys, `missing query key builder: ${key}`).toHaveProperty(key);
     }
   });
 
@@ -112,7 +110,11 @@ describe("query hooks", () => {
     const { queryKeys } = await import("./index");
 
     const live = queryKeys.datasourceFeedsGet("feed_1", "2026-08-02T22:00Z", undefined);
-    const asOfThen = queryKeys.datasourceFeedsGet("feed_1", "2026-08-02T22:00Z", "2019-05-18T00:00Z");
+    const asOfThen = queryKeys.datasourceFeedsGet(
+      "feed_1",
+      "2026-08-02T22:00Z",
+      "2019-05-18T00:00Z",
+    );
 
     expect(JSON.stringify(live)).not.toEqual(JSON.stringify(asOfThen));
   });

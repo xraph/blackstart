@@ -18,16 +18,11 @@
  */
 
 import { useNavigate } from "@tanstack/react-router";
-import {
-  useContingencyRunsList,
-  useProvenanceRunsTrace,
-  type SweepRun,
-} from "@blackstart/api-client";
-import { ProvenanceChainView, RAIL_BREAKPOINT, useMediaQuery } from "@blackstart/ui";
+import { useContingencyRunsList, type SweepRun } from "@blackstart/api-client";
+import { RAIL_BREAKPOINT, useMediaQuery } from "@blackstart/ui";
 
 import { runsRoute } from "../router";
 import { useApiClient } from "../api/provider";
-import { chainOfTrace } from "../api/provenance";
 
 export function RunsScreen(): React.JSX.Element {
   const search = runsRoute.useSearch();
@@ -75,8 +70,8 @@ export function RunsScreen(): React.JSX.Element {
           <Notice title="Loading sweeps">Asking the platform for recent N-1 runs.</Notice>
         ) : runs.length === 0 ? (
           <Notice title="No sweeps recorded">
-            Run one with <code className="font-mono">bsctl contingency sweep</code>. The platform
-            is reachable and has nothing to show.
+            Run one with <code className="font-mono">bsctl contingency sweep</code>. The platform is
+            reachable and has nothing to show.
           </Notice>
         ) : wide ? (
           <SweepTable runs={runs} selected={selected} onToggle={toggle} />
@@ -105,39 +100,10 @@ export function RunsScreen(): React.JSX.Element {
         )}
         <span className="flex-1" />
         <span className="max-w-[52ch] text-[11px] leading-snug text-fg-3">
-          Expected unserved energy is not served yet — the platform models power flow and N-1
-          screening, not risk or cascade.
+          Expected unserved energy and the reproducibility verdict are not served yet — the platform
+          models power flow and N-1 screening, not risk or cascade.
         </span>
       </div>
-
-      {/* One selection shows its provenance. Two is a comparison, and the
-          chains of two runs side by side is a different panel than this. */}
-      {selected.size === 1 && <SweepProvenance runId={[...selected][0] ?? ""} />}
-    </div>
-  );
-}
-
-/**
- * The provenance of one sweep, from the platform's own trace.
- *
- * Its own component because it fetches: a hook cannot be called conditionally,
- * and the trace is only wanted once a run is actually selected.
- */
-function SweepProvenance({ runId }: { readonly runId: string }): React.JSX.Element {
-  const client = useApiClient();
-  const { data, isPending, isError, error } = useProvenanceRunsTrace(client, runId);
-
-  return (
-    <div className="max-h-64 shrink-0 overflow-y-auto border-t border-line bg-panel px-3.5 py-3">
-      {isPending ? (
-        <p className="m-0 font-mono text-[10px] text-fg-3">Tracing {runId}…</p>
-      ) : isError ? (
-        <p className="m-0 text-[11px] leading-snug text-alarm">
-          No provenance for this run: {error.message}
-        </p>
-      ) : data === undefined ? null : (
-        <ProvenanceChainView chain={chainOfTrace(data)} />
-      )}
     </div>
   );
 }

@@ -9,27 +9,17 @@
  */
 
 import type { ReactElement } from "react";
-import {
-  formatQuantity,
-  type FormatOptions,
-  type Quantity,
-  type Unit,
-} from "@blackstart/schema";
+import { formatQuantity, type FormatOptions, type Quantity, type Unit } from "@blackstart/schema";
 import { cn } from "../cn";
 
-/**
- * What a missing measurement looks like.
- *
- * An em dash rather than a zero, and that is the whole point. The cascade
- * schema makes frequency, nadir and the customer counters optional because an
- * island with no machine attached has no frequency to report — absent, not
- * zero. Rendering a 0 would state a measurement nobody made, and "0.0 Hz" on
- * an island reads as a total collapse rather than as silence.
- */
-const ABSENT = "\u2014";
-
 export interface QuantityProps<U extends Unit> extends FormatOptions {
-  /** Undefined where the source had nothing to report. See ABSENT. */
+  /**
+   * Absent is a legitimate value, not a caller error: an island with no
+   * machine attached has no frequency, and a cascade whose engine carries no
+   * customer model has no interrupted count. Both are absence, not zero, so
+   * the type admits `undefined` rather than pushing every call site toward
+   * defaulting to 0 to satisfy a required prop.
+   */
   readonly q: Quantity<U> | undefined;
   /** Hide the unit where a column header already carries it. */
   readonly unitless?: boolean;
@@ -45,21 +35,17 @@ export function QuantityValue<U extends Unit>({
   ...format
 }: QuantityProps<U>): ReactElement {
   if (q === undefined) {
-    return (
-      <span className={cn("font-mono tabular text-fg-3", className)}>
-        {ABSENT}
-        <span className="sr-only">not reported</span>
-      </span>
-    );
+    // "not computed", never "0": a zero here would assert that the measured
+    // thing was found to be nothing, which is a finding — and a calmer one
+    // than the truth, which is that nothing measured it.
+    return <span className={cn("font-mono tabular text-fg-3", className)}>not computed</span>;
   }
 
   const f = formatQuantity(q, format);
   return (
     <span className={cn("font-mono tabular", className)}>
       {f.value}
-      {!unitless && (
-        <span className={cn("ml-1 text-fg-3", unitClassName)}>{f.unit}</span>
-      )}
+      {!unitless && <span className={cn("ml-1 text-fg-3", unitClassName)}>{f.unit}</span>}
     </span>
   );
 }
@@ -73,7 +59,7 @@ export function QuantityValue<U extends Unit>({
  */
 export interface QuantityBlockProps<U extends Unit> {
   readonly label: string;
-  /** Undefined where the source had nothing to report. See ABSENT. */
+  /** See {@link QuantityProps.q} — absent is a value, not an omission. */
   readonly q: Quantity<U> | undefined;
   readonly note?: string;
   readonly decimals?: number;
@@ -88,18 +74,22 @@ export function QuantityBlock<U extends Unit>({
   className,
 }: QuantityBlockProps<U>): ReactElement {
   const f =
-    q === undefined
-      ? { value: ABSENT, unit: "" }
-      : formatQuantity(q, decimals === undefined ? {} : { decimals });
+    q === undefined ? undefined : formatQuantity(q, decimals === undefined ? {} : { decimals });
   return (
     <div className={cn("px-5 py-3", className)}>
-      <div className="font-mono text-[9px] uppercase tracking-[0.13em] text-fg-3">
-        {label}
-      </div>
-      <div className="mt-2 font-mono text-[27px] leading-none tracking-[-0.035em] tabular text-fg">
-        {f.value}
-        <span className="ml-1.5 text-xs tracking-normal text-fg-3">{f.unit}</span>
-      </div>
+      <div className="font-mono text-[9px] uppercase tracking-[0.13em] text-fg-3">{label}</div>
+      {f === undefined ? (
+        // Same figure, same slot, deliberately smaller: a "not computed" this
+        // large would read as a headline number, and it is the opposite of one.
+        <div className="mt-2 font-mono text-[13px] normal-case tracking-normal text-fg-3">
+          not computed
+        </div>
+      ) : (
+        <div className="mt-2 font-mono text-[27px] leading-none tracking-[-0.035em] tabular text-fg">
+          {f.value}
+          <span className="ml-1.5 text-xs tracking-normal text-fg-3">{f.unit}</span>
+        </div>
+      )}
       {note !== undefined && (
         <div className="mt-2 font-mono text-[9px] tabular text-fg-3">{note}</div>
       )}

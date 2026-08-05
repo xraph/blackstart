@@ -67,7 +67,7 @@ type runRow struct {
 }
 
 // fromDomain maps a run onto the persistence shape.
-func fromDomain(in run.Run) (runRow, error) {
+func fromDomain(in run.CascadeRun) (runRow, error) {
 	events, err := json.Marshal(in.Events)
 	if err != nil {
 		return runRow{}, fmt.Errorf("cascade: encoding events: %w", err)
@@ -100,13 +100,13 @@ func fromDomain(in run.Run) (runRow, error) {
 }
 
 // toDomain maps a stored row back.
-func (r runRow) toDomain() (run.Run, error) {
+func (r runRow) toDomain() (run.CascadeRun, error) {
 	runID, err := cid.ParseRun(r.ID)
 	if err != nil {
-		return run.Run{}, fmt.Errorf("cascade: stored id %q: %w", r.ID, err)
+		return run.CascadeRun{}, fmt.Errorf("cascade: stored id %q: %w", r.ID, err)
 	}
 
-	out := run.Run{
+	out := run.CascadeRun{
 		ID:            runID,
 		ModelHash:     r.ModelHash,
 		SolverVersion: r.SolverVersion,
@@ -120,21 +120,21 @@ func (r runRow) toDomain() (run.Run, error) {
 
 	if len(r.Events) > 0 {
 		if err := json.Unmarshal(r.Events, &out.Events); err != nil {
-			return run.Run{}, fmt.Errorf(
+			return run.CascadeRun{}, fmt.Errorf(
 				"cascade: run %s: decoding events: %w", r.ID, err)
 		}
 	}
 
 	if len(r.Islands) > 0 {
 		if err := json.Unmarshal(r.Islands, &out.Islands); err != nil {
-			return run.Run{}, fmt.Errorf(
+			return run.CascadeRun{}, fmt.Errorf(
 				"cascade: run %s: decoding islands: %w", r.ID, err)
 		}
 	}
 
 	if len(r.Initiating) > 0 {
 		if err := json.Unmarshal(r.Initiating, &out.Initiating); err != nil {
-			return run.Run{}, fmt.Errorf(
+			return run.CascadeRun{}, fmt.Errorf(
 				"cascade: run %s: decoding initiating outages: %w", r.ID, err)
 		}
 	}

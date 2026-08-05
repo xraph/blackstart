@@ -48,7 +48,9 @@ describe("derecho fixture", () => {
 
       const t = FREQ_TRACES.get(island.id);
       expect(t, `island ${island.id} has no trace`).toBeDefined();
-      expect(Math.min(...(t ?? []))).toBeCloseTo(island.nadir.value, 1);
+      // Non-null: nadir is optional in the schema for an island with no
+      // machine data, but every non-stable island in this fixture sets one.
+      expect(Math.min(...(t ?? []))).toBeCloseTo(island.nadir!.value, 1);
     }
   });
 

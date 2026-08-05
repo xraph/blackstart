@@ -17,21 +17,6 @@ export interface Assignment {
   note?: string;
 }
 
-export interface BlackstartRun {
-  elapsedS: number;
-  events: Event[];
-  finishedAt: string;
-  id: string;
-  initiating: string[];
-  islands: Island[];
-  loadLost: number;
-  modelHash: string;
-  outcome: string;
-  solverVersion: string;
-  startedAt: string;
-  steps: number;
-}
-
 export interface Branch {
   equipmentId: string;
   from: number;
@@ -53,12 +38,19 @@ export interface Candidate {
   worstLoading?: number;
 }
 
-export interface Circuit {
-  externalId: string;
+export interface CascadeRun {
+  elapsedS: number;
+  events: Event[];
+  finishedAt: string;
   id: string;
-  operator: string;
-  source: string;
-  voltageKv: number;
+  initiating: string[];
+  islands: Island[];
+  loadLost: number;
+  modelHash: string;
+  outcome: string;
+  solverVersion: string;
+  startedAt: string;
+  steps: number;
 }
 
 export interface Computation {
@@ -221,25 +213,19 @@ export interface Reduction {
 }
 
 export interface Route {
-  carrierId: string;
+  branchId: string;
   id: string;
   lengthM: number;
   provenance: string;
 }
 
 export interface Run {
-  elapsedS: number;
-  events: Event[];
+  candidates: Candidate[];
   finishedAt: string;
   id: string;
-  initiating: string[];
-  islands: Island[];
-  loadLost: number;
   modelHash: string;
-  outcome: string;
   solverVersion: string;
   startedAt: string;
-  steps: number;
 }
 
 export interface RunSample {
@@ -352,11 +338,7 @@ export interface assignmentsResponse {
 }
 
 export interface cascadeRunsResponse {
-  runs: BlackstartRun[];
-}
-
-export interface circuitsResponse {
-  circuits: Circuit[];
+  runs: CascadeRun[];
 }
 
 export interface computationsResponse {

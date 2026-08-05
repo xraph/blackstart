@@ -51,29 +51,29 @@ type runs Store
 // and that refusal is the rule rather than an accident of the backend. A
 // cascade is a statement about what was simulated at one instant, and
 // overwriting it would replace a figure someone may already have acted on.
-func (s *runs) Create(ctx context.Context, in run.Run) (run.Run, error) {
+func (s *runs) Create(ctx context.Context, in run.CascadeRun) (run.CascadeRun, error) {
 	if err := in.Validate(); err != nil {
-		return run.Run{}, err
+		return run.CascadeRun{}, err
 	}
 
 	row, err := fromDomain(in)
 	if err != nil {
-		return run.Run{}, err
+		return run.CascadeRun{}, err
 	}
 
 	if err := s.base.Create(ctx, RunEntity, in.ID, row); err != nil {
-		return run.Run{}, err
+		return run.CascadeRun{}, err
 	}
 
 	return in, nil
 }
 
 // Get retrieves one run.
-func (s *runs) Get(ctx context.Context, want id.ID) (run.Run, error) {
+func (s *runs) Get(ctx context.Context, want id.ID) (run.CascadeRun, error) {
 	var row runRow
 
 	if err := s.base.Get(ctx, RunEntity, want, &row); err != nil {
-		return run.Run{}, err
+		return run.CascadeRun{}, err
 	}
 
 	return row.toDomain()
@@ -90,7 +90,7 @@ const defaultListLimit = 50
 // ListByModel returns runs for one network, most recent first.
 func (s *runs) ListByModel(
 	ctx context.Context, modelHash string, limit int,
-) ([]run.Run, error) {
+) ([]run.CascadeRun, error) {
 	if modelHash == "" {
 		return nil, fmt.Errorf(
 			"%w: listing runs needs a model hash; every run names the network it "+
@@ -116,7 +116,7 @@ func (s *runs) ListByModel(
 		return nil, err
 	}
 
-	out := make([]run.Run, 0, len(rows))
+	out := make([]run.CascadeRun, 0, len(rows))
 
 	for _, row := range rows {
 		mapped, err := row.toDomain()

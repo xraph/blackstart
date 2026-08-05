@@ -122,7 +122,7 @@ export const queryKeys = {
 export function useCascadeRunsGet(
   client: RESTClient,
   id: string,
-  options?: Omit<UseQueryOptions<types.Run, Error>, 'queryKey' | 'queryFn'>,
+  options?: Omit<UseQueryOptions<types.CascadeRun, Error>, 'queryKey' | 'queryFn'>,
 ) {
   return useQuery({
     queryKey: queryKeys.cascadeRunsGet(id),
