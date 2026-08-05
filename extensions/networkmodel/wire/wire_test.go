@@ -212,3 +212,44 @@ func TestAMissingBaseOrBusIsRefused(t *testing.T) {
 		}
 	})
 }
+
+// The one bus field that is SI on both sides, so it is copied rather than
+// multiplied. Multiplying it by the base — which every other voltage on this
+// bus goes through — would put a 138 kV bus at 19 gigavolts.
+func TestANominalVoltageCrossesUnconverted(t *testing.T) {
+	in := twoBus()
+	in.Buses[0].VNominalV = 345e3
+	in.Buses[1].VNominalV = 138e3
+
+	got := build(t, in)
+
+	want := []float64{345e3, 138e3}
+
+	for position, volts := range want {
+		bus := got.GetBuses()[position]
+
+		if bus.VNominalV == nil {
+			t.Fatalf("%s states no nominal voltage, and the model gave one", bus.GetId())
+		}
+
+		if bus.GetVNominalV() != volts {
+			t.Errorf("%s is nominally %v V, want %v", bus.GetId(), bus.GetVNominalV(), volts)
+		}
+	}
+}
+
+// Absent stays absent, and this is the field's whole safety argument. Zero
+// volts converts to a rating of zero, and every consumer of rating_va reads a
+// non-positive rating as UNRATED and skips the branch — so a bus sent at zero
+// would take its lines out of every violation check rather than fail one
+// anywhere a reader could see.
+func TestABusThatStatesNoNominalVoltageSendsNone(t *testing.T) {
+	got := build(t, twoBus())
+
+	for _, bus := range got.GetBuses() {
+		if bus.VNominalV != nil {
+			t.Errorf("%s came out claiming %v V from a model that states none",
+				bus.GetId(), bus.GetVNominalV())
+		}
+	}
+}

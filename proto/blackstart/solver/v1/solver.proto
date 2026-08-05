@@ -126,6 +126,31 @@ message Bus {
   //
   // One of the few fields here with no unit suffix, like `tap`.
   optional double droop_r = 14;
+
+  // The voltage level this bus sits at, VOLTS (line-to-line RMS).
+  //
+  // Not the model's `v_base_v`, and the difference is the reason this field
+  // exists: a network spanning 345 kV and 138 kV has one per-unit base and
+  // two nominal voltages. The base is what the solver divides by; this is
+  // what a bus is actually at.
+  //
+  // Informational. The solver's per-unit conversion reads `v_base_v` and
+  // only `v_base_v`, and nothing here changes that — a per-unit base per bus
+  // is a different question, since a transformer puts each end of a branch
+  // in its own zone. This is carried for the consumers that turn a current
+  // into a power, where S = √3 · V · I against the wrong V is a rating wrong
+  // by the ratio of the two voltages.
+  //
+  // Optional, like the limits above, and for a sharper version of the same
+  // reason. Absent means the bus states no nominal voltage. Proto3 would
+  // read an unset double as 0.0, and zero volts converts to a rating of
+  // zero, which every reader of `rating_va` takes as UNRATED and therefore
+  // skips — so a forgotten field would quietly remove a branch from every
+  // violation check instead of failing where someone could see it. A
+  // documented sentinel would carry the same risk for as long as every
+  // reader remembered it; presence is checked by the generated API in both
+  // languages, and a reader that ignores it does not compile in Rust.
+  optional double v_nominal_v = 15;
 }
 
 // A branch: a line, cable, or transformer.

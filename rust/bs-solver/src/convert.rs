@@ -56,6 +56,15 @@ pub fn to_case(model: &proto::NetworkModel) -> Result<Case, ConvertError> {
         .map_err(|e| ConvertError::Base(e.to_string()))?;
 
     let s_base = model.s_base_va;
+
+    // The model's base, and deliberately not `bus.v_nominal_v`, which the
+    // contract also carries per bus now. Per unit needs one base per zone, and
+    // a transformer puts each end of a branch in a different zone — so reading
+    // a bus's own nominal voltage here would not be a more accurate conversion
+    // but a different and unfinished per-unit system, with a branch whose two
+    // ends disagree about what 1.0 means. `v_nominal_v` is informational: it
+    // exists for consumers converting a current into a power, where the bus's
+    // own voltage is exactly what is wanted. Nothing in the numerics reads it.
     let v_base = model.v_base_v;
 
     // Impedance base, ohms. Z_base = V_base² / S_base.
@@ -419,6 +428,7 @@ mod tests {
             p_max_w: None,
             inertia_h_s: None,
             droop_r: None,
+            v_nominal_v: None,
         }
     }
 
@@ -447,6 +457,31 @@ mod tests {
 
         assert_eq!(case.buses[0].inertia_h, Some(5.0));
         assert_eq!(case.buses[0].droop_r, Some(0.05));
+    }
+
+    /// A bus's own nominal voltage is informational and must stay out of the
+    /// per-unit conversion. The base is per model, one per zone, and a
+    /// transformer already puts each end of a branch in a different zone —
+    /// so dividing a bus's values by its own nominal voltage would not be a
+    /// sharper conversion, it would be a second and incoherent per-unit
+    /// system reached by accident.
+    ///
+    /// The value chosen is deliberately absurd: at 13.8 kV against the
+    /// model's 138 kV, a conversion that read it would put the slack's
+    /// voltage at 10.0 per unit rather than 1.0.
+    #[test]
+    fn a_buses_nominal_voltage_does_not_enter_the_per_unit_conversion() {
+        let plain = to_case(&minimal_model(slack_bus())).expect("a minimal model converts");
+
+        let stated = proto::Bus {
+            v_nominal_v: Some(13_800.0),
+            ..slack_bus()
+        };
+        let stated = to_case(&minimal_model(stated)).expect("a minimal model converts");
+
+        assert_eq!(stated.buses[0].v_magnitude, plain.buses[0].v_magnitude);
+        assert_eq!(stated.buses[0].v_magnitude, 1.0);
+        assert_eq!(stated.base.v_base(), plain.base.v_base());
     }
 
     /// An absent `OvercurrentSettings` disables the element outright: a

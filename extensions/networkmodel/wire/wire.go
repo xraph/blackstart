@@ -109,6 +109,20 @@ func busOf(bus canonical.Bus, sBase, vBase, zBase float64) *solverv1.Bus {
 		BShuntS: bus.BShunt / zBase,
 	}
 
+	// Volts on both sides, so this one is copied rather than converted. It is
+	// the single field of a bus that was already SI in the canonical model,
+	// and multiplying it by vBase — which every line above does — would put a
+	// 138 kV bus at 19 gigavolts.
+	//
+	// Absent stays absent. Zero in the canonical model means the bus states no
+	// nominal voltage, and sending a zero rather than nothing would be read
+	// downstream as a bus at zero volts: a rating of nothing, which every
+	// consumer treats as unrated and skips.
+	if bus.VNominalV > 0 {
+		nominal := bus.VNominalV
+		out.VNominalV = &nominal
+	}
+
 	// Absent means unlimited, which is not zero. Infinities are how the
 	// canonical model spells "no stated limit", and sending them as finite
 	// numbers would pin a generator that has none.

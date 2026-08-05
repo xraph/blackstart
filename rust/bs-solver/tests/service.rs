@@ -54,6 +54,10 @@ fn machine_bus(
         p_max_w: p_max_mw.map(|p| p * 1e6),
         inertia_h_s,
         droop_r,
+        // Absent. The service never reads it — it is carried for consumers
+        // that convert a current into a power — and stating one here would
+        // suggest the solve depends on it.
+        v_nominal_v: None,
     }
 }
 

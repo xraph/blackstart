@@ -538,7 +538,31 @@ type Bus struct {
 	// Governor droop, per unit, dimensionless. Typically 0.05.
 	//
 	// One of the few fields here with no unit suffix, like `tap`.
-	DroopR        *float64 `protobuf:"fixed64,14,opt,name=droop_r,json=droopR,proto3,oneof" json:"droop_r,omitempty"`
+	DroopR *float64 `protobuf:"fixed64,14,opt,name=droop_r,json=droopR,proto3,oneof" json:"droop_r,omitempty"`
+	// The voltage level this bus sits at, VOLTS (line-to-line RMS).
+	//
+	// Not the model's `v_base_v`, and the difference is the reason this field
+	// exists: a network spanning 345 kV and 138 kV has one per-unit base and
+	// two nominal voltages. The base is what the solver divides by; this is
+	// what a bus is actually at.
+	//
+	// Informational. The solver's per-unit conversion reads `v_base_v` and
+	// only `v_base_v`, and nothing here changes that — a per-unit base per bus
+	// is a different question, since a transformer puts each end of a branch
+	// in its own zone. This is carried for the consumers that turn a current
+	// into a power, where S = √3 · V · I against the wrong V is a rating wrong
+	// by the ratio of the two voltages.
+	//
+	// Optional, like the limits above, and for a sharper version of the same
+	// reason. Absent means the bus states no nominal voltage. Proto3 would
+	// read an unset double as 0.0, and zero volts converts to a rating of
+	// zero, which every reader of `rating_va` takes as UNRATED and therefore
+	// skips — so a forgotten field would quietly remove a branch from every
+	// violation check instead of failing where someone could see it. A
+	// documented sentinel would carry the same risk for as long as every
+	// reader remembered it; presence is checked by the generated API in both
+	// languages, and a reader that ignores it does not compile in Rust.
+	VNominalV     *float64 `protobuf:"fixed64,15,opt,name=v_nominal_v,json=vNominalV,proto3,oneof" json:"v_nominal_v,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -667,6 +691,13 @@ func (x *Bus) GetInertiaHS() float64 {
 func (x *Bus) GetDroopR() float64 {
 	if x != nil && x.DroopR != nil {
 		return *x.DroopR
+	}
+	return 0
+}
+
+func (x *Bus) GetVNominalV() float64 {
+	if x != nil && x.VNominalV != nil {
+		return *x.VNominalV
 	}
 	return 0
 }
@@ -3101,7 +3132,7 @@ var File_blackstart_solver_v1_solver_proto protoreflect.FileDescriptor
 
 const file_blackstart_solver_v1_solver_proto_rawDesc = "" +
 	"\n" +
-	"!blackstart/solver/v1/solver.proto\x12\x14blackstart.solver.v1\"\x9f\x04\n" +
+	"!blackstart/solver/v1/solver.proto\x12\x14blackstart.solver.v1\"\xd4\x04\n" +
 	"\x03Bus\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x121\n" +
 	"\x04kind\x18\x02 \x01(\x0e2\x1d.blackstart.solver.v1.BusKindR\x04kind\x12\"\n" +
@@ -3117,7 +3148,8 @@ const file_blackstart_solver_v1_solver_proto_rawDesc = "" +
 	"\ap_min_w\x18\v \x01(\x01H\x02R\x05pMinW\x88\x01\x01\x12\x1b\n" +
 	"\ap_max_w\x18\f \x01(\x01H\x03R\x05pMaxW\x88\x01\x01\x12#\n" +
 	"\vinertia_h_s\x18\r \x01(\x01H\x04R\tinertiaHS\x88\x01\x01\x12\x1c\n" +
-	"\adroop_r\x18\x0e \x01(\x01H\x05R\x06droopR\x88\x01\x01B\f\n" +
+	"\adroop_r\x18\x0e \x01(\x01H\x05R\x06droopR\x88\x01\x01\x12#\n" +
+	"\vv_nominal_v\x18\x0f \x01(\x01H\x06R\tvNominalV\x88\x01\x01B\f\n" +
 	"\n" +
 	"_q_min_varB\f\n" +
 	"\n" +
@@ -3128,7 +3160,8 @@ const file_blackstart_solver_v1_solver_proto_rawDesc = "" +
 	"\b_p_max_wB\x0e\n" +
 	"\f_inertia_h_sB\n" +
 	"\n" +
-	"\b_droop_r\"\xfb\x01\n" +
+	"\b_droop_rB\x0e\n" +
+	"\f_v_nominal_v\"\xfb\x01\n" +
 	"\x06Branch\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
 	"\bfrom_bus\x18\x02 \x01(\rR\afromBus\x12\x15\n" +
