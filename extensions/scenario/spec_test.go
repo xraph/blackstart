@@ -146,6 +146,49 @@ func TestTheScenarioRunIsItsOwnComponent(t *testing.T) {
 	}
 }
 
+// Every component this extension publishes still describes this extension's
+// type.
+//
+// The test above guards one component by comparing two endpoints' refs. That
+// catches the collision it was written for and no other: this extension
+// publishes six component names, and `Manifest` and `Failure` are exactly the
+// kind of bare noun a second extension reaches for. Forge keys a component by
+// bare Go type name, so the loser's endpoints would document the winner's
+// shape and still resolve — the name alone proves nothing, which is why each
+// entry below names fields only this extension's type has.
+//
+// Scoped to this extension rather than swept over the tree. A repo-wide guard
+// would fail today on thirteen pre-existing duplicates and be turned off; one
+// that covers what this extension is responsible for is a guard that survives.
+func TestEveryComponentThisExtensionPublishesIsItsOwn(t *testing.T) {
+	document := spec(t)
+
+	// Policy, Status and Step are absent deliberately: Forge inlines a string
+	// enum rather than making it a component, so there is nothing to collide.
+	mine := map[string][]string{
+		"Manifest":             {"model_hash", "weather_cycle", "valid_at", "policy", "seed"},
+		"Failure":              {"step", "reason"},
+		"Scenario":             {"id", "name", "manifest", "created_at"},
+		"ScenarioRun":          {"scenario_id", "manifest", "status", "queued_at"},
+		"scenariosResponse":    {"scenarios"},
+		"scenarioRunsResponse": {"runs"},
+	}
+
+	for component, fields := range mine {
+		// dig fails when the component is missing at all, which is the other
+		// half of this: a rename that moved one of these under a new name
+		// would leave a generated client with no type for it.
+		properties := dig(t, document, "components", "schemas", component, "properties")
+
+		for _, want := range fields {
+			if _, present := properties[want]; !present {
+				t.Errorf("component %q has no %q; it is documenting some other "+
+					"extension's type of the same name", component, want)
+			}
+		}
+	}
+}
+
 // A field the encoder omits must not be documented as always present.
 //
 // Absent means unknown on this surface: a queued run has no child ids, no
