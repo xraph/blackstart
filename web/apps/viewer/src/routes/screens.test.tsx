@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { RouterProvider, createMemoryHistory, createRouter } from "@tanstack/react-router";
 
 vi.mock("@blackstart/globe", async () => {
@@ -36,6 +36,14 @@ const cascadeQuery = vi.hoisted(() => ({
 const extentQuery = vi.hoisted(() => ({
   current: { data: undefined, isPending: true, isError: false, error: null } as unknown,
 }));
+/**
+ * The global, most-recent-first scenario-run listing the index reads. Mocked
+ * separately from `runsQuery` because the index now shows both listings at
+ * once, and a test about one of them must be able to hold the other still.
+ */
+const scenarioQuery = vi.hoisted(() => ({
+  current: { data: { runs: [] }, isPending: false, isError: false, error: null } as unknown,
+}));
 
 vi.mock("@blackstart/api-client", async () => {
   const actual =
@@ -43,6 +51,7 @@ vi.mock("@blackstart/api-client", async () => {
   return {
     ...actual,
     useContingencyRunsList: () => runsQuery.current,
+    useScenarioRunsRecent: () => scenarioQuery.current,
     useCascadeRunsGet: () => cascadeQuery.current,
     useCascadeRunsExtent: () => extentQuery.current,
   };
@@ -203,6 +212,69 @@ const SWEEP = {
       violations: [{ branch: 4471, loading: 1.18, pFlow: 412, rating: 350 }],
     },
   ],
+};
+
+const MANIFEST = {
+  modelHash: "9f2c1a7e44b0d3castille",
+  policy: "n-1-all-lines",
+  seed: 42,
+  validAt: "2026-08-02T22:00Z",
+  weatherCycle: "hrrr-2026080218",
+};
+
+/**
+ * A completed scenario run whose rating step ran and found nothing.
+ *
+ * `weatherRated: 0` against 2000 branches is a *finding* — the run rated the
+ * network and the weather touched none of it — and is the whole reason the
+ * field is optional on the wire rather than defaulted. It must render as a
+ * zero, not as "not rated".
+ */
+const SCENARIO_RATED_ZERO = {
+  id: "run_01k3qf8m2xw7rb4n09yvtscnr1",
+  scenarioId: "tx-2026-0802-derecho",
+  manifest: MANIFEST,
+  status: "complete",
+  queuedAt: "2026-08-02T21:58:00Z",
+  startedAt: "2026-08-02T22:00:00Z",
+  finishedAt: "2026-08-02T22:04:18Z",
+  solverVersion: "0.3.1",
+  branchCount: 2000,
+  weatherRated: 0,
+  cascadeRunId: CASCADE.run,
+  sweepRunId: SWEEP.id,
+};
+
+/**
+ * The same run before the rating step ran at all.
+ *
+ * `weatherRated` and `branchCount` are absent — not zero, absent — which is
+ * the state four tasks of backend work exist to keep distinguishable. The
+ * screen must say so and must not print a zero.
+ */
+const SCENARIO_UNRATED = {
+  id: "run_01k3qf8m2xw7rb4n09yvtscnr2",
+  scenarioId: "tx-2026-0802-derecho",
+  manifest: MANIFEST,
+  status: "running",
+  queuedAt: "2026-08-02T21:59:00Z",
+  startedAt: "2026-08-02T22:00:00Z",
+  solverVersion: "0.3.1",
+};
+
+/** A run that stopped, and the step it stopped at. */
+const SCENARIO_FAILED = {
+  id: "run_01k3qf8m2xw7rb4n09yvtscnr3",
+  scenarioId: "tx-2026-0802-derecho",
+  manifest: MANIFEST,
+  status: "failed",
+  queuedAt: "2026-08-02T21:57:00Z",
+  startedAt: "2026-08-02T22:00:00Z",
+  finishedAt: "2026-08-02T22:00:03Z",
+  solverVersion: "0.3.1",
+  branchCount: 2000,
+  weatherRated: 1841,
+  failure: { step: "rate", reason: "hazard grid unavailable" },
 };
 
 const loading = { data: undefined, isPending: true, isError: false, error: null };
@@ -461,6 +533,10 @@ describe("cascade screen", () => {
 });
 
 describe("runs screen", () => {
+  beforeEach(() => {
+    scenarioQuery.current = loaded([]);
+  });
+
   it("says the platform is unreachable rather than showing an empty table", async () => {
     runsQuery.current = failed;
     await renderAt("/runs");
@@ -501,15 +577,104 @@ describe("runs screen", () => {
   });
 });
 
+/**
+ * The scenario-run listing — the last gap in the scenario extension's design.
+ */
+describe("runs index, scenario runs", () => {
+  beforeEach(() => {
+    runsQuery.current = loaded([SWEEP]);
+    scenarioQuery.current = loaded([SCENARIO_RATED_ZERO]);
+  });
+
+  // ── The invariant. Absent is not zero, and zero is not absent. ──────────
+
+  it("says a run whose rating step never ran is not rated, and prints no zero", async () => {
+    // `weatherRated` absent means nobody rated anything. Rendering a 0 here
+    // would publish a finding — "the weather touched no branch" — that no
+    // part of the platform ever computed. Mutating `weatherCoverage` to
+    // `run.weatherRated ?? 0` is what this test exists to kill.
+    scenarioQuery.current = loaded([SCENARIO_UNRATED]);
+    await renderAt("/runs");
+
+    expect(screen.getByText("not rated")).toBeTruthy();
+    // Not merely "no '0 of 2000'": with `branchCount` absent too, a `?? 0`
+    // renders "0 of —", which is the same lie in a different shape.
+    expect(screen.queryByText(/^0 of /)).toBeNull();
+  });
+
+  it("prints the zero when the run rated its branches and the weather touched none", async () => {
+    // The mirror image, and the direction a falsy check breaks:
+    // `if (!run.weatherRated) return "not rated"` erases a real finding.
+    await renderAt("/runs");
+
+    expect(screen.getByText("0 of 2000")).toBeTruthy();
+    expect(screen.queryByText("not rated")).toBeNull();
+  });
+
+  // ── The listing itself. ─────────────────────────────────────────────────
+
+  it("lists scenario runs beside the sweeps", async () => {
+    await renderAt("/runs");
+    expect(screen.getByText(SWEEP.id)).toBeTruthy();
+    expect(screen.getByText(SCENARIO_RATED_ZERO.id)).toBeTruthy();
+  });
+
+  it("distinguishes an empty scenario listing from an empty sweep listing", async () => {
+    scenarioQuery.current = loaded([]);
+    await renderAt("/runs");
+    // Two listings, two reasons to be empty, and a reader has to be able to
+    // tell which of the two the platform has nothing for.
+    expect(screen.getByText(/No scenario runs recorded/i)).toBeTruthy();
+    expect(screen.queryByText(/No sweeps recorded/i)).toBeNull();
+  });
+
+  it("links a scenario run into the cascade it produced", async () => {
+    await renderAt("/runs");
+    const link = screen.getByRole("link", { name: new RegExp(CASCADE.run) });
+    // The cascade screen renders a run by id and sits on a time axis, so the
+    // link has to carry both, and the valid time is the manifest's own.
+    const href = link.getAttribute("href") ?? "";
+    expect(href.startsWith("/cascade")).toBe(true);
+    expect(decodeURIComponent(href)).toContain(`run=${CASCADE.run}`);
+    expect(decodeURIComponent(href)).toContain(`valid=${MANIFEST.validAt}`);
+  });
+
+  it("offers no cascade link for a run that produced no cascade", async () => {
+    scenarioQuery.current = loaded([SCENARIO_UNRATED]);
+    await renderAt("/runs");
+    expect(screen.queryByRole("link", { name: /play back cascade/i })).toBeNull();
+  });
+
+  it("names the step a failed run stopped at", async () => {
+    scenarioQuery.current = loaded([SCENARIO_FAILED]);
+    runsQuery.current = loaded([]);
+    await renderAt("/runs");
+    const row = within(screen.getByRole("table"));
+    expect(row.getByText("failed")).toBeTruthy();
+    expect(row.getByText("rate")).toBeTruthy();
+  });
+});
+
 describe("runs screen, narrow", () => {
   beforeEach(() => {
     stubViewport(false);
     runsQuery.current = loaded([SWEEP]);
+    scenarioQuery.current = loaded([]);
   });
 
   it("becomes a card list rather than a table to drag sideways", async () => {
     await renderAt("/runs");
     expect(screen.queryByRole("table")).toBeNull();
     expect(screen.getByText(/1 candidates/)).toBeTruthy();
+  });
+
+  it("keeps absent from reading as zero on a card too", async () => {
+    // The narrow layout is a second rendering of the same field, and a second
+    // place the `?? 0` could live. `not rated` has to survive the reflow.
+    scenarioQuery.current = loaded([SCENARIO_UNRATED]);
+    await renderAt("/runs");
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByText("not rated")).toBeTruthy();
+    expect(screen.queryByText(/^0 of /)).toBeNull();
   });
 });
