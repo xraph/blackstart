@@ -41,9 +41,7 @@ export function Sparkline({
   const x = (i: number) => 1 + (i / (points.length - 1)) * (width - 2);
   const y = (v: number) => height - 2 - Math.min(1, v / ceiling) * (height - 4);
 
-  const d = points
-    .map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
-    .join(" ");
+  const d = points.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(" ");
   const area = `${d} L${x(points.length - 1).toFixed(1)} ${height - 1} L${x(0).toFixed(1)} ${height - 1} Z`;
 
   return (
@@ -91,21 +89,18 @@ export function FrequencyTrace({
   readonly hiHz?: number;
 }): ReactElement {
   const y = (hz: number) => 42 - ((hz - loHz) / (hiHz - loHz)) * 40;
+  // `|| 1` rather than `points.length - 1` bare: a legitimate one-sample
+  // trace (an island observed for exactly one step) would otherwise divide
+  // by zero and put NaN in every point's x, which is an invalid path `d`
+  // rather than the single dot this should render as.
+  const span = points.length - 1 || 1;
   const d = points
-    .map(
-      (v, i) =>
-        `${i === 0 ? "M" : "L"}${((i / (points.length - 1)) * 100).toFixed(1)} ${y(v).toFixed(1)}`,
-    )
+    .map((v, i) => `${i === 0 ? "M" : "L"}${((i / span) * 100).toFixed(1)} ${y(v).toFixed(1)}`)
     .join(" ");
 
   return (
-    <svg
-      className="mt-1 block h-11 w-full"
-      viewBox="0 0 100 44"
-      preserveAspectRatio="none"
-      role="img"
-      aria-label={`frequency trace, nadir ${Math.min(...points).toFixed(2)} hertz`}
-    >
+    <svg className="mt-1 block h-11 w-full" viewBox="0 0 100 44" preserveAspectRatio="none" role="img"
+      aria-label={`frequency trace, nadir ${Math.min(...points).toFixed(2)} hertz`}>
       <line
         x1="0"
         y1={y(thresholdHz)}

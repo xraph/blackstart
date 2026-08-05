@@ -23,10 +23,25 @@ import { cited, ProvenanceChain } from "./provenance";
 export const CASCADE_EVENT_KINDS = ["overload", "trip", "island", "shed", "stabilise"] as const;
 export type CascadeEventKind = (typeof CASCADE_EVENT_KINDS)[number];
 
-/** The most islands the display can colour apart. */
+/**
+ * The most islands the palette can colour apart.
+ *
+ * A DISPLAY concern only — `@blackstart/ui`'s `islandBg`/`islandText`/
+ * `islandVar` already fall back to the first colour past this many, sharing
+ * it rather than crashing or running off the end of the palette array. It
+ * must never bound the DATA: the severest cascades are the ones that split
+ * into the most islands, and rejecting a run for forming a ninth island
+ * would make exactly the runs most worth viewing render as "failed to load".
+ */
 export const MAX_ISLANDS = 8;
 
-export const IslandId = z.number().int().min(1).max(MAX_ISLANDS);
+/**
+ * No upper bound. A cascade can split a network into however many islands
+ * it actually falls apart into, and the schema's job is to accept that run,
+ * not to cap it at how many colours `MAX_ISLANDS` has on hand — see its own
+ * comment.
+ */
+export const IslandId = z.number().int().min(1);
 export type IslandId = z.infer<typeof IslandId>;
 
 export const CascadeEvent = z.object({
@@ -92,7 +107,10 @@ export const CascadeRun = z
     /** The outage that started it. */
     initiating: z.string().min(1),
     events: z.array(CascadeEvent).min(1),
-    islands: z.array(Island).max(MAX_ISLANDS),
+    // No .max(MAX_ISLANDS) here — see that constant's own comment. A
+    // network that splits into more islands than the palette has colours
+    // for still renders; it just shares a colour past the eighth.
+    islands: z.array(Island),
     /**
      * Absent, not zero: the engine has no customer model, so it never counts
      * who lost power. A zero here would assert nobody was affected, which is
