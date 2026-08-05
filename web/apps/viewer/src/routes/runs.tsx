@@ -18,28 +18,11 @@
  */
 
 import { useNavigate } from "@tanstack/react-router";
-import { useContingencyRunsList, type BlackstartRun, type Candidate } from "@blackstart/api-client";
+import { useContingencyRunsList, type SweepRun } from "@blackstart/api-client";
 import { RAIL_BREAKPOINT, useMediaQuery } from "@blackstart/ui";
 
 import { runsRoute } from "../router";
 import { useApiClient } from "../api/provider";
-
-/**
- * The screen's own view of a sweep.
- *
- * The generated client's `SweepRun` was renamed to `BlackstartRun` when the
- * client was regenerated for cascade, and in the same regeneration the wire
- * shape lost `candidates` — that now lives behind a separate
- * `contingency.runs.ranked` call this screen does not make. The cast below
- * keeps that gap visible in one place rather than scattering `any` through
- * the table and card views that were written against the field.
- */
-type SweepRun = Pick<
-  BlackstartRun,
-  "id" | "modelHash" | "solverVersion" | "startedAt" | "finishedAt"
-> & {
-  readonly candidates: readonly Candidate[];
-};
 
 export function RunsScreen(): React.JSX.Element {
   const search = runsRoute.useSearch();
@@ -49,11 +32,7 @@ export function RunsScreen(): React.JSX.Element {
 
   const { data, isPending, isError, error } = useContingencyRunsList(client, undefined, 50);
 
-  // Cast, not a runtime transform: the platform's summary list no longer
-  // carries `candidates` at all, so there is nothing to derive it from here.
-  // This makes the type-checker agree with code that already assumed a
-  // shape the wire stopped sending, rather than silencing it with `any`.
-  const runs = (data?.runs ?? []) as unknown as readonly SweepRun[];
+  const runs = data?.runs ?? [];
   const selected = new Set(search.compare);
 
   const toggle = (id: string): void => {

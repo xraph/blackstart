@@ -70,12 +70,24 @@ describe("api client", () => {
 });
 
 describe("query hooks", () => {
-  it("exposes a cache key builder per read endpoint", async () => {
+  it("exposes a cache key builder per read endpoint the viewer depends on", async () => {
     const { queryKeys } = await import("./index");
-    // Grown from 25 as cascade and weather endpoints were generated — this
-    // pins the count against silent removal, not against the platform
-    // growing, so it moves with the generator rather than fighting it.
-    expect(Object.keys(queryKeys).length).toBe(38);
+
+    // Named endpoints rather than a total count: a count breaks on every
+    // legitimate addition to the platform and proves nothing about behaviour,
+    // where naming the ones the viewer actually calls catches the failure
+    // that matters — one of these silently disappearing from the generator's
+    // output.
+    for (const key of [
+      "cascadeRunsGet",
+      "cascadeRunsList",
+      "cascadeRunsIslands",
+      "contingencyRunsGet",
+      "contingencyRunsList",
+      "contingencyRunsRanked",
+    ]) {
+      expect(queryKeys, `missing query key builder: ${key}`).toHaveProperty(key);
+    }
   });
 
   it("carries both time axes in the key, not just valid time", async () => {

@@ -65,7 +65,12 @@ const WIRE_CASCADE = {
     kind: e.kind === "stabilise" ? "stabilize" : e.kind,
     element: e.element,
     detail: e.detail,
-    island: e.island,
+    // `CASCADE.events[].island` is already the domain's 1-based id. The wire
+    // is 0-based — island 0 is a real, first-formed island, not "no split
+    // yet" (that's what an absent island means) — so this fixture has to
+    // shift back down to look like the wire, or it never contains the 0 a
+    // real payload would and the adapter's own +1 goes untested.
+    island: e.island === undefined ? undefined : e.island - 1,
   })),
   islands: CASCADE.islands.map((i) => ({
     balance: i.balance.value,
@@ -107,6 +112,39 @@ const MINIMAL_RUN = {
   events: [{ at: 0, kind: "trip", element: "bkr NORTH JCT 230 A1", detail: "protection op" }],
   islands: [
     { balance: 842, busCount: 61, buses: [], condition: "stable", verdict: "secure", shed: 0 },
+  ],
+};
+
+/**
+ * Wire island indices are 0-based, and island 0 is a real, first-formed
+ * island — proto/blackstart/solver/v1/solver.proto is explicit that this is
+ * distinct from an absent `island`, which means the split has not happened
+ * yet. `MINIMAL_RUN` above never exercises this because it has no island
+ * reference at all; this fixture's only event names island 0 on purpose.
+ */
+const ISLAND_ZERO_RUN = {
+  id: CASCADE.run,
+  modelHash: "9f2c1a7e44b0d3castille",
+  solverVersion: "0.3.1",
+  startedAt: "2026-08-02T22:00:00Z",
+  finishedAt: "2026-08-02T22:00:05Z",
+  elapsedS: 5.19,
+  steps: 8,
+  outcome: "collapsed",
+  initiating: ["ln CHILDRESS-VERNON 230"],
+  loadLost: 4187,
+  events: [
+    { at: 5.19, kind: "island", element: "9 buses separate", detail: "-1244 MW", island: 0 },
+  ],
+  islands: [
+    {
+      balance: -1244,
+      busCount: 9,
+      buses: [],
+      condition: "collapsed",
+      verdict: "violated",
+      shed: 0,
+    },
   ],
 };
 
@@ -258,6 +296,19 @@ describe("cascade screen", () => {
     expect((await screen.findAllByText(/not computed/i)).length).toBeGreaterThan(0);
     expect(screen.queryByText(/^0 customers$/i)).toBeNull();
     expect(screen.queryByText(/^0$/)).toBeNull();
+  });
+
+  it("treats wire island 0 as a real island, not an absent one", async () => {
+    // Wire island indices are 0-based; the domain's IslandId is 1-based
+    // (min 1). Without the adapter's +1 shift, this run's only event names
+    // island 0, which fails that bound, safeParse fails, and the screen
+    // renders the malformed/alert state for what is actually an ordinary
+    // cascade — every run whose first event touches the first-formed island.
+    cascadeQuery.current = loadedRun(ISLAND_ZERO_RUN);
+    await renderAt(RUN_URL);
+    await screen.findByTestId("scene");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getAllByText("Island 1").length).toBeGreaterThan(0);
   });
 });
 

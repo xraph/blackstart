@@ -91,11 +91,19 @@ function toCascadeRun(wire: WireRun): CascadeRun | undefined {
       kind: WIRE_EVENT_KIND[e.kind] ?? e.kind,
       element: e.element,
       detail: e.detail,
-      island: e.island,
+      // Wire island indices are 0-based — island 0 is the first-formed
+      // island, a real and distinct one (proto/.../solver.proto calls this
+      // out explicitly), not "no island"; absence is what means that. The
+      // domain's IslandId is 1-based (min 1), so this has to shift by the
+      // same +1 the islands array below shifts by, or a perfectly ordinary
+      // event on the first island fails the schema's min(1) and the whole
+      // run gets rejected as malformed.
+      island: e.island === undefined ? undefined : e.island + 1,
     })),
     // The wire carries no explicit island id: the solver forms islands in
-    // the order it reports them, and events reference that same order, so
-    // position in the array *is* the id.
+    // the order it reports them, and events reference that same order — as
+    // wire index 0, 1, 2, … — so position in the array plus one *is* the id,
+    // matching the +1 shift events.island gets above.
     islands: wire.islands.map((isl, i) => ({
       id: i + 1,
       balance: mw(isl.balance),
