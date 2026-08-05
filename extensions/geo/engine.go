@@ -167,6 +167,11 @@ func (e *Engine) Spans(ctx context.Context, route id.ID) ([]asset.Span, error) {
 	return e.store.Routes().Spans(ctx, route)
 }
 
+// Structures reads a route's structures in ordinal order.
+func (e *Engine) Structures(ctx context.Context, route id.ID) ([]asset.Structure, error) {
+	return e.store.Structures().ForRoute(ctx, route)
+}
+
 // Routes lists stored routes.
 func (e *Engine) Routes(ctx context.Context, limit int) ([]asset.Route, error) {
 	return e.store.Routes().List(ctx, limit)
