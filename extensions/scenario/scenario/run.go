@@ -102,8 +102,16 @@ type ScenarioRun struct {
 	// once Status is StatusComplete. Absent otherwise. Together they are what
 	// links a scenario to its own answer — without both, nothing connects
 	// the manifest that was requested to the numbers that came out of it.
-	SweepRunID   id.ID `json:"sweep_run_id,omitzero"`
-	CascadeRunID id.ID `json:"cascade_run_id,omitzero"`
+	//
+	// optional:"true" on these and on the two times below, and the tag is not
+	// decoration. Forge's schema generator reads `omitempty` and pointer-ness
+	// to decide what an OpenAPI component marks required, and knows nothing of
+	// `omitzero` — so without it the generated specification declares four
+	// fields required that the encoder omits on every queued run, and a client
+	// generated from that specification types them as always present. The
+	// distinction survives the encoding and then dies in the contract.
+	SweepRunID   id.ID `json:"sweep_run_id,omitzero"   optional:"true"`
+	CascadeRunID id.ID `json:"cascade_run_id,omitzero" optional:"true"`
 
 	// WeatherRated is how many branches the weather-rating step actually
 	// rated. BranchCount is how many branches the model has in total.
@@ -138,8 +146,8 @@ type ScenarioRun struct {
 	// state. StartedAt and FinishedAt are zero until Claim and completion
 	// happen, respectively.
 	QueuedAt   time.Time `json:"queued_at"`
-	StartedAt  time.Time `json:"started_at,omitzero"`
-	FinishedAt time.Time `json:"finished_at,omitzero"`
+	StartedAt  time.Time `json:"started_at,omitzero"  optional:"true"`
+	FinishedAt time.Time `json:"finished_at,omitzero" optional:"true"`
 }
 
 // Validate reports whether a run is coherent enough to store.
