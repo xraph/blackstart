@@ -294,6 +294,133 @@ func TestADegenerateWindowReturnsEmpty(t *testing.T) {
 	}
 }
 
+// TestForComponentFiltersByQuantity proves the `AND quantity IN (...)`
+// clause in ForComponent's WHERE clause (values.go:131) actually narrows the
+// read. Every other fixture in this file asks ForComponent for exactly one
+// quantity per component, so deleting that clause entirely would leave every
+// one of them green — a component with two quantities at the same issuance
+// and moment is the only shape that can catch it.
+func TestForComponentFiltersByQuantity(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	span := gid.NewSpan()
+
+	if err := s.Values().PutBatch(ctx, []store.ComponentValue{
+		{
+			ComponentID: span, Quantity: store.QuantityConductorFailure,
+			IssuedAt: issuance, ValidAt: issuance, Probability: 0.11, Scalar: 1,
+		},
+		{
+			ComponentID: span, Quantity: store.QuantityStructureFailure,
+			IssuedAt: issuance, ValidAt: issuance, Probability: 0.99, Scalar: 1,
+		},
+	}); err != nil {
+		t.Fatalf("PutBatch: %v", err)
+	}
+
+	got, err := s.Values().ForComponent(ctx, span,
+		[]store.Quantity{store.QuantityConductorFailure},
+		issuance, issuance, issuance.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("ForComponent: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("asking for QuantityConductorFailure alone returned %d rows, "+
+			"want 1 — the structure row on the same component leaked in", len(got))
+	}
+
+	if got[0].Quantity != store.QuantityConductorFailure || got[0].Probability != 0.11 {
+		t.Fatalf("got %+v, want the conductor row alone", got[0])
+	}
+}
+
+// TestValidAtUpperBoundIsExclusive proves the half-open `valid_at < $4`
+// bound in ForComponent's WHERE clause (values.go:130): a row written
+// exactly at the window's `to` must not come back. Every other fixture in
+// this file writes rows strictly inside its query window, so flipping that
+// operator to `<=` would leave them all green.
+func TestValidAtUpperBoundIsExclusive(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	span := gid.NewSpan()
+	inside := issuance.Add(time.Hour)
+	to := issuance.Add(3 * time.Hour)
+
+	if err := s.Values().PutBatch(ctx, []store.ComponentValue{
+		{
+			ComponentID: span, Quantity: store.QuantityConductorFailure,
+			IssuedAt: issuance, ValidAt: inside, Probability: 0.2, Scalar: 1,
+		},
+		{
+			// Exactly at the query's `to` — must be excluded.
+			ComponentID: span, Quantity: store.QuantityConductorFailure,
+			IssuedAt: issuance, ValidAt: to, Probability: 0.9, Scalar: 1,
+		},
+	}); err != nil {
+		t.Fatalf("PutBatch: %v", err)
+	}
+
+	got, err := s.Values().ForComponent(ctx, span,
+		[]store.Quantity{store.QuantityConductorFailure}, issuance, issuance, to)
+	if err != nil {
+		t.Fatalf("ForComponent: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("read %d rows for [issuance, to), want 1 — the row at exactly "+
+			"`to` should fall outside a half-open window", len(got))
+	}
+
+	if !got[0].ValidAt.Equal(inside) {
+		t.Errorf("got ValidAt %v, want %v", got[0].ValidAt, inside)
+	}
+}
+
+// TestANonDefaultScalarIsReadBack pins the scalar column at the store it is
+// actually kept in. scalar DOUBLE PRECISION NOT NULL DEFAULT 1
+// (migrations.go:62) is the entire justification named in the package doc
+// for bypassing Fabriq's Timeseries port, yet until now no fabriq test read
+// back got.Scalar — every fixture in this file writes Scalar: 1, which is
+// indistinguishable from the column default silently supplying a value
+// valueToModel never set. A non-default scalar is the only fixture that can
+// tell those two apart.
+func TestANonDefaultScalarIsReadBack(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	span := gid.NewSpan()
+	const scalar = 0.7
+
+	if err := s.Values().PutBatch(ctx, []store.ComponentValue{
+		{
+			ComponentID: span, Quantity: store.QuantityConductorFailure,
+			IssuedAt: issuance, ValidAt: issuance, Probability: 0.3, Scalar: scalar,
+		},
+	}); err != nil {
+		t.Fatalf("PutBatch: %v", err)
+	}
+
+	got, err := s.Values().ForComponent(ctx, span,
+		[]store.Quantity{store.QuantityConductorFailure},
+		issuance, issuance, issuance.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("ForComponent: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("read %d rows, want 1", len(got))
+	}
+
+	if got[0].Scalar != scalar {
+		t.Errorf("read back Scalar %v, want %v — the column default (1) "+
+			"masking a value that was never actually written would look "+
+			"identical to every other fixture in this file", got[0].Scalar, scalar)
+	}
+}
+
 // The value table carries row-level security (migrations.go: ENABLE and
 // FORCE, not merely a policy left to the owner's discretion). This is the
 // test that proves the policy actually filters rows rather than merely
