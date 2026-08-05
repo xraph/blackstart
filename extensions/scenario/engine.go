@@ -61,12 +61,12 @@ func (e *Engine) List(ctx context.Context, limit int) ([]scn.Scenario, error) {
 }
 
 // Run retrieves one run.
-func (e *Engine) Run(ctx context.Context, runID id.ID) (scn.Run, error) {
+func (e *Engine) Run(ctx context.Context, runID id.ID) (scn.ScenarioRun, error) {
 	return e.store.Runs().Get(ctx, runID)
 }
 
 // Runs returns one scenario's runs, most recent first.
-func (e *Engine) Runs(ctx context.Context, scenarioID id.ID, limit int) ([]scn.Run, error) {
+func (e *Engine) Runs(ctx context.Context, scenarioID id.ID, limit int) ([]scn.ScenarioRun, error) {
 	return e.store.Runs().ListByScenario(ctx, scenarioID, limit)
 }
 
@@ -83,13 +83,13 @@ func (e *Engine) Runs(ctx context.Context, scenarioID id.ID, limit int) ([]scn.R
 // it holds copies by assignment, which makes a plain copy look total;
 // Branches is a slice, and a copied struct shares its backing array with the
 // scenario's.
-func (e *Engine) Enqueue(ctx context.Context, scenarioID id.ID) (scn.Run, error) {
+func (e *Engine) Enqueue(ctx context.Context, scenarioID id.ID) (scn.ScenarioRun, error) {
 	found, err := e.store.Scenarios().Get(ctx, scenarioID)
 	if err != nil {
-		return scn.Run{}, err
+		return scn.ScenarioRun{}, err
 	}
 
-	stored, err := e.store.Runs().Create(ctx, scn.Run{
+	stored, err := e.store.Runs().Create(ctx, scn.ScenarioRun{
 		ID:         scnid.NewRun(),
 		ScenarioID: found.ID,
 		Manifest:   found.Manifest.Clone(),
@@ -97,7 +97,7 @@ func (e *Engine) Enqueue(ctx context.Context, scenarioID id.ID) (scn.Run, error)
 		QueuedAt:   e.now().UTC(),
 	})
 	if err != nil {
-		return scn.Run{}, fmt.Errorf("scenario: queueing a run: %w", err)
+		return scn.ScenarioRun{}, fmt.Errorf("scenario: queueing a run: %w", err)
 	}
 
 	e.emit(ctx, stored)
@@ -111,7 +111,7 @@ func (e *Engine) Enqueue(ctx context.Context, scenarioID id.ID) (scn.Run, error)
 // Runs only. A scenario definition arrives through an HTTP request whose
 // caller already knows it happened; a run's transitions happen inside a
 // worker, where an event is the only way anything else learns of them.
-func (e *Engine) emit(ctx context.Context, run scn.Run) {
+func (e *Engine) emit(ctx context.Context, run scn.ScenarioRun) {
 	if e.bus == nil {
 		return
 	}

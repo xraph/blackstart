@@ -93,10 +93,10 @@ func TestAStoredScenarioIdentifierOfTheWrongTypeIsRefused(t *testing.T) {
 	}
 }
 
-func aRun() scenario.Run {
+func aRun() scenario.ScenarioRun {
 	at := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
 
-	return scenario.Run{
+	return scenario.ScenarioRun{
 		ID:            sid.NewRun(),
 		ScenarioID:    sid.NewScenario(),
 		Manifest:      aManifest(),

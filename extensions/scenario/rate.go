@@ -12,7 +12,7 @@ import (
 
 // Rated is what the weather did to a model's branch ratings.
 //
-// The counts are plain ints, unlike the *int pair on scenario.Run that mirrors
+// The counts are plain ints, unlike the *int pair on scenario.ScenarioRun that mirrors
 // them. By the time a Rated exists the rating step has run, so absence is not
 // representable and a zero is a real measurement. On a Run it is the opposite:
 // a queued run has not rated anything yet, and nil is how it says so.

@@ -20,16 +20,16 @@ type runs Store
 // Create records a run, rejecting a duplicate identifier rather than
 // overwriting: runs are append-only, and an overwrite would replace a
 // lifecycle someone may already have observed.
-func (s *runs) Create(_ context.Context, in scenario.Run) (scenario.Run, error) {
+func (s *runs) Create(_ context.Context, in scenario.ScenarioRun) (scenario.ScenarioRun, error) {
 	if err := in.Validate(); err != nil {
-		return scenario.Run{}, err
+		return scenario.ScenarioRun{}, err
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, exists := s.runs[in.ID]; exists {
-		return scenario.Run{}, fmt.Errorf(
+		return scenario.ScenarioRun{}, fmt.Errorf(
 			"%w: run %s already exists; runs are append-only", bserr.ErrConflict, in.ID)
 	}
 
@@ -40,13 +40,13 @@ func (s *runs) Create(_ context.Context, in scenario.Run) (scenario.Run, error) 
 }
 
 // Get retrieves one run.
-func (s *runs) Get(_ context.Context, runID id.ID) (scenario.Run, error) {
+func (s *runs) Get(_ context.Context, runID id.ID) (scenario.ScenarioRun, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	found, ok := s.runs[runID]
 	if !ok {
-		return scenario.Run{}, fmt.Errorf("%w: run %s", bserr.ErrNotFound, runID)
+		return scenario.ScenarioRun{}, fmt.Errorf("%w: run %s", bserr.ErrNotFound, runID)
 	}
 
 	return found, nil
@@ -57,11 +57,11 @@ func (s *runs) Get(_ context.Context, runID id.ID) (scenario.Run, error) {
 // A limit of zero or less returns everything, which is what a CLI wants.
 func (s *runs) ListByScenario(
 	_ context.Context, scenarioID id.ID, limit int,
-) ([]scenario.Run, error) {
+) ([]scenario.ScenarioRun, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var out []scenario.Run
+	var out []scenario.ScenarioRun
 
 	for _, key := range s.runOrder {
 		if found := s.runs[key]; found.ScenarioID == scenarioID {
@@ -74,7 +74,7 @@ func (s *runs) ListByScenario(
 	// Ties on QueuedAt break on identifier, which is chronologically
 	// sortable, so two runs queued in the same instant still order
 	// reproducibly.
-	slices.SortStableFunc(out, func(left, right scenario.Run) int {
+	slices.SortStableFunc(out, func(left, right scenario.ScenarioRun) int {
 		if by := right.QueuedAt.Compare(left.QueuedAt); by != 0 {
 			return by
 		}
@@ -109,13 +109,13 @@ func (s *runs) ListByScenario(
 // two callers inside the critical section at once — it would pass even if
 // Claim read the map, released the lock, and only then wrote the result back,
 // which is exactly the race this design avoids.
-func (s *runs) Claim(_ context.Context) (scenario.Run, error) {
+func (s *runs) Claim(_ context.Context) (scenario.ScenarioRun, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var (
 		oldestKey id.ID
-		oldest    scenario.Run
+		oldest    scenario.ScenarioRun
 		found     bool
 	)
 
@@ -131,7 +131,7 @@ func (s *runs) Claim(_ context.Context) (scenario.Run, error) {
 	}
 
 	if !found {
-		return scenario.Run{}, fmt.Errorf("%w: no run is queued", bserr.ErrNotFound)
+		return scenario.ScenarioRun{}, fmt.Errorf("%w: no run is queued", bserr.ErrNotFound)
 	}
 
 	oldest.Status = scenario.StatusRunning
@@ -148,9 +148,9 @@ func (s *runs) Claim(_ context.Context) (scenario.Run, error) {
 // write their own answer over it, and the second would win silently. Here the
 // loser is told — a run that is no longer running is a conflict, not a no-op,
 // because a worker whose result was discarded needs to know that it was.
-func (s *runs) Finish(_ context.Context, in scenario.Run) (scenario.Run, error) {
+func (s *runs) Finish(_ context.Context, in scenario.ScenarioRun) (scenario.ScenarioRun, error) {
 	if err := in.Finishable(); err != nil {
-		return scenario.Run{}, err
+		return scenario.ScenarioRun{}, err
 	}
 
 	s.mu.Lock()
@@ -158,11 +158,11 @@ func (s *runs) Finish(_ context.Context, in scenario.Run) (scenario.Run, error) 
 
 	existing, ok := s.runs[in.ID]
 	if !ok {
-		return scenario.Run{}, fmt.Errorf("%w: run %s", bserr.ErrNotFound, in.ID)
+		return scenario.ScenarioRun{}, fmt.Errorf("%w: run %s", bserr.ErrNotFound, in.ID)
 	}
 
 	if existing.Status != scenario.StatusRunning {
-		return scenario.Run{}, fmt.Errorf(
+		return scenario.ScenarioRun{}, fmt.Errorf(
 			"%w: run %s is %s, not running; only a claimed run can finish",
 			bserr.ErrConflict, in.ID, existing.Status)
 	}
@@ -192,7 +192,7 @@ func (s *runs) Finish(_ context.Context, in scenario.Run) (scenario.Run, error) 
 // by QueuedAt and then by identifier — the same tie-break the Fabriq store's
 // `ORDER BY queued_at ASC, id ASC` applies, so the two stores agree on which
 // run is claimed whenever more than one is queued at the same instant.
-func olderCandidate(candidate, current scenario.Run) bool {
+func olderCandidate(candidate, current scenario.ScenarioRun) bool {
 	if !candidate.QueuedAt.Equal(current.QueuedAt) {
 		return candidate.QueuedAt.Before(current.QueuedAt)
 	}

@@ -125,7 +125,7 @@ type runRow struct {
 
 	// WeatherRated and BranchCount are pointers so the database can
 	// distinguish "the rating step has not run" from "it rated zero of
-	// however many" — the same distinction scenario.Run's own fields protect.
+	// however many" — the same distinction scenario.ScenarioRun's own fields protect.
 	// A nil pointer scans to and from SQL NULL without any tag beyond the
 	// column name; tagging either notnull would make "not yet rated" an
 	// unstorable state.
@@ -149,7 +149,7 @@ type runRow struct {
 }
 
 // runFromDomain maps a run onto the persistence shape.
-func runFromDomain(in scenario.Run) (runRow, error) {
+func runFromDomain(in scenario.ScenarioRun) (runRow, error) {
 	manifest, err := json.Marshal(in.Manifest)
 	if err != nil {
 		return runRow{}, fmt.Errorf("scenario: encoding manifest: %w", err)
@@ -189,25 +189,25 @@ func runFromDomain(in scenario.Run) (runRow, error) {
 }
 
 // toDomain maps a stored run row back.
-func (r runRow) toDomain() (scenario.Run, error) {
+func (r runRow) toDomain() (scenario.ScenarioRun, error) {
 	runID, err := sid.ParseRun(r.ID)
 	if err != nil {
-		return scenario.Run{}, fmt.Errorf("scenario: stored run id %q: %w", r.ID, err)
+		return scenario.ScenarioRun{}, fmt.Errorf("scenario: stored run id %q: %w", r.ID, err)
 	}
 
 	scenarioID, err := sid.ParseScenario(r.ScenarioID)
 	if err != nil {
-		return scenario.Run{}, fmt.Errorf(
+		return scenario.ScenarioRun{}, fmt.Errorf(
 			"scenario: run %s: stored scenario id %q: %w", r.ID, r.ScenarioID, err)
 	}
 
 	var manifest scenario.Manifest
 	if err := json.Unmarshal(r.Manifest, &manifest); err != nil {
-		return scenario.Run{}, fmt.Errorf(
+		return scenario.ScenarioRun{}, fmt.Errorf(
 			"scenario: run %s: decoding manifest: %w", r.ID, err)
 	}
 
-	out := scenario.Run{
+	out := scenario.ScenarioRun{
 		ID:            runID,
 		ScenarioID:    scenarioID,
 		Manifest:      manifest,
@@ -221,7 +221,7 @@ func (r runRow) toDomain() (scenario.Run, error) {
 	if len(r.Failure) > 0 {
 		var failure scenario.Failure
 		if err := json.Unmarshal(r.Failure, &failure); err != nil {
-			return scenario.Run{}, fmt.Errorf(
+			return scenario.ScenarioRun{}, fmt.Errorf(
 				"scenario: run %s: decoding failure: %w", r.ID, err)
 		}
 
@@ -235,7 +235,7 @@ func (r runRow) toDomain() (scenario.Run, error) {
 	if r.SweepRunID != "" {
 		sweepRunID, err := id.Parse(r.SweepRunID)
 		if err != nil {
-			return scenario.Run{}, fmt.Errorf(
+			return scenario.ScenarioRun{}, fmt.Errorf(
 				"scenario: run %s: stored sweep run id %q: %w", r.ID, r.SweepRunID, err)
 		}
 
@@ -245,7 +245,7 @@ func (r runRow) toDomain() (scenario.Run, error) {
 	if r.CascadeRunID != "" {
 		cascadeRunID, err := id.Parse(r.CascadeRunID)
 		if err != nil {
-			return scenario.Run{}, fmt.Errorf(
+			return scenario.ScenarioRun{}, fmt.Errorf(
 				"scenario: run %s: stored cascade run id %q: %w", r.ID, r.CascadeRunID, err)
 		}
 

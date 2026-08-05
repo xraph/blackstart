@@ -64,10 +64,19 @@ type Failure struct {
 	Reason string `json:"reason"`
 }
 
-// Run is one execution of a scenario: the frozen manifest it ran against,
-// where it is in its lifecycle, and — once that lifecycle reaches a terminal
-// state — how it got there.
-type Run struct {
+// ScenarioRun is one execution of a scenario: the frozen manifest it ran
+// against, where it is in its lifecycle, and — once that lifecycle reaches a
+// terminal state — how it got there.
+//
+// Named ScenarioRun rather than the bare Run this package first used, for the
+// reason run.CascadeRun and record.ProvenanceRun carry their prefixes: Forge
+// keys an OpenAPI component by Go type name, not by the label passed to
+// WithResponseSchema, and contingency's sweep.Run already holds `Run` in the
+// generated specification. Two types under one component name is a resolution
+// that depends on which controller registered first — so the extension that
+// has never been served is the one that renames, and it renames the type
+// because relabelling is what cannot fix this.
+type ScenarioRun struct {
 	// ID identifies this run.
 	ID id.ID `json:"id"`
 
@@ -146,7 +155,7 @@ type Run struct {
 // status: they are one observation about one run, recorded together at the
 // point the rating step completes, so a run with one set and the other nil
 // is not a state the type should tolerate constructing.
-func (r Run) Validate() error {
+func (r ScenarioRun) Validate() error {
 	if r.Status == StatusFailed {
 		if r.Failure == nil || r.Failure.Step == "" {
 			return fmt.Errorf(
@@ -184,7 +193,7 @@ func (r Run) Validate() error {
 // answer would put that run back in the queue for a second worker to execute
 // again — the same result computed twice, from a manifest that was supposed
 // to make it citable once.
-func (r Run) Finishable() error {
+func (r ScenarioRun) Finishable() error {
 	if err := r.Validate(); err != nil {
 		return err
 	}

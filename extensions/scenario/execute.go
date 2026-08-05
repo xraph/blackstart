@@ -37,14 +37,14 @@ import (
 // outcome could not be recorded at all — which is the one case a worker
 // cannot turn into a stored fact and has to retry or report. A caller reads
 // Status to learn what happened; err answers a different question.
-func (e *Engine) Execute(ctx context.Context, in scn.Run) (scn.Run, error) {
+func (e *Engine) Execute(ctx context.Context, in scn.ScenarioRun) (scn.ScenarioRun, error) {
 	in, err := e.store.Runs().Get(ctx, in.ID)
 	if err != nil {
-		return scn.Run{}, fmt.Errorf("scenario: reading the run to execute: %w", err)
+		return scn.ScenarioRun{}, fmt.Errorf("scenario: reading the run to execute: %w", err)
 	}
 
 	if in.Status != scn.StatusRunning {
-		return scn.Run{}, fmt.Errorf(
+		return scn.ScenarioRun{}, fmt.Errorf(
 			"scenario: run %s is %q in the store, not running; a run is executed "+
 				"after it is claimed, and the claim is what stops two workers from "+
 				"executing one scenario twice", in.ID, in.Status)
@@ -102,7 +102,7 @@ func (e *Engine) Execute(ctx context.Context, in scn.Run) (scn.Run, error) {
 
 	stored, err := e.store.Runs().Finish(ctx, in)
 	if err != nil {
-		return scn.Run{}, fmt.Errorf("scenario: recording run %s complete: %w", in.ID, err)
+		return scn.ScenarioRun{}, fmt.Errorf("scenario: recording run %s complete: %w", in.ID, err)
 	}
 
 	e.emit(ctx, stored)
@@ -116,8 +116,8 @@ func (e *Engine) Execute(ctx context.Context, in scn.Run) (scn.Run, error) {
 // reader of the record knows which of the five stages to look at. Storing it
 // is what makes a failed run a fact rather than a log line.
 func (e *Engine) fail(
-	ctx context.Context, in scn.Run, step scn.Step, cause error,
-) (scn.Run, error) {
+	ctx context.Context, in scn.ScenarioRun, step scn.Step, cause error,
+) (scn.ScenarioRun, error) {
 	in.Status = scn.StatusFailed
 	in.Failure = &scn.Failure{Step: step, Reason: cause.Error()}
 	in.FinishedAt = e.now().UTC()
@@ -127,7 +127,7 @@ func (e *Engine) fail(
 		// Both wrapped, so errors.Is finds either: the pipeline failure is
 		// what happened and the store failure is why nobody will find it in
 		// the record.
-		return scn.Run{}, fmt.Errorf(
+		return scn.ScenarioRun{}, fmt.Errorf(
 			"scenario: run %s failed at %s (%w), and recording that failed too: %w",
 			in.ID, step, cause, err)
 	}

@@ -12,7 +12,7 @@ import (
 // executing enqueues a run against a resolvable manifest, claims it, and
 // executes it — the path a worker takes, so that Execute is never handed a
 // run the queue did not hand out.
-func executing(t *testing.T, f *fakes) (scn.Run, scnstore.Store) {
+func executing(t *testing.T, f *fakes) (scn.ScenarioRun, scnstore.Store) {
 	t.Helper()
 
 	e, store := engineWith(t, f)

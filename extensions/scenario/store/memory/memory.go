@@ -53,7 +53,7 @@ type Store struct {
 	// without depending on map iteration — which Go deliberately randomizes.
 	scenarioOrder []id.ID
 
-	runs map[id.ID]scenario.Run
+	runs map[id.ID]scenario.ScenarioRun
 
 	// runOrder is the same device as scenarioOrder: it lets ListByScenario
 	// build a result without depending on map iteration order.
@@ -71,7 +71,7 @@ type Store struct {
 func New() *Store {
 	return &Store{
 		scenarios: map[id.ID]scenario.Scenario{},
-		runs:      map[id.ID]scenario.Run{},
+		runs:      map[id.ID]scenario.ScenarioRun{},
 	}
 }
 

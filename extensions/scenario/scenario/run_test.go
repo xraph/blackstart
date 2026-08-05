@@ -14,7 +14,7 @@ import (
 func TestAFailedRunNamesItsStep(t *testing.T) {
 	t.Parallel()
 
-	r := scenario.Run{Status: scenario.StatusFailed}
+	r := scenario.ScenarioRun{Status: scenario.StatusFailed}
 
 	if err := r.Validate(); err == nil {
 		t.Fatal("want an error: a failed run with no failure recorded")
@@ -32,7 +32,7 @@ func TestAFailedRunNamesItsStep(t *testing.T) {
 func TestACompleteRunNamesItsChildren(t *testing.T) {
 	t.Parallel()
 
-	r := scenario.Run{Status: scenario.StatusComplete}
+	r := scenario.ScenarioRun{Status: scenario.StatusComplete}
 
 	if err := r.Validate(); err == nil {
 		t.Fatal("want an error: a complete run with no sweep or cascade")
@@ -43,7 +43,7 @@ func TestACompleteRunNamesItsChildren(t *testing.T) {
 func TestAQueuedRunNeedsNeither(t *testing.T) {
 	t.Parallel()
 
-	r := scenario.Run{Status: scenario.StatusQueued}
+	r := scenario.ScenarioRun{Status: scenario.StatusQueued}
 
 	if err := r.Validate(); err != nil {
 		t.Fatalf("want nil, got %v", err)
@@ -56,7 +56,7 @@ func TestAQueuedRunNeedsNeither(t *testing.T) {
 func TestAQueuedRunHasNoWeatherRatingYet(t *testing.T) {
 	t.Parallel()
 
-	r := scenario.Run{Status: scenario.StatusQueued}
+	r := scenario.ScenarioRun{Status: scenario.StatusQueued}
 
 	if r.WeatherRated != nil {
 		t.Errorf("WeatherRated = %v, want nil before the rating step runs", r.WeatherRated)
@@ -77,7 +77,7 @@ func TestWeatherRatingIsSetTogetherEvenWhenRatedIsZero(t *testing.T) {
 
 	rated, branches := 0, 2000
 
-	r := scenario.Run{
+	r := scenario.ScenarioRun{
 		Status:       scenario.StatusRunning,
 		WeatherRated: &rated,
 		BranchCount:  &branches,
@@ -108,7 +108,7 @@ func TestWeatherRatingCannotBeSetPartially(t *testing.T) {
 
 	rated := 3
 
-	r := scenario.Run{Status: scenario.StatusRunning, WeatherRated: &rated}
+	r := scenario.ScenarioRun{Status: scenario.StatusRunning, WeatherRated: &rated}
 
 	if err := r.Validate(); err == nil {
 		t.Fatal("want an error: WeatherRated is set but BranchCount is nil")
@@ -121,7 +121,7 @@ func TestWeatherRatingCannotBeSetPartially(t *testing.T) {
 func TestOnlyATerminalStatusIsFinishable(t *testing.T) {
 	t.Parallel()
 
-	base := scenario.Run{
+	base := scenario.ScenarioRun{
 		Status:       scenario.StatusComplete,
 		SweepRunID:   crid.NewRun(),
 		CascadeRunID: cid.NewRun(),
@@ -131,7 +131,7 @@ func TestOnlyATerminalStatusIsFinishable(t *testing.T) {
 		t.Fatalf("a complete run with both children is finishable, got %v", err)
 	}
 
-	failed := scenario.Run{
+	failed := scenario.ScenarioRun{
 		Status:  scenario.StatusFailed,
 		Failure: &scenario.Failure{Step: scenario.StepScreen, Reason: "the solver refused"},
 	}
@@ -156,7 +156,7 @@ func TestOnlyATerminalStatusIsFinishable(t *testing.T) {
 func TestFinishableStillRejectsAFailedRunWithNoStep(t *testing.T) {
 	t.Parallel()
 
-	r := scenario.Run{Status: scenario.StatusFailed}
+	r := scenario.ScenarioRun{Status: scenario.StatusFailed}
 
 	if err := r.Finishable(); err == nil {
 		t.Fatal("want an error: a failed run with no failure recorded")

@@ -22,7 +22,7 @@ func TestAStoredRunRoundTripsWithItsManifestIntact(t *testing.T) {
 	s := memory.New()
 	ctx := context.Background()
 
-	in := scenario.Run{
+	in := scenario.ScenarioRun{
 		ID:         scnid.NewRun(),
 		ScenarioID: scnid.NewScenario(),
 		Manifest:   validManifest(),
@@ -62,7 +62,7 @@ func TestListByScenarioReturnsMostRecentFirst(t *testing.T) {
 	var wantOrder []string
 
 	for i := range 3 {
-		run := scenario.Run{
+		run := scenario.ScenarioRun{
 			ID:         scnid.NewRun(),
 			ScenarioID: scenarioID,
 			Manifest:   validManifest(),
@@ -79,7 +79,7 @@ func TestListByScenarioReturnsMostRecentFirst(t *testing.T) {
 
 	// A run queued after all three, but for a different scenario, must not
 	// appear in this scenario's listing no matter how recent it is.
-	other := scenario.Run{
+	other := scenario.ScenarioRun{
 		ID:         scnid.NewRun(),
 		ScenarioID: scnid.NewScenario(),
 		Manifest:   validManifest(),
@@ -110,10 +110,10 @@ func TestListByScenarioReturnsMostRecentFirst(t *testing.T) {
 
 // aClaimedRun stores a queued run and claims it, which is the only state
 // Finish accepts.
-func aClaimedRun(t *testing.T, s *memory.Store) scenario.Run {
+func aClaimedRun(t *testing.T, s *memory.Store) scenario.ScenarioRun {
 	t.Helper()
 
-	in := scenario.Run{
+	in := scenario.ScenarioRun{
 		ID:         scnid.NewRun(),
 		ScenarioID: scnid.NewScenario(),
 		Manifest:   validManifest(),
@@ -214,7 +214,7 @@ func TestFinishRefusesARunThatDoesNotExist(t *testing.T) {
 
 	s := memory.New()
 
-	orphan := scenario.Run{
+	orphan := scenario.ScenarioRun{
 		ID:         scnid.NewRun(),
 		ScenarioID: scnid.NewScenario(),
 		Manifest:   validManifest(),
@@ -237,7 +237,7 @@ func TestClaimTakesTheOldestQueuedRunAndMovesItToRunning(t *testing.T) {
 	s := memory.New()
 	ctx := context.Background()
 
-	in := scenario.Run{
+	in := scenario.ScenarioRun{
 		ID:         scnid.NewRun(),
 		ScenarioID: scnid.NewScenario(),
 		Manifest:   validManifest(),
@@ -291,7 +291,7 @@ func TestClaimOrdersByQueuedAtNotInsertionOrder(t *testing.T) {
 
 	scenarioID := scnid.NewScenario()
 
-	later := scenario.Run{
+	later := scenario.ScenarioRun{
 		ID:         scnid.NewRun(),
 		ScenarioID: scenarioID,
 		Manifest:   validManifest(),
@@ -305,7 +305,7 @@ func TestClaimOrdersByQueuedAtNotInsertionOrder(t *testing.T) {
 
 	// Created second, but backfilled with an earlier QueuedAt than the run
 	// above — the case a pure insertion-order scan gets wrong.
-	earlier := scenario.Run{
+	earlier := scenario.ScenarioRun{
 		ID:         scnid.NewRun(),
 		ScenarioID: scenarioID,
 		Manifest:   validManifest(),
@@ -342,7 +342,7 @@ func TestClaimWithNothingQueuedReturnsNotFound(t *testing.T) {
 		t.Fatalf("Claim on an empty store: got err=%v, want ErrNotFound", err)
 	}
 
-	done := scenario.Run{
+	done := scenario.ScenarioRun{
 		ID:           scnid.NewRun(),
 		ScenarioID:   scnid.NewScenario(),
 		Manifest:     validManifest(),
@@ -386,7 +386,7 @@ func TestClaimIsAtomicUnderConcurrency(t *testing.T) {
 	queued := make(map[string]bool, workers)
 
 	for i := range workers {
-		run := scenario.Run{
+		run := scenario.ScenarioRun{
 			ID:         scnid.NewRun(),
 			ScenarioID: scnid.NewScenario(),
 			Manifest:   validManifest(),

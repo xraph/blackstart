@@ -166,29 +166,29 @@ type runs Store
 // Create records a run, rejecting a duplicate identifier rather than
 // overwriting: runs are append-only, and Create does not decide a run's
 // status for the caller — the same contract scenario.RunStore documents.
-func (s *runs) Create(ctx context.Context, in scenario.Run) (scenario.Run, error) {
+func (s *runs) Create(ctx context.Context, in scenario.ScenarioRun) (scenario.ScenarioRun, error) {
 	if err := in.Validate(); err != nil {
-		return scenario.Run{}, err
+		return scenario.ScenarioRun{}, err
 	}
 
 	row, err := runFromDomain(in)
 	if err != nil {
-		return scenario.Run{}, err
+		return scenario.ScenarioRun{}, err
 	}
 
 	if err := s.base.Create(ctx, RunEntity, in.ID, row); err != nil {
-		return scenario.Run{}, err
+		return scenario.ScenarioRun{}, err
 	}
 
 	return in, nil
 }
 
 // Get retrieves one run.
-func (s *runs) Get(ctx context.Context, runID id.ID) (scenario.Run, error) {
+func (s *runs) Get(ctx context.Context, runID id.ID) (scenario.ScenarioRun, error) {
 	var row runRow
 
 	if err := s.base.Get(ctx, RunEntity, runID, &row); err != nil {
-		return scenario.Run{}, err
+		return scenario.ScenarioRun{}, err
 	}
 
 	return row.toDomain()
@@ -204,7 +204,7 @@ func (s *runs) Get(ctx context.Context, runID id.ID) (scenario.Run, error) {
 // always passes an explicit one.
 func (s *runs) ListByScenario(
 	ctx context.Context, scenarioID id.ID, limit int,
-) ([]scenario.Run, error) {
+) ([]scenario.ScenarioRun, error) {
 	var rows []runRow
 
 	// Ordered in SQL rather than in Go, because the index is already on
@@ -227,7 +227,7 @@ func (s *runs) ListByScenario(
 		return nil, err
 	}
 
-	out := make([]scenario.Run, 0, len(rows))
+	out := make([]scenario.ScenarioRun, 0, len(rows))
 
 	for _, row := range rows {
 		mapped, err := row.toDomain()
@@ -265,7 +265,7 @@ func (s *runs) ListByScenario(
 // whatever is now the oldest queued run, rather than surfaced to the caller —
 // the same way a losing goroutine in the memory store simply does not see the
 // run it lost the race for.
-func (s *runs) Claim(ctx context.Context) (scenario.Run, error) {
+func (s *runs) Claim(ctx context.Context) (scenario.ScenarioRun, error) {
 	for {
 		var candidates []runRow
 
@@ -275,18 +275,18 @@ func (s *runs) Claim(ctx context.Context) (scenario.Run, error) {
 			   AND status = $1
 			 ORDER BY queued_at ASC, id ASC
 			 LIMIT 1`, string(scenario.StatusQueued)); err != nil {
-			return scenario.Run{}, err
+			return scenario.ScenarioRun{}, err
 		}
 
 		if len(candidates) == 0 {
-			return scenario.Run{}, fmt.Errorf("%w: no run is queued", bserr.ErrNotFound)
+			return scenario.ScenarioRun{}, fmt.Errorf("%w: no run is queued", bserr.ErrNotFound)
 		}
 
 		candidate := candidates[0]
 
 		runID, err := sid.ParseRun(candidate.ID)
 		if err != nil {
-			return scenario.Run{}, fmt.Errorf(
+			return scenario.ScenarioRun{}, fmt.Errorf(
 				"scenario: stored run id %q: %w", candidate.ID, err)
 		}
 
@@ -301,7 +301,7 @@ func (s *runs) Claim(ctx context.Context) (scenario.Run, error) {
 				continue
 			}
 
-			return scenario.Run{}, err
+			return scenario.ScenarioRun{}, err
 		}
 
 		return claimed.toDomain()
@@ -322,25 +322,25 @@ func (s *runs) Claim(ctx context.Context) (scenario.Run, error) {
 // means "take whatever is queued now", which is still the job. Finish
 // retrying would mean overwriting whatever the other worker recorded with
 // this one's answer, which is the opposite of the job.
-func (s *runs) Finish(ctx context.Context, in scenario.Run) (scenario.Run, error) {
+func (s *runs) Finish(ctx context.Context, in scenario.ScenarioRun) (scenario.ScenarioRun, error) {
 	if err := in.Finishable(); err != nil {
-		return scenario.Run{}, err
+		return scenario.ScenarioRun{}, err
 	}
 
 	var current runRow
 	if err := s.base.Get(ctx, RunEntity, in.ID, &current); err != nil {
-		return scenario.Run{}, err
+		return scenario.ScenarioRun{}, err
 	}
 
 	if current.Status != string(scenario.StatusRunning) {
-		return scenario.Run{}, fmt.Errorf(
+		return scenario.ScenarioRun{}, fmt.Errorf(
 			"%w: run %s is %s, not running; only a claimed run can finish",
 			bserr.ErrConflict, in.ID, current.Status)
 	}
 
 	row, err := runFromDomain(in)
 	if err != nil {
-		return scenario.Run{}, err
+		return scenario.ScenarioRun{}, err
 	}
 
 	// The frozen fields are copied from the row that was just read, never
@@ -359,7 +359,7 @@ func (s *runs) Finish(ctx context.Context, in scenario.Run) (scenario.Run, error
 	version := current.Version
 
 	if err := s.base.Update(ctx, RunEntity, in.ID, row, &version); err != nil {
-		return scenario.Run{}, err
+		return scenario.ScenarioRun{}, err
 	}
 
 	// Mapped back from the row that was written rather than returning the

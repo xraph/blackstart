@@ -10,7 +10,7 @@ import (
 
 // queued enqueues one executable scenario against e and returns the run it
 // produced: queued and unclaimed, the state a worker finds it in.
-func queued(t *testing.T, e *Engine, f *fakes) scn.Run {
+func queued(t *testing.T, e *Engine, f *fakes) scn.ScenarioRun {
 	t.Helper()
 
 	manifest := executable(t, f)

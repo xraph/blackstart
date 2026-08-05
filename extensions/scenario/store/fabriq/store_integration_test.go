@@ -82,8 +82,8 @@ func aScenario(modelHash string) scenario.Scenario {
 	}
 }
 
-func aQueuedRun(scenarioID id.ID, queuedAt time.Time) scenario.Run {
-	return scenario.Run{
+func aQueuedRun(scenarioID id.ID, queuedAt time.Time) scenario.ScenarioRun {
+	return scenario.ScenarioRun{
 		ID:         sid.NewRun(),
 		ScenarioID: scenarioID,
 		Manifest:   aManifest("sha256:abc123"),
@@ -640,7 +640,7 @@ func TestListOrdersScenariosNewestFirst(t *testing.T) {
 
 // aClaimedRun stores a queued run and claims it, which is the only state
 // Finish accepts.
-func aClaimedRun(t *testing.T, s *scnfabriq.Store, modelHash string) scenario.Run {
+func aClaimedRun(t *testing.T, s *scnfabriq.Store, modelHash string) scenario.ScenarioRun {
 	t.Helper()
 
 	ctx := context.Background()
