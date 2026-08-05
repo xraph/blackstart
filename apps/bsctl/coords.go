@@ -144,3 +144,34 @@ func placementsOf(in viewer.Placement, modelID id.ID) []model.Placement {
 
 	return out
 }
+
+// placementCounts reports how a CSV's placements relate to a model's own bus
+// identifiers: unplaced is how many of the model's buses no placement named
+// at all, and unknown is how many placements name a bus the model does not
+// have.
+//
+// Placement keys must be canonical bus-<n>, but the ACTIVSg distribution
+// ships raw bus numbers, so a CSV in the wrong convention places zero of the
+// model's buses and every row is unknown — exactly the state `modelPlaceCommand`
+// must not report as plain success. Kept separate from that command so this
+// arithmetic is testable without the engine, store and CLI plumbing needed
+// to reach a model's stored encoding.
+func placementCounts(placements []model.Placement, modelBuses map[string]bool) (unplaced, unknown int) {
+	placedBuses := make(map[string]bool, len(placements))
+
+	for _, p := range placements {
+		placedBuses[p.Bus] = true
+
+		if !modelBuses[p.Bus] {
+			unknown++
+		}
+	}
+
+	for bus := range modelBuses {
+		if !placedBuses[bus] {
+			unplaced++
+		}
+	}
+
+	return unplaced, unknown
+}

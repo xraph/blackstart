@@ -363,12 +363,30 @@ func modelPlaceCommand() cli.Command {
 
 			placements := placementsOf(read, found.ID)
 
+			// Resolved against the model's own bus IDs rather than trusted at
+			// face value: placement keys must be canonical bus-<n>, but the
+			// ACTIVSg distribution ships raw bus numbers, and a CSV in that
+			// convention would otherwise report "placed N buses" while every
+			// row silently fails to match a branch's endpoint.
+			modelBuses, err := busIDs(ctx.Context(), engine, found)
+			if err != nil {
+				return err
+			}
+
+			unplaced, unknown := placementCounts(placements, modelBuses)
+
 			if err := engine.Store().Placements().PutAll(
 				ctx.Context(), found.ID, placements); err != nil {
 				return err
 			}
 
-			ctx.Printf("placed %d buses for model %s\n", len(placements), found.ID)
+			// Every number, every time — the same reason `bsctl hazard assume`
+			// reports what it could not do, not just what it did. A command
+			// that only prints success is how somebody comes to believe a
+			// model is placed when it is not.
+			ctx.Printf("placed                    %d\n", len(placements))
+			ctx.Printf("model buses left unplaced %d\n", unplaced)
+			ctx.Printf("csv rows unknown to model  %d\n", unknown)
 
 			return nil
 		},
@@ -450,4 +468,32 @@ func countMissing(payload viewer.Model) int {
 	}
 
 	return missing
+}
+
+// busIDs is the canonical bus-<n> identifier of every bus in a stored
+// model, resolved from its own stored encoding.
+//
+// A count (NetworkModel.BusCount) says how many buses a model has, not
+// which identifiers name them, and modelPlaceCommand needs the latter to
+// tell a CSV row naming a real bus from one naming a bus number the ACTIVSg
+// distribution ships but the canonical model does not recognize.
+func busIDs(
+	ctx context.Context, engine *networkmodel.Engine, found model.NetworkModel,
+) (map[string]bool, error) {
+	encoded, err := engine.Encoding(ctx, found.ContentHash)
+	if err != nil {
+		return nil, err
+	}
+
+	decoded, err := canonical.Decode(encoded)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[string]bool, len(decoded.Buses))
+	for _, bus := range decoded.Buses {
+		out[bus.ID] = true
+	}
+
+	return out, nil
 }
