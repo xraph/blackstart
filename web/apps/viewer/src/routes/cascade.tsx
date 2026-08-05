@@ -167,7 +167,18 @@ export function CascadeScreen(): React.JSX.Element {
    * rather than derived from it — the platform, not the viewer, resolves a
    * trip's branch to a traced route and buffers it, the same reason the
    * blast radius figure in the left panel comes from the run rather than
-   * being summed here. */
+   * being summed here.
+   *
+   * Drawn whole, not grown with the scrubber. The wire response carries no
+   * per-polygon timestamp — `area`'s ring order is an artefact of how
+   * `cascade.Engine.Extent` walked trip events and deduped by branch
+   * ordinal, not a contract either side has agreed to keep, and a branch
+   * with several spans contributes several rings for one trip regardless.
+   * An earlier version of this screen inferred a reveal fraction from that
+   * ordering; nothing here may depend on `area`'s order any more. The
+   * platform cannot say when each piece of ground was affected, so this
+   * screen does not imply that it can — the whole extent is shown as soon
+   * as it loads, labelled as such in the panel below. */
   const { data: extent } = useCascadeRunsExtent(client, search.run ?? "", undefined, {
     enabled: search.run !== undefined,
   });
@@ -206,41 +217,6 @@ export function CascadeScreen(): React.JSX.Element {
 
   const simTime = position * lastT;
   const shown = useMemo(() => events.filter((e) => e.t <= simTime + 1e-6), [events, simTime]);
-
-  /**
-   * The trip events `extent.area` was built from, in the same order and
-   * de-duplication the platform used to build it: one contribution per
-   * distinct tripped branch ordinal, first occurrence wins (see
-   * `cascade.Engine.Extent`, whose `seen` map does exactly this over
-   * `found.Events`). The wire response carries no per-polygon timestamp, so
-   * a ring cannot be matched to the event that caused it exactly — a branch
-   * with several spans contributes several rings for one trip. This walks
-   * the same trip order the server walked and reveals rings in that
-   * proportion, which grows the extent with the scrubber without claiming a
-   * precision the response does not carry.
-   */
-  const trippedOrdinals = useMemo(() => {
-    const seen = new Set<string>();
-    const ordinals: string[] = [];
-    for (const e of events) {
-      if (e.kind !== "trip" || seen.has(e.element)) continue;
-      seen.add(e.element);
-      ordinals.push(e.element);
-    }
-    return ordinals;
-  }, [events]);
-
-  const visibleExtent = useMemo(() => {
-    const area = extent?.area ?? [];
-    if (area.length === 0 || trippedOrdinals.length === 0) return [];
-
-    const trippedSoFar = trippedOrdinals.filter((ordinal) =>
-      shown.some((e) => e.kind === "trip" && e.element === ordinal),
-    ).length;
-
-    const ringCount = Math.floor((trippedSoFar / trippedOrdinals.length) * area.length);
-    return area.slice(0, ringCount);
-  }, [extent, trippedOrdinals, shown]);
 
   /** Steps to the adjacent discrete event, not a fixed time delta. */
   const step = (delta: -1 | 1): void => {
@@ -303,7 +279,7 @@ export function CascadeScreen(): React.JSX.Element {
         <div className="relative min-w-0 flex-1 overflow-hidden bg-stage">
           {/* The globe draws the static network model, which does not depend
            * on the run — so it never shows a loading state of its own. */}
-          <Scene model={model} extent={visibleExtent} onSelect={() => undefined} />
+          <Scene model={model} extent={extent?.area} onSelect={() => undefined} />
 
           {failed ? (
             <div
@@ -348,6 +324,16 @@ export function CascadeScreen(): React.JSX.Element {
                         {run.countiesAffected ?? "not computed"} affected
                         <br />
                         <span className="text-fg-2">initiating</span> {run.initiating}
+                        <br />
+                        {/* What the shaded ground on the globe is, in the
+                         * reader's own view rather than a comment only an
+                         * engineer would find: the whole run's corridor, not
+                         * a moment of it, and the buffer width it assumes —
+                         * without which the shaded area is uninterpretable. */}
+                        <span className="text-fg-2">ground shown</span>{" "}
+                        {extent === undefined
+                          ? "loading…"
+                          : `whole run, ±${extent.halfWidthM} m buffer`}
                       </div>
                     </>
                   )}
