@@ -80,11 +80,28 @@ export function chainOfTrace(trace: traceResponse): ProvenanceChain {
   }
 
   if (trace.run.id !== "") {
+    // Labelled by what was run — "powerflow", "contingency", "import" — plus
+    // the seed, because a seed is what makes a run reproducible at all, which
+    // is exactly what a provenance citation exists to assert. The solver
+    // version this used to cite lives on the producer and is already spelled
+    // out by the model link above.
+    //
+    // Digested by the result hash, which is the one that makes `verified` mean
+    // something: it is the sha256 of what the run produced, so re-running from
+    // the same inputs and comparing turns reproducibility into a check rather
+    // than a claim.
+    const label = [
+      trace.run.kind === "" ? "run" : `${trace.run.kind} run`,
+      trace.run.seed === "" ? undefined : `seed ${trace.run.seed}`,
+    ]
+      .filter((part): part is string => part !== undefined)
+      .join(" · ");
+
     links.push({
       kind: "run",
-      label: `solver ${trace.run.solverVersion}`,
+      label,
       ref: trace.run.id,
-      ...(trace.run.modelHash === "" ? {} : { digest: abbreviateHash(trace.run.modelHash) }),
+      ...(trace.run.resultHash === "" ? {} : { digest: abbreviateHash(trace.run.resultHash) }),
       verified: trace.reproducible,
     });
   }
