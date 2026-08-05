@@ -258,18 +258,26 @@ func TestImportedStructuresBecomeTheVerticesThemselves(t *testing.T) {
 	}
 }
 
+// Longitude is deliberately not monotonic in source order: the second
+// structure sits west of the first and the third sits between them. A
+// fixture whose source order and geographic order coincide cannot tell
+// "ordinal is the loop index" apart from "ordinal is a geographic sort" —
+// they would produce the same stored output either way. See import.go's
+// Ordinal comment.
 func TestImportRecordsWhatEachStructureIs(t *testing.T) {
 	e, st := testEngine(t)
 	ctx := context.Background()
 
+	recorded := []source.Structure{
+		{Position: shape.Point{Lon: -97.7958, Lat: 30.30}, Kind: "pole"},
+		{Position: shape.Point{Lon: -97.8000, Lat: 30.31}, Kind: "tower", Material: "steel"},
+		{Position: shape.Point{Lon: -97.7979, Lat: 30.29}, Kind: "tower"},
+	}
+
 	route, err := e.Import(ctx, geo.ImportRequest{
-		CarrierID: gid.NewCircuit(),
-		Path:      shape.Line{{Lon: -97.80, Lat: 30.3}, {Lon: -97.7958, Lat: 30.3}},
-		Structures: []source.Structure{
-			{Position: shape.Point{Lon: -97.80, Lat: 30.3}, Kind: "tower", Material: "steel"},
-			{Position: shape.Point{Lon: -97.7979, Lat: 30.3}, Kind: "tower"},
-			{Position: shape.Point{Lon: -97.7958, Lat: 30.3}, Kind: "pole"},
-		},
+		CarrierID:  gid.NewCircuit(),
+		Path:       shape.Line{{Lon: -97.80, Lat: 30.3}, {Lon: -97.7958, Lat: 30.3}},
+		Structures: recorded,
 	})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
@@ -284,18 +292,161 @@ func TestImportRecordsWhatEachStructureIs(t *testing.T) {
 		t.Fatalf("stored %d structures, imported 3", len(back))
 	}
 
-	if back[0].Kind != "tower" || back[0].Material != "steel" {
-		t.Errorf("structure 0 = %+v", back[0])
-	}
-
-	if back[2].Kind != "pole" {
-		t.Errorf("structure 2 = %+v", back[2])
-	}
-
 	for index, structure := range back {
 		if structure.Ordinal != index || structure.RouteID != route.ID {
 			t.Fatalf("structure %d = %+v", index, structure)
 		}
+
+		// Ordinal has to preserve the source's own order rather than
+		// re-derive one from position — this is what pins that, since the
+		// fixture's longitude is not sorted.
+		if structure.Location != recorded[index].Position {
+			t.Errorf("structure %d is at %v, want the source's structure %d at %v",
+				index, structure.Location, index, recorded[index].Position)
+		}
+
+		if structure.Kind != recorded[index].Kind || structure.Material != recorded[index].Material {
+			t.Errorf("structure %d = %+v, want kind %q material %q",
+				index, structure, recorded[index].Kind, recorded[index].Material)
+		}
+	}
+}
+
+// Pins finding 2 of the 2026-08-04 review: Ordinal is 0-based and
+// Span.Sequence is 1-based, so a join between them is an offset, not an
+// equality. The join the risk extension will make between a span and its
+// bounding structures lands on the wrong end of the span if this drifts.
+//
+// Longitude is not monotonic in source order for the same reason as above —
+// a fixture that happens to be geographically sorted could pass this even if
+// Ordinal silently became a geographic sort instead of source order.
+//
+// Assertions compare actual stored geometry (span endpoints against
+// structure locations), not index arithmetic restating the formula under
+// test.
+func TestSpanSequenceIsBoundedByAdjacentOrdinals(t *testing.T) {
+	e, st := testEngine(t)
+	ctx := context.Background()
+
+	recorded := []source.Structure{
+		{Position: shape.Point{Lon: -97.795, Lat: 30.30}, Kind: "tower"},
+		{Position: shape.Point{Lon: -97.800, Lat: 30.31}, Kind: "tower"},
+		{Position: shape.Point{Lon: -97.792, Lat: 30.29}, Kind: "pole"},
+		{Position: shape.Point{Lon: -97.798, Lat: 30.32}, Kind: "tower"},
+	}
+
+	path := make(shape.Line, len(recorded))
+	for index, structure := range recorded {
+		path[index] = structure.Position
+	}
+
+	route, err := e.Import(ctx, geo.ImportRequest{
+		CarrierID:  gid.NewCircuit(),
+		Path:       path,
+		Structures: recorded,
+	})
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	spans, err := e.Spans(ctx, route.ID)
+	if err != nil {
+		t.Fatalf("Spans: %v", err)
+	}
+
+	structures, err := st.Structures().ForRoute(ctx, route.ID)
+	if err != nil {
+		t.Fatalf("ForRoute: %v", err)
+	}
+
+	byOrdinal := make(map[int]asset.Structure, len(structures))
+	for _, structure := range structures {
+		byOrdinal[structure.Ordinal] = structure
+	}
+
+	if len(spans) == 0 {
+		t.Fatal("no spans to check")
+	}
+
+	for _, span := range spans {
+		start, ok := byOrdinal[span.Sequence-1]
+		if !ok {
+			t.Fatalf("no structure at ordinal %d for span sequence %d", span.Sequence-1, span.Sequence)
+		}
+
+		end, ok := byOrdinal[span.Sequence]
+		if !ok {
+			t.Fatalf("no structure at ordinal %d for span sequence %d", span.Sequence, span.Sequence)
+		}
+
+		if span.Geometry[0] != start.Location {
+			t.Errorf("span sequence %d starts at %v, want structure ordinal %d at %v",
+				span.Sequence, span.Geometry[0], span.Sequence-1, start.Location)
+		}
+
+		if got := span.Geometry[len(span.Geometry)-1]; got != end.Location {
+			t.Errorf("span sequence %d ends at %v, want structure ordinal %d at %v",
+				span.Sequence, got, span.Sequence, end.Location)
+		}
+	}
+}
+
+// Proves finding 1 of the 2026-08-04 review is fixed: before it, a re-import
+// left the previous route's structures filed under a route id nothing could
+// look up again, because Import mints a fresh route id on every call and
+// StructureStore.Put's own replace-not-append cleanup only ever sees that new,
+// empty id.
+//
+// This goes through the real Import path — not Put called twice with a
+// hand-supplied route id, which is what let the orphan hide through six
+// reviews — and counts structures across the whole store rather than just
+// under the new route, since the bug is invisible from the new route alone.
+func TestReimportForgetsThePreviousRoutesStructures(t *testing.T) {
+	e, st := testEngine(t)
+	ctx := context.Background()
+
+	carrier := gid.NewCircuit()
+
+	first, err := e.Import(ctx, geo.ImportRequest{
+		CarrierID:  carrier,
+		Path:       shape.Line{{Lon: -97.80, Lat: 30.30}, {Lon: -97.79, Lat: 30.31}},
+		Structures: asStructures(shape.Line{{Lon: -97.80, Lat: 30.30}, {Lon: -97.795, Lat: 30.305}, {Lon: -97.79, Lat: 30.31}}),
+	})
+	if err != nil {
+		t.Fatalf("first Import: %v", err)
+	}
+
+	second, err := e.Import(ctx, geo.ImportRequest{
+		CarrierID:  carrier,
+		Path:       shape.Line{{Lon: -97.78, Lat: 30.40}, {Lon: -97.77, Lat: 30.41}},
+		Structures: asStructures(shape.Line{{Lon: -97.78, Lat: 30.40}, {Lon: -97.77, Lat: 30.41}}),
+	})
+	if err != nil {
+		t.Fatalf("second Import: %v", err)
+	}
+
+	if second.ID == first.ID {
+		t.Fatalf("both imports produced route %s; Import always mints a fresh id, "+
+			"so the test proves nothing if this ever changes", first.ID)
+	}
+
+	stale, err := st.Structures().ForRoute(ctx, first.ID)
+	if err != nil {
+		t.Fatalf("ForRoute(first): %v", err)
+	}
+
+	current, err := st.Structures().ForRoute(ctx, second.ID)
+	if err != nil {
+		t.Fatalf("ForRoute(second): %v", err)
+	}
+
+	// The total across the store, not just under the new route: reading only
+	// len(current) would pass even with the bug, since the new route's own
+	// structures were never in question.
+	if total := len(stale) + len(current); total != 2 {
+		t.Errorf("%d structures across the store after a re-import, want 2 "+
+			"(%d stranded under the previous route %s, %d under the current one)",
+			total, len(stale), first.ID, len(current))
 	}
 }
 

@@ -96,9 +96,12 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (asset.Route, err
 
 	// Ordinal comes from the loop index, not from any sort: it is the source's
 	// own order, which is the same order resolveGeometry used to build path
-	// and the same order Spans() just numbered above it. Structure n is where
-	// span n begins, and sorting here would break that correspondence
-	// silently — nothing downstream could tell the two orders had diverged.
+	// and the same order Spans() just numbered above it. The two numbers do
+	// not share a base, though — Ordinal counts from 0 and Span.Sequence
+	// counts from 1 — so the correspondence is an offset, not an equality:
+	// the span with Sequence s is bounded by the structures with Ordinal s-1
+	// and s. Sorting here would break that correspondence silently — nothing
+	// downstream could tell the two orders had diverged.
 	structures := make([]asset.Structure, 0, len(in.Structures))
 
 	for ordinal, recorded := range in.Structures {

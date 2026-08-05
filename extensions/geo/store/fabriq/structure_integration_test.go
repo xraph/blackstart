@@ -8,9 +8,11 @@ import (
 
 	"github.com/xraph/fabriq"
 
+	"github.com/xraph/blackstart/extensions/geo"
 	"github.com/xraph/blackstart/extensions/geo/asset"
 	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/geo/shape"
+	"github.com/xraph/blackstart/extensions/geo/source"
 	geofabriq "github.com/xraph/blackstart/extensions/geo/store/fabriq"
 	"github.com/xraph/blackstart/internal/entities"
 	"github.com/xraph/blackstart/internal/testsupport"
@@ -74,13 +76,21 @@ func tenantContext(t *testing.T) context.Context {
 
 // structuresFor builds n structures on route with dense ordinals about 200 m
 // apart — the survey's measured median span — the first a steel tower.
+//
+// Returned in the reverse of ordinal order. Slice order, Ordinal and Latitude
+// all increasing together was the bug in this fixture: it meant deleting
+// `ORDER BY ordinal ASC` from ForRoute's query broke nothing, because a fresh
+// table with no updates returns rows in close to their insertion order
+// anyway. Reversing the slice decouples insertion order from Ordinal, so a
+// missing ORDER BY now produces visibly wrong output instead of coincidentally
+// correct output.
 func structuresFor(t *testing.T, route id.ID, n int) []asset.Structure {
 	t.Helper()
 
-	out := make([]asset.Structure, 0, n)
+	out := make([]asset.Structure, n)
 
 	for i := range n {
-		out = append(out, asset.Structure{
+		out[n-1-i] = asset.Structure{
 			ID:      gid.NewStructure(),
 			RouteID: route,
 			Ordinal: i,
@@ -91,7 +101,43 @@ func structuresFor(t *testing.T, route id.ID, n int) []asset.Structure {
 			HeightM:  30,
 			Kind:     "tower",
 			Material: "steel",
-		})
+		}
+	}
+
+	return out
+}
+
+// sourceStructuresFor is structuresFor's counterpart for the real Import
+// path, which takes source.Structure rather than an already-identified
+// asset.Structure. Kept in source order (not reversed, unlike structuresFor)
+// because Import — not this fixture — is what assigns Ordinal from that
+// order, and the point of the tests using this is to exercise that
+// assignment rather than route around it.
+func sourceStructuresFor(n int) []source.Structure {
+	out := make([]source.Structure, n)
+
+	for i := range n {
+		out[i] = source.Structure{
+			Position: shape.Point{
+				Lon: -100.0,
+				Lat: 35.0 + float64(i)*spanMetersDeg,
+			},
+			Kind:     "tower",
+			Material: "steel",
+		}
+	}
+
+	return out
+}
+
+// lineFor is sourceStructuresFor's positions alone, which Import.Path must
+// validate even though the structures determine the stored geometry when
+// they are supplied.
+func lineFor(structures []source.Structure) shape.Line {
+	out := make(shape.Line, len(structures))
+
+	for index, structure := range structures {
+		out[index] = structure.Position
 	}
 
 	return out
@@ -178,6 +224,13 @@ func TestPutRefusesAStructureFromAnotherRoute(t *testing.T) {
 // Put replaces a route's whole set rather than appending, so a re-import
 // leaves exactly the new structures behind rather than the old ones beside
 // them with nothing to say which is current.
+//
+// This calls Put directly rather than a fixed route id supplied by the test:
+// a hand-supplied route id shared across two Put calls is a condition the
+// real re-import path never meets — Import mints a fresh route id every
+// time — and testing only that condition is exactly what let finding 1 of the
+// 2026-08-04 review hide through six prior reviews. TestReimportReplacesTheRealImportPath
+// below covers the path this test cannot.
 func TestPutReplacesRatherThanAppends(t *testing.T) {
 	st, done := liveStore(t)
 	defer done()
@@ -203,5 +256,77 @@ func TestPutReplacesRatherThanAppends(t *testing.T) {
 	if len(back) != 3 {
 		t.Fatalf("read %d structures after a replacing Put, want 3 — the "+
 			"first set's rows were still there", len(back))
+	}
+}
+
+// Proves finding 1 of the 2026-08-04 review is fixed, against the live
+// database rather than the memory store: before it, a re-import left the
+// previous route's structures filed under a route id nothing could look up
+// again, because Import mints a fresh route id on every call and
+// StructureStore.Put's own replace-not-append cleanup only ever sees that
+// new, empty id.
+//
+// This goes through the real Engine.Import path over the Fabriq store — not
+// Put called twice with a hand-supplied route id, which is
+// TestPutReplacesRatherThanAppends above and is exactly what let the orphan
+// hide — and counts structures across the whole store rather than just under
+// the new route, since the bug is invisible from the new route alone.
+func TestReimportReplacesTheRealImportPath(t *testing.T) {
+	st, done := liveStore(t)
+	defer done()
+
+	ctx := tenantContext(t)
+
+	e, err := geo.NewEngine(st, 0, nil)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+
+	carrier := gid.NewCircuit()
+
+	firstStructures := sourceStructuresFor(5)
+
+	first, err := e.Import(ctx, geo.ImportRequest{
+		CarrierID:  carrier,
+		Path:       lineFor(firstStructures),
+		Structures: firstStructures,
+	})
+	if err != nil {
+		t.Fatalf("first Import: %v", err)
+	}
+
+	secondStructures := sourceStructuresFor(3)
+
+	second, err := e.Import(ctx, geo.ImportRequest{
+		CarrierID:  carrier,
+		Path:       lineFor(secondStructures),
+		Structures: secondStructures,
+	})
+	if err != nil {
+		t.Fatalf("second Import: %v", err)
+	}
+
+	if second.ID == first.ID {
+		t.Fatalf("both imports produced route %s; Import always mints a fresh "+
+			"id, so this test proves nothing if that ever changes", first.ID)
+	}
+
+	stale, err := st.Structures().ForRoute(ctx, first.ID)
+	if err != nil {
+		t.Fatalf("ForRoute(first): %v", err)
+	}
+
+	current, err := st.Structures().ForRoute(ctx, second.ID)
+	if err != nil {
+		t.Fatalf("ForRoute(second): %v", err)
+	}
+
+	// The total across the store, not just under the new route: reading only
+	// len(current) would pass even with the bug, since the new route's own
+	// structures were never in question.
+	if total := len(stale) + len(current); total != 3 {
+		t.Errorf("%d structures across the store after a re-import, want 3 "+
+			"(%d stranded under the previous route %s, %d under the current one)",
+			total, len(stale), first.ID, len(current))
 	}
 }

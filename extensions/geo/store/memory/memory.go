@@ -92,6 +92,18 @@ func (s *routes) Put(_ context.Context, route asset.Route, spans []asset.Span) e
 		if held.CarrierID == route.CarrierID && existing != route.ID {
 			delete(s.routes, existing)
 			delete(s.spans, existing)
+
+			// A route's structures belong to it as surely as its spans, deleted
+			// above. Import mints a fresh route id on every call, so the
+			// structures filed under the id being replaced here are the only
+			// copy of them — structures.Put's own cleanup only ever sees the
+			// new id, which is empty by construction, and would otherwise leave
+			// this exact set stranded under an id nothing can look up again.
+			for _, structureID := range s.byRoute[existing] {
+				delete(s.structures, structureID)
+			}
+
+			delete(s.byRoute, existing)
 		}
 	}
 
