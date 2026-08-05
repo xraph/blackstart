@@ -240,6 +240,16 @@ func buildBuses(
 			BShunt:     row[busBS] / baseMVA,
 			QMin:       math.Inf(-1),
 			QMax:       math.Inf(1),
+			// The base MATPOWER states for this bus, kept rather than
+			// discarded. It was read and thrown away until a 138 kV line in a
+			// mixed-voltage case came back rated at 345 kV, because the only
+			// voltage that survived the import was whichever bus stated one
+			// first. Kilovolts on the file, volts in the canonical form.
+			//
+			// A short row or a non-positive entry leaves it zero, which is how
+			// the canonical form spells "this bus states none" — nothing here
+			// invents a voltage for a file that gave none.
+			VNominalV: nominalVolts(row),
 		}
 
 		// The slack's injection is whatever the network requires, so it is left
@@ -324,17 +334,40 @@ func buildBranches(
 	return branches, nil
 }
 
-// firstVoltageBase reads the voltage base from the first bus that states one.
+// nominalVolts reads one bus row's own voltage base, in VOLTS.
 //
-// A real narrowing: MATPOWER carries a base per bus and the canonical model
-// carries one for the network. A case spanning several voltages has more than
-// one, and the canonical form currently cannot say so — recorded here rather
-// than hidden, because silently taking the first is the kind of assumption
-// that surfaces as a factor-of-two error in a report.
+// Zero when the row does not state one, because zero is how canonical.Bus
+// spells "unknown" and because a bus at zero volts is not a thing a case file
+// can be describing.
+func nominalVolts(row []float64) float64 {
+	if len(row) > busBaseKV && row[busBaseKV] > 0 {
+		return row[busBaseKV] * 1e3
+	}
+
+	return 0
+}
+
+// firstVoltageBase picks the MODEL-LEVEL voltage base: the first bus that
+// states one.
+//
+// Still a narrowing, and still the only shape the per-unit system accepts.
+// canonical.Model carries one base because every impedance in it is expressed
+// against exactly one, and giving each bus its own base is not a data change
+// but a numerics change — a transformer puts each end of a branch in a
+// different zone, and that question is not settled by reading a column.
+//
+// What is no longer true is that the narrowing is silent. Every bus now
+// carries the base its own row stated, in canonical.Bus.VNominalV, so a
+// consumer that needs the voltage a particular bus is at reads it there rather
+// than inheriting whichever bus happened to be listed first. This value is for
+// the per-unit conversion and for nothing else; the factor-of-two error the
+// previous version of this comment predicted was a consumer using it as a
+// stand-in for a bus's nominal voltage, and there is now a field to use
+// instead.
 func firstVoltageBase(rows [][]float64) float64 {
 	for _, row := range rows {
-		if len(row) > busBaseKV && row[busBaseKV] > 0 {
-			return row[busBaseKV] * 1e3
+		if volts := nominalVolts(row); volts > 0 {
+			return volts
 		}
 	}
 

@@ -169,9 +169,13 @@ func (r *reader) bus() (Bus, error) {
 		return Bus{}, err
 	}
 
+	// In encodeBus's order, which is what makes the round trip a round trip.
+	// VNominalV is last because it was added last; it is VOLTS where the rest
+	// are per unit, and reading it into the wrong slot would put a five-figure
+	// number where a per-unit one belongs.
 	for _, field := range []*float64{
 		&out.PInjection, &out.QInjection, &out.VMagnitude, &out.VAngle,
-		&out.QMin, &out.QMax, &out.GShunt, &out.BShunt,
+		&out.QMin, &out.QMax, &out.GShunt, &out.BShunt, &out.VNominalV,
 	} {
 		if *field, err = r.float(); err != nil {
 			return Bus{}, err

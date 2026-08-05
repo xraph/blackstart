@@ -201,3 +201,82 @@ func TestRatingsUseTheCasesOwnBase(t *testing.T) {
 		t.Fatal("branch-0 is missing")
 	}
 }
+
+// A case whose buses are not all at one voltage, which is the case the
+// per-bus base exists for. Bus 1 is at 345 kV, buses 2 and 3 at 138 kV, and
+// bus 4 states nothing at all.
+const twoVoltage = `
+mpc.baseMVA = 100;
+mpc.bus = [
+	1	3	0	0	0	0	1	1.0	0	345	1	1.06	0.94;
+	2	1	50	10	0	0	1	1.0	0	138	1	1.06	0.94;
+	3	1	40	10	0	0	1	1.0	0	138	1	1.06	0.94;
+	4	1	10	2	0	0	1	1.0	0	0	1	1.06	0.94;
+];
+mpc.gen = [
+	1	100	0	10	-10	1.0	100	1	200	0;
+];
+mpc.branch = [
+	1	2	0.01	0.05	0.05	200	0	0	0	0	1;
+	2	3	0.02	0.09	0.04	150	0	0	0	0	1;
+];
+`
+
+// Each bus keeps the base its own row states. The importer read this column
+// and discarded everything but the first value, which is how a 138 kV line
+// came to be rated as though it were at 345 kV: 2.5 times too high, in
+// correct arithmetic, on an input nobody could see was wrong.
+func TestEachBusKeepsItsOwnVoltageBase(t *testing.T) {
+	got := parse(t, twoVoltage)
+
+	byID := map[string]canonical.Bus{}
+	for _, bus := range got.Model.Buses {
+		byID[bus.ID] = bus
+	}
+
+	want := map[string]float64{
+		"bus-1": 345e3,
+		"bus-2": 138e3,
+		"bus-3": 138e3,
+		// Stated as zero in the file, which is not a bus at zero volts but a
+		// bus that says nothing. It must stay zero rather than inherit the
+		// first bus's 345 kV.
+		"bus-4": 0,
+	}
+
+	for id, volts := range want {
+		if got := byID[id].VNominalV; got != volts {
+			t.Errorf("%s is nominally %v V, want %v", id, got, volts)
+		}
+	}
+}
+
+// The model-level base still exists and still comes from the first bus that
+// states one. The per-unit system needs exactly one, and this fix did not
+// change which one it is — only whether the narrowing loses the rest.
+func TestTheModelBaseIsStillTheFirstStatedOne(t *testing.T) {
+	got := parse(t, twoVoltage)
+
+	if got.Model.VBaseV != 345e3 {
+		t.Errorf("model base is %v V, want the first bus's 345 kV", got.Model.VBaseV)
+	}
+}
+
+// A case where no bus states a base at all: every bus reports unknown, and
+// the model falls back to 1 volt so a per-unit conversion divides by
+// something visibly wrong rather than by zero.
+func TestNoStatedBaseLeavesEveryBusUnknown(t *testing.T) {
+	silent := strings.NewReplacer("345", "0", "138", "0").Replace(twoVoltage)
+
+	got := parse(t, silent)
+
+	for _, bus := range got.Model.Buses {
+		if bus.VNominalV != 0 {
+			t.Errorf("%s claims %v V from a file that states none", bus.ID, bus.VNominalV)
+		}
+	}
+
+	if got.Model.VBaseV != 1 {
+		t.Errorf("model base is %v V, want 1", got.Model.VBaseV)
+	}
+}

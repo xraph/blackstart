@@ -98,12 +98,11 @@ func Build(modelID, contentHash string, model canonical.Model, at Placement) (Mo
 		},
 	}
 
-	// The voltage base is per network in the canonical form, so every bus
-	// reports the same nominal voltage. A real narrowing, stated here rather
-	// than hidden: a network spanning several voltages has more than one, and
-	// the viewer colors every bus alike until the canonical form can say
-	// otherwise.
-	nominalKV := model.VBaseV / 1e3
+	// The model-level base, used only for a bus that states no nominal voltage
+	// of its own. It used to be used for every bus, which drew a mixed-voltage
+	// network as though it were all one level — the canonical form can say
+	// otherwise now, so this is a fallback rather than the answer.
+	fallbackKV := model.VBaseV / 1e3
 
 	index := make(map[string]int, len(model.Buses))
 
@@ -112,6 +111,15 @@ func Build(modelID, contentHash string, model canonical.Model, at Placement) (Mo
 
 		out.Buses.IDs = append(out.Buses.IDs, bus.ID)
 		out.Buses.Names = append(out.Buses.Names, bus.ID)
+
+		// Non-positive means the bus states none, not that it sits at zero
+		// volts — a bus drawn at zero would be colored as though it were a
+		// voltage level of its own.
+		nominalKV := fallbackKV
+		if bus.VNominalV > 0 {
+			nominalKV = bus.VNominalV / 1e3
+		}
+
 		out.Buses.NominalKV = append(out.Buses.NominalKV, nominalKV)
 
 		// A bus with no placement sits at the origin off the coast of Africa,

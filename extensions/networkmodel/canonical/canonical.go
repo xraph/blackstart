@@ -39,7 +39,14 @@ import (
 // A change to what is included or how it is laid out increments this, so an
 // old hash and a new one can never collide by accident — and so a stored hash
 // says which encoder produced it.
-const Version byte = 1
+//
+// 2 added Bus.VNominalV. A version-1 blob is unreadable by this build, and
+// Decode says so rather than guessing: the bus record grew a field, so every
+// byte after the first bus is at a different offset and reading one anyway
+// would take a nominal voltage out of the next bus's identifier. The remedy
+// is to re-import the source, which produces a new hash — deliberately, since
+// a model that now states its buses' voltages is not the model that did not.
+const Version byte = 2
 
 // Bus is the physics of one bus.
 //
@@ -67,6 +74,38 @@ type Bus struct {
 	// Shunt admittance, per unit.
 	GShunt float64
 	BShunt float64
+
+	// VNominalV is the voltage level this bus sits at, line-to-line RMS, in
+	// VOLTS.
+	//
+	// SI, alone among the fields above. Everything else here is per unit
+	// against Model.VBaseV, and the unit suffix marks the difference the way
+	// Model.SBaseVA and Model.VBaseV do. Per unit is exactly what this field
+	// cannot be: expressed against the model's single base it would read 1.0
+	// on every bus of a mixed-voltage network and say nothing, and saying
+	// something is the entire point — a network spanning 345 kV and 138 kV has
+	// one per-unit base and two nominal voltages, and a consumer turning a
+	// current into a power needs the bus's own.
+	//
+	// It does not change the per-unit system. Nothing in the solver reads it;
+	// every impedance in this model is still expressed against Model.VBaseV
+	// and still converted against it. A per-unit base per bus is a different
+	// question — transformers put each end of a branch in its own zone — and
+	// this field deliberately does not answer it.
+	//
+	// Zero means the bus states none. Not a bus at zero volts: there is no
+	// such bus, and a consumer must read a non-positive value as unknown and
+	// say so rather than convert against it. Zero rather than a NaN sentinel
+	// because zero is Go's zero value — a builder with nothing to say produces
+	// "unknown" without having to know the convention, which is the opposite
+	// of what a sentinel asks of everyone who ever constructs a Bus.
+	//
+	// Hashed, like every other field here, which is why Version moved. Two
+	// networks identical in per unit and different in what their buses are
+	// nominally at are different networks, and Import deduplicates on this
+	// hash: a collision would hand back the first network's voltages and rate
+	// the second one's lines against them.
+	VNominalV float64
 }
 
 // Branch is the physics of one branch.
@@ -207,8 +246,14 @@ func encodeBus(out []byte, b Bus) []byte {
 	out = appendFloat(out, b.QMin)
 	out = appendFloat(out, b.QMax)
 	out = appendFloat(out, b.GShunt)
+	out = appendFloat(out, b.BShunt)
 
-	return appendFloat(out, b.BShunt)
+	// Appended after the per-unit fields rather than placed beside VMagnitude,
+	// so the layout a version-1 reader knew is a prefix of this one. That does
+	// not make the two compatible — Decode refuses a version it does not know,
+	// and must — but it keeps the diff to this function one line and leaves
+	// nothing for a reader to misalign.
+	return appendFloat(out, b.VNominalV)
 }
 
 // encodeBranch writes one branch's physics, resolving its bus references.

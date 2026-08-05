@@ -16,14 +16,18 @@ func threeBusModel() canonical.Model {
 		// Deliberately out of sorted order, so a decode that preserved input
 		// order rather than encoded order would produce different bytes.
 		Buses: []canonical.Bus{
+			// Two voltage levels and one bus that states none, so the round
+			// trip covers a value that varies per bus rather than one
+			// repeated three times — which a decoder reading the model base
+			// into every bus would reproduce exactly.
 			{
 				ID: "bus-3", Kind: 1, PInjection: -0.942, QInjection: -0.19,
 				VMagnitude: 1.01, VAngle: -0.222, BShunt: 0.19,
-				QMin: math.Inf(-1), QMax: math.Inf(1),
+				QMin: math.Inf(-1), QMax: math.Inf(1), VNominalV: 138e3,
 			},
 			{
 				ID: "bus-1", Kind: 3, VMagnitude: 1.06,
-				QMin: math.Inf(-1), QMax: math.Inf(1),
+				QMin: math.Inf(-1), QMax: math.Inf(1), VNominalV: 345e3,
 			},
 			{
 				ID: "bus-2", Kind: 2, PInjection: 0.183, QInjection: -0.127,
@@ -141,6 +145,48 @@ func TestUnlimitedReactivePowerStaysUnlimited(t *testing.T) {
 		if !math.IsInf(bus.QMin, -1) || !math.IsInf(bus.QMax, 1) {
 			t.Errorf("bus-1 came back with limits %v to %v", bus.QMin, bus.QMax)
 		}
+	}
+}
+
+// The voltage a bus sits at is SI volts where everything around it is per
+// unit, and it varies from bus to bus. A decode that read it out of the wrong
+// slot, or that filled it from the model base, would produce a network whose
+// lines are rated against a voltage nobody stated for them.
+func TestEachBusesNominalVoltageSurvivesTheRoundTrip(t *testing.T) {
+	encoded, _ := canonical.Encode(threeBusModel())
+
+	decoded, err := canonical.Decode(encoded)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+
+	want := map[string]float64{"bus-1": 345e3, "bus-2": 0, "bus-3": 138e3}
+
+	for _, bus := range decoded.Buses {
+		if got := bus.VNominalV; got != want[bus.ID] {
+			t.Errorf("%s came back at %v V, want %v", bus.ID, got, want[bus.ID])
+		}
+	}
+}
+
+// A blob written by the version-1 encoder has no per-bus voltage, so every
+// byte after the first bus is at a different offset. It must be refused
+// rather than misread: reading one anyway would take a nominal voltage out of
+// the next bus's identifier and produce a network that decodes cleanly and
+// describes something else. Re-importing the source is the remedy.
+func TestAVersionOneEncodingIsRefused(t *testing.T) {
+	encoded, _ := canonical.Encode(threeBusModel())
+
+	stale := bytes.Clone(encoded)
+	stale[0] = 1
+
+	_, err := canonical.Decode(stale)
+	if err == nil {
+		t.Fatal("a version-1 encoding decoded cleanly")
+	}
+
+	if errors.Is(err, canonical.ErrTruncated) {
+		t.Errorf("a version mismatch was reported as truncation: %v", err)
 	}
 }
 

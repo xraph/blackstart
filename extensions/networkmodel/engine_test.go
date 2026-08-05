@@ -214,8 +214,12 @@ func TestTheStoredEncodingIsReadableByHash(t *testing.T) {
 		t.Fatal("the stored encoding is empty")
 	}
 
-	if encoded[0] != 1 {
-		t.Errorf("the encoding does not begin with the canonical version byte")
+	// The constant rather than a literal: the version moves whenever the bus
+	// or branch layout changes, and a literal here turns that into a failure
+	// in a test that has nothing to say about layout.
+	if encoded[0] != canonical.Version {
+		t.Errorf("the encoding begins with %d, not the canonical version byte %d",
+			encoded[0], canonical.Version)
 	}
 }
 

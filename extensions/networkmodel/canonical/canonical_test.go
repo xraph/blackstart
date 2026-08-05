@@ -120,9 +120,15 @@ func TestEveryPhysicalChangeChangesTheHash(t *testing.T) {
 		"angle":          func(m *canonical.Model) { m.Buses[0].VAngle = 0.5 },
 		"shunt":          func(m *canonical.Model) { m.Buses[1].BShunt = 0.3 },
 		"reactive limit": func(m *canonical.Model) { m.Buses[0].QMax = 1 },
-		"apparent base":  func(m *canonical.Model) { m.SBaseVA = 200e6 },
-		"voltage base":   func(m *canonical.Model) { m.VBaseV = 230e3 },
-		"an extra bus":   func(m *canonical.Model) { m.Buses = append(m.Buses, canonical.Bus{ID: "bus-c"}) },
+		// The bus's own nominal voltage is physics, not presentation: two
+		// networks identical in per unit and at different voltage levels
+		// carry different currents for the same flow, and Import
+		// deduplicates on this hash. A hash that ignored it would hand back
+		// the first network's voltages for the second network's lines.
+		"bus nominal voltage": func(m *canonical.Model) { m.Buses[1].VNominalV = 138e3 },
+		"apparent base":       func(m *canonical.Model) { m.SBaseVA = 200e6 },
+		"voltage base":        func(m *canonical.Model) { m.VBaseV = 230e3 },
+		"an extra bus":        func(m *canonical.Model) { m.Buses = append(m.Buses, canonical.Bus{ID: "bus-c"}) },
 		"an extra branch": func(m *canonical.Model) {
 			m.Branches = append(m.Branches, canonical.Branch{ID: "l2", FromID: "bus-a", ToID: "bus-b", Tap: 1})
 		},
