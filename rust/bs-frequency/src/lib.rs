@@ -20,4 +20,4 @@ pub mod ufls;
 pub use integrate::{Trajectory, integrate};
 pub use machine::{Aggregate, Defaults};
 pub use model::{Model, State};
-pub use ufls::{IslandCondition, Response, Sample, Scheme, Shed, Stage, respond};
+pub use ufls::{IslandCondition, Response, Sample, Scheme, Shed, Stage, classify, respond};

@@ -23,6 +23,7 @@ func Group() *migrate.Group {
 
 	g.MustRegister(migration0001Tables)
 	g.MustRegister(migration0002Initiating)
+	g.MustRegister(migration0003SBase)
 
 	return g
 }
@@ -53,6 +54,20 @@ var migration0002Initiating = &migrate.Migration{
 	Down:    down0002,
 }
 
+// migration0003SBase adds the column for run.CascadeRun.SBaseVA.
+//
+// A third migration for the same reason 0002 is a second rather than an edit
+// to 0001: a database that already ran 0001 and 0002 will never be handed
+// them again, so the only way to add a column to an already-deployed table
+// is a new migration.
+var migration0003SBase = &migrate.Migration{
+	Name:    "cascade_s_base",
+	Version: "20260803000032",
+	Comment: "the per-unit base LoadLost, Balance and Shed are stored against",
+	Up:      up0003,
+	Down:    down0003,
+}
+
 func up0002(ctx context.Context, exec migrate.Executor) error {
 	return execAll(ctx, exec, initiatingColumn())
 }
@@ -69,6 +84,25 @@ func initiatingColumn() []string {
 func down0002(ctx context.Context, exec migrate.Executor) error {
 	return execAll(ctx, exec, []string{
 		`ALTER TABLE ` + RunTable + ` DROP COLUMN IF EXISTS initiating`,
+	})
+}
+
+func up0003(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, sBaseColumn())
+}
+
+// sBaseColumn is the DDL, separated from the executor so a test can read it
+// alongside the rest of the schema — the same split initiatingColumn uses.
+func sBaseColumn() []string {
+	return []string{
+		`ALTER TABLE ` + RunTable + `
+			ADD COLUMN IF NOT EXISTS s_base_va DOUBLE PRECISION NOT NULL DEFAULT 0`,
+	}
+}
+
+func down0003(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`ALTER TABLE ` + RunTable + ` DROP COLUMN IF EXISTS s_base_va`,
 	})
 }
 

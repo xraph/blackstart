@@ -121,10 +121,15 @@ type Island struct {
 	Condition IslandCondition `json:"condition"`
 	Verdict   AcVerdict       `json:"verdict"`
 
-	// Balance is generation minus load at the final instant, per unit.
-	// Negative means short (load exceeds generation), positive means
-	// surplus — the wire message IslandState.balance_w is the authority on
-	// this sign; see its own comment.
+	// Balance is generation minus load at the final instant. Negative means
+	// short (load exceeds generation), positive means surplus — the wire
+	// message IslandState.balance_w is the authority on this sign; see its
+	// own comment.
+	//
+	// Stored PER UNIT of the CascadeRun's SBaseVA, but published in WATTS:
+	// the HTTP boundary (api.go's multiply) converts before this reaches a
+	// response body, so no reader of the wire ever has to go find a base to
+	// make sense of it. See CascadeRun.SBaseVA.
 	Balance float64 `json:"balance"`
 
 	// Frequency is the settling value — the last instant this island had a
@@ -144,7 +149,10 @@ type Island struct {
 	Nadir     *float64 `json:"nadir,omitempty"`
 	Rocof     *float64 `json:"rocof,omitempty"`
 
-	// Shed is load shed on this island over the whole run, per unit.
+	// Shed is load shed on this island over the whole run.
+	//
+	// Stored PER UNIT of the CascadeRun's SBaseVA, but published in WATTS —
+	// see Balance's own comment; the same conversion applies here.
 	Shed float64 `json:"shed"`
 
 	// Trace is the island's frequency curve over the run, in time order,
@@ -177,6 +185,17 @@ type CascadeRun struct {
 	// Outcome is how the cascade ended.
 	Outcome Outcome `json:"outcome"`
 
+	// SBaseVA is the per-unit power base the model was simulated against,
+	// volt-amperes. Provenance for LoadLost, Island.Balance and Island.Shed
+	// below: those are stored per unit of THIS base, and a stored record
+	// without it cannot be interpreted at all — the same reason
+	// proto/blackstart/solver/v1/solver.proto's header gives for publishing
+	// SI rather than per unit on the wire. The HTTP boundary (see
+	// api.go's multiply) reads this field to convert those three back to
+	// watts before they are published, so the wire never repeats the
+	// mistake this field exists to make impossible to make silently.
+	SBaseVA float64 `json:"s_base_va"`
+
 	// Initiating names the outages that started the cascade, as branch
 	// identifiers. An operator names lines, not indices.
 	Initiating []string `json:"initiating"`
@@ -190,7 +209,13 @@ type CascadeRun struct {
 	// or a single island covering the whole network if it never split.
 	Islands []Island `json:"islands"`
 
-	// LoadLost is total load shed across every island, per unit.
+	// LoadLost is total load shed across every island.
+	//
+	// Stored PER UNIT of SBaseVA above, but published in WATTS — the HTTP
+	// boundary (api.go's multiply) converts before this reaches a response
+	// body, exactly as the gRPC contract already does and for the same
+	// reason: a per-unit number is meaningless without its base, and this is
+	// the one place that base would otherwise have to travel with it.
 	LoadLost float64 `json:"load_lost"`
 
 	// Steps is the number of discrete events simulated, for comparing

@@ -46,7 +46,7 @@ func (e *Engine) recordRun(
 		return id.Nil, err
 	}
 
-	run, err := e.recorder.RecordRun(ctx, record.Run{
+	run, err := e.recorder.RecordRun(ctx, record.ProvenanceRun{
 		ModelVersionID: model.ID,
 		Kind:           "hazard",
 		StartedAt:      startedAt,

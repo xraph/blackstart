@@ -93,7 +93,7 @@ func (g *fakeGeometry) Spans(_ context.Context, route id.ID) ([]geoasset.Span, e
 // fakeRecorder remembers what a pass recorded.
 type fakeRecorder struct {
 	model  record.ModelVersion
-	run    record.Run
+	run    record.ProvenanceRun
 	inputs []provenance.Input
 }
 
@@ -115,8 +115,8 @@ func (r *fakeRecorder) RecordModel(
 }
 
 func (r *fakeRecorder) RecordRun(
-	_ context.Context, in record.Run, inputs []provenance.Input,
-) (record.Run, error) {
+	_ context.Context, in record.ProvenanceRun, inputs []provenance.Input,
+) (record.ProvenanceRun, error) {
 	in.ID = id.MustNew("prvrun")
 	r.run, r.inputs = in, inputs
 

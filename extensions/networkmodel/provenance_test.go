@@ -124,7 +124,7 @@ func (failingRecorder) RecordModel(
 }
 
 func (failingRecorder) RecordRun(
-	context.Context, record.Run, []provenance.Input,
-) (record.Run, error) {
-	return record.Run{}, errors.New("the provenance store is unreachable")
+	context.Context, record.ProvenanceRun, []provenance.Input,
+) (record.ProvenanceRun, error) {
+	return record.ProvenanceRun{}, errors.New("the provenance store is unreachable")
 }

@@ -34,6 +34,42 @@ type islandsResponse struct {
 	Islands []run.Island `json:"islands"`
 }
 
+// multiply converts per unit to SI. The wire's complement of engine.go's
+// divide: a CascadeRun stores LoadLost, Island.Balance and Island.Shed per
+// unit of its own SBaseVA (see that field's comment), and this is the one
+// place — named, like divide is — that converts them back to watts before
+// they reach an HTTP response. "No power-systems mathematics in Go" permits
+// exactly this: a unit conversion, not a solve.
+func multiply(value, base float64) float64 {
+	return value * base
+}
+
+// wireIslands converts a run's islands to the watts the HTTP surface
+// publishes, leaving the stored, per-unit slice the engine returned
+// untouched — every other field crosses unchanged.
+func wireIslands(islands []run.Island, sBaseVA float64) []run.Island {
+	out := make([]run.Island, len(islands))
+
+	for i, isl := range islands {
+		out[i] = isl
+		out[i].Balance = multiply(isl.Balance, sBaseVA)
+		out[i].Shed = multiply(isl.Shed, sBaseVA)
+	}
+
+	return out
+}
+
+// wireRun converts one recorded run to the watts the HTTP surface publishes.
+// A copy: what Get/ListByModel returned, and what a caller might still hold,
+// stays the per-unit record the store actually persists.
+func wireRun(in run.CascadeRun) run.CascadeRun {
+	out := in
+	out.LoadLost = multiply(in.LoadLost, in.SBaseVA)
+	out.Islands = wireIslands(in.Islands, in.SBaseVA)
+
+	return out
+}
+
 // --- Controller ---
 
 // Controller exposes recorded cascade simulations over HTTP.
@@ -138,7 +174,12 @@ func (c *Controller) ListRuns(ctx forge.Context) error {
 		return httperr.From(err)
 	}
 
-	return ctx.JSON(http.StatusOK, cascadeRunsResponse{Runs: found})
+	wire := make([]run.CascadeRun, len(found))
+	for i, r := range found {
+		wire[i] = wireRun(r)
+	}
+
+	return ctx.JSON(http.StatusOK, cascadeRunsResponse{Runs: wire})
 }
 
 // GetRun returns one recorded cascade, events in simulated-time order.
@@ -158,7 +199,7 @@ func (c *Controller) GetRun(ctx forge.Context) error {
 		return httperr.From(err)
 	}
 
-	return ctx.JSON(http.StatusOK, found)
+	return ctx.JSON(http.StatusOK, wireRun(found))
 }
 
 // GetIslands returns a run's final islanded state.
@@ -180,6 +221,6 @@ func (c *Controller) GetIslands(ctx forge.Context) error {
 
 	return ctx.JSON(http.StatusOK, islandsResponse{
 		RunID:   found.ID.String(),
-		Islands: found.Islands,
+		Islands: wireIslands(found.Islands, found.SBaseVA),
 	})
 }

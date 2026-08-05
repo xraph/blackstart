@@ -129,7 +129,7 @@ func TestModelWithNoParametersRoundTrips(t *testing.T) {
 // A run that has not finished carries a zero FinishedAt, which the column
 // stores as NULL rather than as a year-1 timestamp that reads like data.
 func TestUnfinishedRunRoundTrips(t *testing.T) {
-	in := record.Run{
+	in := record.ProvenanceRun{
 		ID:             pvid.NewRun(),
 		ModelVersionID: pvid.NewModel(),
 		Kind:           "powerflow",

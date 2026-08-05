@@ -165,7 +165,7 @@ func TestModelAndRunRoundTrip(t *testing.T) {
 		t.Errorf("parameters did not survive: %+v", gotModel.Parameters)
 	}
 
-	run := record.Run{
+	run := record.ProvenanceRun{
 		ID:             pvid.NewRun(),
 		ModelVersionID: producer.ID,
 		Kind:           "powerflow",
@@ -199,7 +199,7 @@ func TestAnUnfinishedRunSurvivesTheDatabase(t *testing.T) {
 		t.Fatalf("CreateModel: %v", err)
 	}
 
-	run := record.Run{
+	run := record.ProvenanceRun{
 		ID:             pvid.NewRun(),
 		ModelVersionID: producer.ID,
 		Kind:           "contingency",
@@ -232,16 +232,16 @@ func TestLineageOfReturnsOneRunsInputs(t *testing.T) {
 		t.Fatalf("CreateModel: %v", err)
 	}
 
-	mine := record.Run{
+	mine := record.ProvenanceRun{
 		ID: pvid.NewRun(), ModelVersionID: producer.ID, Kind: "import",
 		StartedAt: time.Now().UTC(),
 	}
-	theirs := record.Run{
+	theirs := record.ProvenanceRun{
 		ID: pvid.NewRun(), ModelVersionID: producer.ID, Kind: "import",
 		StartedAt: time.Now().UTC(),
 	}
 
-	for _, r := range []record.Run{mine, theirs} {
+	for _, r := range []record.ProvenanceRun{mine, theirs} {
 		if _, err := s.Records().CreateRun(ctx, r); err != nil {
 			t.Fatalf("CreateRun: %v", err)
 		}
@@ -357,7 +357,7 @@ func TestARunCannotNameAnUnrecordedModelVersion(t *testing.T) {
 	s := harness(t)
 	ctx := t.Context()
 
-	orphan := record.Run{
+	orphan := record.ProvenanceRun{
 		ID:             pvid.NewRun(),
 		ModelVersionID: pvid.NewModel(),
 		Kind:           "powerflow",
@@ -387,7 +387,7 @@ func TestALineageEdgeCannotNameAnUnrecordedEnd(t *testing.T) {
 		t.Fatalf("CreateModel: %v", err)
 	}
 
-	run := record.Run{
+	run := record.ProvenanceRun{
 		ID: pvid.NewRun(), ModelVersionID: producer.ID, Kind: "import",
 		StartedAt: time.Now().UTC(),
 	}

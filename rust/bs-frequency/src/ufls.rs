@@ -289,7 +289,15 @@ fn crossing(trajectory: &Trajectory, nominal: f64, threshold: f64, delay: f64) -
 }
 
 /// What became of the island, given where it went and where it settled.
-fn classify(
+///
+/// Public so `bs-cascade` can re-derive a step's own condition from the
+/// samples that step actually contributed — `bound`'s own truncation means
+/// `Response::condition` (this same function, called once here over the
+/// FULL, unbounded trajectory) is not always the verdict a caller stepping
+/// through the run one bound slice at a time should fold in. See
+/// `bs-cascade::simulate::accumulate_bus_history` for where and why.
+#[must_use]
+pub fn classify(
     scheme: &Scheme,
     nominal: f64,
     nadir_hz: f64,

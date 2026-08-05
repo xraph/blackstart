@@ -35,7 +35,7 @@ type getModelRequest struct {
 // An API that returned a run and made the caller fetch its producer and each
 // of its inputs would have made provenance a research task again.
 type traceResponse struct {
-	Run      record.Run          `json:"run"`
+	Run      record.ProvenanceRun          `json:"run"`
 	Producer record.ModelVersion `json:"producer"`
 	Inputs   []TracedInput       `json:"inputs"`
 

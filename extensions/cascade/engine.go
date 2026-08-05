@@ -191,9 +191,14 @@ func fromWire(response *solverv1.SimulateCascadeResponse, model *solverv1.Networ
 		ModelHash:     response.GetModelHash(),
 		SolverVersion: response.GetSolverVersion(),
 		Outcome:       run.Outcome(outcomeTable[response.GetOutcome()]),
+		SBaseVA:       sBase,
 		// Branch identifiers, not a power-system quantity — crosses untouched,
-		// the same reason Elapsed below does.
-		Initiating: response.GetInitiating(),
+		// the same reason Elapsed below does. Never nil: an empty repeated
+		// field comes back nil from the generated getter, and a cascade with
+		// no initiating outage — which the engine's own Request.Validate
+		// allows — must serialise as "[]", not "null", or the wire's own
+		// required field throws in a reader that assumes an array.
+		Initiating: nonNilStrings(response.GetInitiating()),
 		Events:     events,
 		Islands:    islands,
 		LoadLost:   divide(response.GetLoadLostW(), sBase),
@@ -318,6 +323,22 @@ func divide(value, base float64) float64 {
 	}
 
 	return value / base
+}
+
+// nonNilStrings turns a nil slice into an empty one.
+//
+// A proto getter returns nil, not an empty slice, for an unset or empty
+// repeated field — and encoding/json renders a nil slice as `null`, not
+// `[]`, regardless of any omitempty tag (which would drop the field
+// entirely, not fix its value). CascadeRun.Initiating has no omitempty for
+// exactly that reason: the field must always be present, as an array, so
+// this is the one place that guarantees it.
+func nonNilStrings(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+
+	return s
 }
 
 // emit publishes a domain event, best effort and out of transaction: a

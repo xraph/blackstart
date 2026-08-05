@@ -112,7 +112,7 @@ func TestARunTracesBackToItsInputsAndItsCommit(t *testing.T) {
 	}
 
 	run, err := e.RecordRun(t.Context(),
-		record.Run{ModelVersionID: solver.ID, Kind: "powerflow"},
+		record.ProvenanceRun{ModelVersionID: solver.ID, Kind: "powerflow"},
 		[]provenance.Input{{DatasetVersionID: data.ID, Role: record.RoleInput}},
 	)
 	if err != nil {
@@ -164,7 +164,7 @@ func TestTheRoleOfEachInputSurvivesIntoTheTrace(t *testing.T) {
 	}
 
 	run, err := e.RecordRun(t.Context(),
-		record.Run{ModelVersionID: solver.ID, Kind: "backtest"},
+		record.ProvenanceRun{ModelVersionID: solver.ID, Kind: "backtest"},
 		[]provenance.Input{
 			{DatasetVersionID: training.ID, Role: record.RoleTraining},
 			{DatasetVersionID: validation.ID, Role: record.RoleValidation},
