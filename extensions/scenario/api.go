@@ -109,7 +109,12 @@ func (c *Controller) Middleware() []forge.Middleware { return c.guard.Middleware
 // stops the build instead of quietly unprotecting the controller.
 var _ forge.ControllerWithMiddleware = (*Controller)(nil)
 
-// Routes registers the scenario endpoints.
+// Routes registers the endpoints.
+//
+// Split across two files by domain object, the way store/memory splits its
+// composite from its run accessor: a scenario is authored and a run is
+// executed, they fail in different ways, and they are read by different parts
+// of the console. api_runs.go holds the other half.
 func (c *Controller) Routes(router forge.Router) error {
 	var firstErr error
 
@@ -152,6 +157,8 @@ func (c *Controller) Routes(router forge.Router) error {
 		forge.WithResponseSchema(http.StatusOK, "Scenario", scn.Scenario{}),
 		forge.WithResponseSchema(http.StatusNotFound, "No such scenario", nil),
 	))
+
+	check(c.runRoutes(router))
 
 	return firstErr
 }
