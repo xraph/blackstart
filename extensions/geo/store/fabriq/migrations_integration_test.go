@@ -26,9 +26,7 @@ func TestMigrationsRunBothWays(t *testing.T) {
 		t.Fatal("migrating created no geo tables")
 	}
 
-	if err := testsupport.Rollback(t, superDSN, geofabriq.Group()); err != nil {
-		t.Fatalf("rolling back: %v", err)
-	}
+	rollbackGeoGroup(t, superDSN)
 
 	if got := geoTableCount(t, superDSN); got != 0 {
 		t.Errorf("%d geo tables survived the rollback", got)
@@ -42,14 +40,55 @@ func TestMigrationsReapplyAfterRollback(t *testing.T) {
 
 	testsupport.Migrate(t, superDSN, geofabriq.Group())
 
-	if err := testsupport.Rollback(t, superDSN, geofabriq.Group()); err != nil {
-		t.Fatalf("rolling back: %v", err)
+	rollbackGeoGroup(t, superDSN)
+
+	// A partial rollback wouldn't be caught by the re-migrate below — Migrate
+	// only runs *pending* migrations, so a half-unwound group would just skip
+	// re-applying the steps still on record and the final count would look
+	// identical to a full round trip. Asserting zero here is what makes the
+	// rest of the test mean what it claims.
+	if got := geoTableCount(t, superDSN); got != 0 {
+		t.Fatalf("%d geo tables still present after rollback, before the "+
+			"second migrate — the rollback was only partial", got)
 	}
 
 	testsupport.Migrate(t, superDSN, geofabriq.Group())
 
 	if got := geoTableCount(t, superDSN); got == 0 {
 		t.Fatal("re-applying after a rollback created no geo tables")
+	}
+}
+
+// rollbackGeoGroup fully unwinds the geo migration group.
+//
+// testsupport.Rollback, per grove's orchestrator, undoes exactly one
+// migration per call: the single most recently applied migration across
+// every group handed to it. Because geo's migrations run after Fabriq's own
+// (Group declares that dependency), geo's steps are always the most recent
+// history and are what a call unwinds first — so calling Rollback once per
+// registered geo migration, most-recently-applied first, is what it takes to
+// reach zero geo tables, not one call as the earlier draft assumed.
+//
+// Bounded at the group's own migration count rather than looped until the
+// count reaches zero: RemoveApplied runs every call regardless of whether a
+// migration's Down statement actually did anything, so a silently-broken
+// down step would otherwise never lower the count and the loop would spin
+// forever waiting for a stop condition that can't fire. With a hard bound,
+// that same broken step instead leaves geo tables behind after the last call,
+// and the caller's own geoTableCount assertion catches it.
+func rollbackGeoGroup(t *testing.T, dsn string) {
+	t.Helper()
+
+	steps := len(geofabriq.Group().Migrations())
+
+	for i := 0; i < steps; i++ {
+		if err := testsupport.Rollback(t, dsn, geofabriq.Group()); err != nil {
+			t.Fatalf("rolling back (step %d of %d): %v", i+1, steps, err)
+		}
+
+		if geoTableCount(t, dsn) == 0 {
+			return
+		}
 	}
 }
 
