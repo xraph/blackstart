@@ -26,6 +26,16 @@ const runsQuery = vi.hoisted(() => ({
 const cascadeQuery = vi.hoisted(() => ({
   current: { data: undefined, isPending: true, isError: false, error: null } as unknown,
 }));
+/**
+ * The ground a run's tripped branches covered — mocked the same way
+ * `cascadeQuery` is, and reset in its own `beforeEach`, so a test can name
+ * exactly the `resolved` / `untraced` / `unresolved` combination it wants to
+ * see labelled without the real hook's network round trip (stubbed to 404
+ * below) racing it.
+ */
+const extentQuery = vi.hoisted(() => ({
+  current: { data: undefined, isPending: true, isError: false, error: null } as unknown,
+}));
 
 vi.mock("@blackstart/api-client", async () => {
   const actual =
@@ -34,6 +44,7 @@ vi.mock("@blackstart/api-client", async () => {
     ...actual,
     useContingencyRunsList: () => runsQuery.current,
     useCascadeRunsGet: () => cascadeQuery.current,
+    useCascadeRunsExtent: () => extentQuery.current,
   };
 });
 
@@ -214,6 +225,13 @@ const loadedRun = (run: unknown) => ({
   isError: false,
   error: null,
 });
+/** `cascadeRunsExtent`-shaped: the payload *is* the extent. */
+const loadedExtent = (extent: unknown) => ({
+  data: extent,
+  isPending: false,
+  isError: false,
+  error: null,
+});
 
 function stubViewport(wide: boolean): void {
   vi.stubGlobal("matchMedia", (q: string) => ({
@@ -269,6 +287,7 @@ const RUN_URL = `/cascade?valid=${VALID}&run=${CASCADE.run}`;
 describe("cascade screen", () => {
   beforeEach(() => {
     cascadeQuery.current = loadedRun(WIRE_CASCADE);
+    extentQuery.current = { data: undefined, isPending: true, isError: false, error: null };
   });
 
   it("starts at the end of the run, showing every event", async () => {
@@ -399,6 +418,45 @@ describe("cascade screen", () => {
     await renderAt(RUN_URL);
     await screen.findByTestId("scene");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  // THE assertion for the "ground shown" label. A run with almost everything
+  // untraced must not read as a small blast radius under a label claiming
+  // the whole run — the exact case the endpoint's `untraced` count exists to
+  // catch, and the reason the label has to do arithmetic instead of quoting
+  // a constant string.
+  it("says what fraction of the run's tripped branches actually contributed ground", async () => {
+    extentQuery.current = loadedExtent({
+      runId: CASCADE.run,
+      area: [],
+      halfWidthM: 500,
+      resolved: 42,
+      untraced: 41,
+      unresolved: [],
+    });
+    await renderAt(RUN_URL);
+    await screen.findByTestId("scene");
+    // 41 of 42 resolved branches had no traced route: only one contributed
+    // ground, and the label must say 1 of 42, not "whole run".
+    expect(screen.getByText(/1 of 42 tripped/)).toBeTruthy();
+    expect(screen.queryByText(/whole run/i)).toBeNull();
+  });
+
+  it("says the run disagrees with its model when an ordinal is unresolved", async () => {
+    extentQuery.current = loadedExtent({
+      runId: CASCADE.run,
+      area: [],
+      halfWidthM: 500,
+      resolved: 1,
+      untraced: 0,
+      unresolved: ["branch-9"],
+    });
+    await renderAt(RUN_URL);
+    await screen.findByTestId("scene");
+    // The denominator counts every distinct tripped branch, resolved or
+    // not — one resolved, one unresolved, so "1 of 2".
+    expect(screen.getByText(/1 of 2 tripped/)).toBeTruthy();
+    expect(screen.getByText(/1 tripped ordinal the model does not have/)).toBeTruthy();
   });
 });
 

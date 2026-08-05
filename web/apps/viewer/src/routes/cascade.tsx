@@ -327,13 +327,29 @@ export function CascadeScreen(): React.JSX.Element {
                         <br />
                         {/* What the shaded ground on the globe is, in the
                          * reader's own view rather than a comment only an
-                         * engineer would find: the whole run's corridor, not
-                         * a moment of it, and the buffer width it assumes —
-                         * without which the shaded area is uninterpretable. */}
+                         * engineer would find: not "the whole run" — a run
+                         * with 41 of 42 tripped branches untraced would draw
+                         * one corridor under that label and read as a small
+                         * blast radius. The denominator is every distinct
+                         * branch the run tripped, resolved against the
+                         * model or not (`resolved + unresolved.length`); the
+                         * numerator is the subset that actually got drawn —
+                         * resolved AND traced (`resolved - untraced`). */}
                         <span className="text-fg-2">ground shown</span>{" "}
                         {extent === undefined
                           ? "loading…"
-                          : `whole run, ±${extent.halfWidthM} m buffer`}
+                          : `${extent.resolved - extent.untraced} of ${
+                              extent.resolved + extent.unresolved.length
+                            } tripped · ±${extent.halfWidthM} m buffer`}
+                        {extent !== undefined && extent.unresolved.length > 0 && (
+                          <>
+                            <br />
+                            <span className="text-fg-2">unresolved</span>{" "}
+                            {`${extent.unresolved.length} tripped ordinal${
+                              extent.unresolved.length === 1 ? "" : "s"
+                            } the model does not have`}
+                          </>
+                        )}
                       </div>
                     </>
                   )}
