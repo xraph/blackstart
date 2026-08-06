@@ -204,7 +204,7 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (ImportResult, er
 	// here, the model row already exists with zero recorded branches, and
 	// this call returns without emitting. That is not a silent gap — the
 	// next import of these same bytes takes the AlreadyPresent path above,
-	// which calls repairBranches and writes the rows then. A model is never
+	// which calls repairIdentity and writes the rows then. A model is never
 	// left permanently branch-less by a failure here; it is left branch-less
 	// until the next import attempt.
 	if err := e.store.Branches().PutAll(ctx, stored.ID, branchRows(stored.ID, parsed)); err != nil {
@@ -234,7 +234,7 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (ImportResult, er
 // branchRows turns a parsed case's canonical branches into the rows an
 // import records against one stored model.
 //
-// Shared by the fresh-import path and repairBranches, so a branch minted
+// Shared by the fresh-import path and repairIdentity, so a branch minted
 // during a repair is built exactly the same way as one minted during the
 // original import — same ordinal source, same alias lookup.
 func branchRows(modelID id.ID, parsed matpower.Case) []model.Branch {
