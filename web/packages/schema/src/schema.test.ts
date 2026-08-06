@@ -19,7 +19,7 @@ import { CascadeRun, provenanceOf } from "./cascade";
 import { ScenarioRun, formatWall, compareRuns } from "./run";
 import { chainCompleteness, ProvenanceChain } from "./provenance";
 import { ValidTime, KnowledgeTime, temporalMode, leaksFuture, formatInstant } from "./temporal";
-import { typeId, abbreviateTypeId, prefixOf } from "./identity";
+import { typeId, abbreviateTypeId, prefixOf, AnyTypeId } from "./identity";
 import { formatQuantity, mw, hz, pu, mps, toSi, sameDimension, km, metres } from "./quantity";
 
 const LN_RAW = "ln_01k3qf8m2xw7rb4n09ytvdhjkm";
@@ -452,6 +452,24 @@ describe("identity", () => {
     expect(abbreviateTypeId(LN, 4)).toBe("ln_…hjkm");
     expect(prefixOf(LN)).toBe("ln");
     expect(prefixOf("not-an-id")).toBe(null);
+  });
+
+  /*
+   * `prefixOf` tested `p in TYPE_PREFIXES`, and `in` walks the prototype
+   * chain — so every key on `Object.prototype` read as a declared prefix.
+   * `AnyTypeId` builds its pattern from the table's own keys and rejected the
+   * same strings, which is the tell: two functions over one table are not
+   * allowed to disagree about what is in it.
+   */
+  it("does not mistake an inherited property for a declared prefix", () => {
+    const suffix = "01k3qf8m2xw7rb4n09ytvdhjkm";
+
+    for (const inherited of ["constructor", "toString", "valueOf", "hasOwnProperty"]) {
+      const id = `${inherited}_${suffix}`;
+
+      expect(prefixOf(id), inherited).toBe(null);
+      expect(AnyTypeId.safeParse(id).success, inherited).toBe(false);
+    }
   });
 });
 

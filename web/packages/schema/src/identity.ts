@@ -15,39 +15,116 @@
 import { z } from "zod";
 
 /**
+ * Prefixes this client accepts that no extension issues.
+ *
+ * Separate from the rest of the table rather than commented, because the drift
+ * test uses this object as its allowlist: a prefix the platform does not mint
+ * has to be declared here deliberately, and cannot be added to the main table
+ * by someone who assumed it was real.
+ *
+ * Every entry is a claim waiting to be settled, not a stable category:
+ *
+ * - `ln` is consumed — `TransmissionLine.id` and the ranked contingency's
+ *   `element` are both typed on it — but the platform issues no `ln`. The two
+ *   real spellings of that concept are `br`, a network model's branch, and
+ *   `circ`, a line somebody actually built; `extensions/geo/id` is explicit
+ *   that those are different things. Whichever one the API returns, this
+ *   should become, and the schemas that name `ln` move with it.
+ * - `bus`, `gen` and `str` are consumed by nothing and issued by nothing.
+ *   They survive the reconciliation only because removing them was not asked
+ *   for; on the evidence they are as dead as `mdl`, `ds`, `fs` and `tx`, which
+ *   this change removed. `str` is the most suspect of the three — geo issues
+ *   `strc` for a structure, so `str` reads as a stale spelling of it rather
+ *   than a separate entity.
+ */
+export const CLIENT_ONLY_PREFIXES = {
+  ln: "transmission line",
+  bus: "bus",
+  gen: "generator",
+  str: "structure",
+} as const;
+
+/**
  * Every prefix the client can encounter, with the noun an operator would use.
  * The description is the label the interface shows, so adding a prefix here is
  * what makes it displayable.
+ *
+ * Grouped by the extension that owns the prefix, because that is the boundary
+ * the platform enforces: `pkg/id` refuses to let two extensions claim the same
+ * prefix, and a table grouped any other way makes it hard to see which owner a
+ * new entry would collide with.
+ *
+ * This table is the gate on `AnyTypeId`, which is what the console's `sel`
+ * search param parses. A prefix missing here is not a cosmetic omission — the
+ * element cannot be selected or linked to at all, and the failure reads as a
+ * broken inspector rather than as an identifier nobody taught the client
+ * about. `identity.drift.test.ts` asserts this list against the Go source so
+ * that a new extension prefix fails the suite rather than a panel.
  */
 export const TYPE_PREFIXES = {
-  ln: "transmission line",
-  bus: "bus",
-  sub: "substation",
-  str: "structure",
-  span: "span",
-  gen: "generator",
-  scn: "scenario",
-  run: "run",
+  /* cascade */
   casc: "cascade run",
-  crun: "contingency run",
-  nmdl: "network model",
-  mdl: "model",
-  ds: "dataset",
-  fs: "feature set",
-  tx: "network version",
-} as const;
 
-/*
- * This table has drifted from what the platform issues, and `crun` and `nmdl`
- * are the two the console now needs — a network model comes back as
- * `nmdl_…` and was being rejected as not a TypeID at all.
- *
- * The drift runs both ways and is wider than these two: `extensions/*` also
- * issue `srun`, `rte`, `strc`, `dsrc`, `sub`, `vlev` and more, while `mdl`,
- * `ds`, `fs` and `tx` below are issued by nothing. Reconciling the whole
- * table is worth doing and is not this change — adding only what is used
- * keeps the list honest about being incomplete rather than looking settled.
- */
+  /* contingency */
+  cset: "contingency set",
+  crun: "contingency run",
+
+  /* datasource */
+  dsrc: "data source",
+  dfeed: "feed",
+
+  /* geo */
+  rte: "route",
+  span: "span",
+  strc: "structure",
+  geom: "footprint",
+  circ: "circuit",
+
+  /* hazard */
+  hzcnd: "conductor",
+  hzasg: "conductor assignment",
+  hzcmp: "hazard computation",
+
+  /* networkmodel */
+  nmdl: "network model",
+  nmblob: "network model encoding",
+  br: "branch",
+  nmplc: "bus placement",
+
+  /* powerflow */
+  pfsol: "power flow solution",
+
+  /* provenance */
+  dsv: "dataset version",
+  mver: "model version",
+  run: "run",
+  lnge: "lineage",
+
+  /* scenario */
+  scn: "scenario",
+  srun: "scenario run",
+
+  /* scl */
+  ied: "intelligent electronic device",
+  gpub: "GOOSE publication",
+  gsub: "GOOSE subscription",
+
+  /* topology */
+  sub: "substation",
+  vlev: "voltage level",
+  bay: "bay",
+  cnode: "connectivity node",
+  term: "terminal",
+  equip: "equipment",
+  alias: "external alias",
+
+  /* weather */
+  wxcyc: "forecast cycle",
+  wxgrd: "forecast grid",
+  wxstn: "weather station",
+
+  ...CLIENT_ONLY_PREFIXES,
+} as const;
 
 export type TypePrefix = keyof typeof TYPE_PREFIXES;
 
@@ -77,12 +154,21 @@ export const AnyTypeId = z
   .string()
   .regex(new RegExp(`^(${Object.keys(TYPE_PREFIXES).join("|")})_${SUFFIX}$`, "i"));
 
-/** The prefix of an identifier, or null if it is not a TypeID at all. */
+/**
+ * The prefix of an identifier, or null if it is not a TypeID at all.
+ *
+ * `Object.hasOwn` rather than `in`, which walks the prototype chain: `in`
+ * answers true for every key on `Object.prototype`, so `constructor_…`,
+ * `toString_…` and `valueOf_…` all reported a prefix this table never declared.
+ * `AnyTypeId` rejects those strings — its regex is built from the table's own
+ * keys — so the two disagreed about the same identifier, and only the looser
+ * one was used to decide what a value is rather than whether it is valid.
+ */
 export function prefixOf(id: string): TypePrefix | null {
   const under = id.indexOf("_");
   if (under < 1) return null;
   const p = id.slice(0, under);
-  return p in TYPE_PREFIXES ? (p as TypePrefix) : null;
+  return Object.hasOwn(TYPE_PREFIXES, p) ? (p as TypePrefix) : null;
 }
 
 /**
