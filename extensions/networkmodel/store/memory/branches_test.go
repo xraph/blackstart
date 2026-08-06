@@ -156,6 +156,135 @@ func TestPutAllReplacesRatherThanAccumulates(t *testing.T) {
 	}
 }
 
+// AddMissing on a model with no rows at all behaves like a fresh write: every
+// ordinal handed to it lands, and the count returned says so.
+func TestAddMissingOnAnEmptyModelInsertsEverything(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	modelID := nmid.NewModel()
+	in := branches(modelID, "branch-0", "branch-1", "branch-2")
+
+	n, err := s.Branches().AddMissing(t.Context(), modelID, in)
+	if err != nil {
+		t.Fatalf("AddMissing: %v", err)
+	}
+
+	if n != len(in) {
+		t.Errorf("AddMissing inserted %d, want %d", n, len(in))
+	}
+
+	got, err := s.Branches().ForModel(t.Context(), modelID)
+	if err != nil {
+		t.Fatalf("ForModel: %v", err)
+	}
+
+	if len(got) != len(in) {
+		t.Fatalf("ForModel returned %d branches, want %d", len(got), len(in))
+	}
+}
+
+// The case AddMissing exists for: a model with branch-0 already stored and
+// branch-1 missing. AddMissing must insert only branch-1, and branch-0's row
+// — identifier included — must come back exactly as it went in, not
+// replaced by whatever freshly-minted branch-0 the caller also handed it.
+func TestAddMissingInsertsOnlyTheMissingOrdinalAndKeepsTheRest(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	modelID := nmid.NewModel()
+
+	existing := branches(modelID, "branch-0")[0]
+
+	if err := s.Branches().PutAll(t.Context(), modelID, []model.Branch{existing}); err != nil {
+		t.Fatalf("PutAll: %v", err)
+	}
+
+	// A repair hands AddMissing a freshly-minted branch-0 alongside the
+	// actually-missing branch-1 — repairIdentity cannot know in advance which
+	// ordinals are already stored, so it always builds the full set. A
+	// freshly-minted branch-0 must be discarded, not written.
+	freshZero := branches(modelID, "branch-0")[0]
+	freshZero.ID = nmid.NewBranch()
+	one := branches(modelID, "branch-1")[0]
+
+	n, err := s.Branches().AddMissing(t.Context(), modelID, []model.Branch{freshZero, one})
+	if err != nil {
+		t.Fatalf("AddMissing: %v", err)
+	}
+
+	if n != 1 {
+		t.Fatalf("AddMissing inserted %d, want 1 (only branch-1)", n)
+	}
+
+	got, err := s.Branches().ByOrdinal(t.Context(), modelID, "branch-0")
+	if err != nil {
+		t.Fatalf("ByOrdinal(branch-0): %v", err)
+	}
+
+	if got.ID != existing.ID {
+		t.Errorf("branch-0's identifier changed: got %s, want the original %s", got.ID, existing.ID)
+	}
+
+	if _, err := s.Branches().ByOrdinal(t.Context(), modelID, "branch-1"); err != nil {
+		t.Errorf("ByOrdinal(branch-1) after AddMissing: %v", err)
+	}
+}
+
+// The fully-complete case: every ordinal handed to AddMissing already
+// exists, so nothing is inserted and nothing already stored changes.
+func TestAddMissingOnACompleteModelInsertsNothing(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	modelID := nmid.NewModel()
+
+	in := branches(modelID, "branch-0", "branch-1")
+	if err := s.Branches().PutAll(t.Context(), modelID, in); err != nil {
+		t.Fatalf("PutAll: %v", err)
+	}
+
+	// Freshly-minted rows for ordinals the model already has, exactly what
+	// repairIdentity would build from the parsed case.
+	fresh := branches(modelID, "branch-0", "branch-1")
+
+	n, err := s.Branches().AddMissing(t.Context(), modelID, fresh)
+	if err != nil {
+		t.Fatalf("AddMissing: %v", err)
+	}
+
+	if n != 0 {
+		t.Errorf("AddMissing inserted %d on a complete model, want 0", n)
+	}
+
+	got, err := s.Branches().ForModel(t.Context(), modelID)
+	if err != nil {
+		t.Fatalf("ForModel: %v", err)
+	}
+
+	for i, branch := range got {
+		if branch.ID != in[i].ID {
+			t.Errorf("branch %s's identifier changed: got %s, want the original %s",
+				branch.Ordinal, branch.ID, in[i].ID)
+		}
+	}
+}
+
+// AddMissing validates and checks model ownership exactly as PutAll does —
+// it is still a write path, and a caller that got the model wrong deserves
+// the same rejection either way.
+func TestAddMissingRejectsABranchFromAnotherModel(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	modelID := nmid.NewModel()
+
+	_, err := s.Branches().AddMissing(t.Context(), modelID, branches(nmid.NewModel(), "branch-0"))
+	if !errors.Is(err, bserr.ErrInvalid) {
+		t.Fatalf("got %v, want ErrInvalid", err)
+	}
+}
+
 // Ordinal order, not map order. A caller walking a model's branches to trace
 // them expects the network in the order the case declares it.
 func TestForModelReturnsBranchesInOrdinalOrder(t *testing.T) {

@@ -135,6 +135,100 @@ func TestPutAllReplacesRatherThanMerges(t *testing.T) {
 	}
 }
 
+// AddMissing on an empty model inserts everything it is handed, matching a
+// fresh write.
+func TestAddMissingOnAnEmptyModelInsertsEveryBus(t *testing.T) {
+	ctx := context.Background()
+	store := memory.New()
+	modelID := nmid.NewModel()
+
+	in := []model.Bus{bus(modelID, "bus-1", 345000), bus(modelID, "bus-2", 138000)}
+
+	n, err := store.Buses().AddMissing(ctx, modelID, in)
+	if err != nil {
+		t.Fatalf("AddMissing: %v", err)
+	}
+
+	if n != len(in) {
+		t.Errorf("AddMissing inserted %d, want %d", n, len(in))
+	}
+}
+
+// The partial case: bus-1 is already stored, bus-2 is missing. AddMissing
+// must insert only bus-2 and leave bus-1's row — identifier included —
+// exactly as it was, discarding the freshly-minted bus-1 a repair would also
+// hand it.
+func TestAddMissingInsertsOnlyTheMissingBusAndKeepsTheRest(t *testing.T) {
+	ctx := context.Background()
+	store := memory.New()
+	modelID := nmid.NewModel()
+
+	existing := bus(modelID, "bus-1", 345000)
+	if err := store.Buses().PutAll(ctx, modelID, []model.Bus{existing}); err != nil {
+		t.Fatalf("PutAll: %v", err)
+	}
+
+	freshOne := bus(modelID, "bus-1", 345000)
+	two := bus(modelID, "bus-2", 138000)
+
+	n, err := store.Buses().AddMissing(ctx, modelID, []model.Bus{freshOne, two})
+	if err != nil {
+		t.Fatalf("AddMissing: %v", err)
+	}
+
+	if n != 1 {
+		t.Fatalf("AddMissing inserted %d, want 1 (only bus-2)", n)
+	}
+
+	got, err := store.Buses().ByOrdinal(ctx, modelID, "bus-1")
+	if err != nil {
+		t.Fatalf("ByOrdinal(bus-1): %v", err)
+	}
+
+	if got.ID != existing.ID {
+		t.Errorf("bus-1's identifier changed: got %s, want the original %s", got.ID, existing.ID)
+	}
+
+	if _, err := store.Buses().ByOrdinal(ctx, modelID, "bus-2"); err != nil {
+		t.Errorf("ByOrdinal(bus-2) after AddMissing: %v", err)
+	}
+}
+
+// The fully-complete case: every ordinal already exists, so AddMissing
+// inserts nothing and no existing identifier changes.
+func TestAddMissingOnACompleteModelInsertsNoBuses(t *testing.T) {
+	ctx := context.Background()
+	store := memory.New()
+	modelID := nmid.NewModel()
+
+	in := []model.Bus{bus(modelID, "bus-1", 345000), bus(modelID, "bus-2", 138000)}
+	if err := store.Buses().PutAll(ctx, modelID, in); err != nil {
+		t.Fatalf("PutAll: %v", err)
+	}
+
+	fresh := []model.Bus{bus(modelID, "bus-1", 345000), bus(modelID, "bus-2", 138000)}
+
+	n, err := store.Buses().AddMissing(ctx, modelID, fresh)
+	if err != nil {
+		t.Fatalf("AddMissing: %v", err)
+	}
+
+	if n != 0 {
+		t.Errorf("AddMissing inserted %d on a complete model, want 0", n)
+	}
+
+	got, err := store.Buses().ForModel(ctx, modelID)
+	if err != nil {
+		t.Fatalf("ForModel: %v", err)
+	}
+
+	for i, b := range got {
+		if b.ID != in[i].ID {
+			t.Errorf("bus %s's identifier changed: got %s, want the original %s", b.Ordinal, b.ID, in[i].ID)
+		}
+	}
+}
+
 // A bus claiming a different model than the one it is written under is a
 // programming error that would otherwise store and confuse a later ForModel.
 func TestABusMustBelongToTheModelItIsWrittenUnder(t *testing.T) {
