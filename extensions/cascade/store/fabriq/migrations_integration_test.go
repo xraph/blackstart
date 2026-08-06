@@ -75,9 +75,9 @@ func TestMigrationsReapplyAfterRollback(t *testing.T) {
 // unknown rather than becoming a hash every historical run shares.
 //
 // Asserted against the live schema rather than the DDL string, because the
-// thing that matters is what Postgres ended up with: a NOT NULL DEFAULT ''
-// added later would read perfectly well in review and would silently make every
-// pre-existing run list as one network.
+// thing that matters is what Postgres ended up with: a NOT NULL default of the
+// empty string, added later, would read perfectly well in review and would
+// silently make every pre-existing run list as one network.
 func TestTheCanonicalHashColumnIsNullableWithNoDefault(t *testing.T) {
 	superDSN := testsupport.Postgres(t)
 
