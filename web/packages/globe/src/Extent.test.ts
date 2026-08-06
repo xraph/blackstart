@@ -100,3 +100,40 @@ describe("buildExtentGeometry", () => {
     expect(index).toHaveLength(2 * 3);
   });
 });
+
+describe("a concave ring is never fan-triangulated", () => {
+  /**
+   * An L, wound so its one reflex vertex sits at index 0.
+   *
+   * That position is the whole point. A closed ring repeats its first point
+   * last, and the two triples straddling that duplicate are both degenerate —
+   * so a convexity check that walks triples without dropping the duplicate
+   * never evaluates the turn at vertex 0, which is also the fan's apex.
+   */
+  const L_REFLEX_AT_ZERO: readonly (readonly [number, number])[] = [
+    [-101 + 0.01, 34 + 0.01],
+    [-101 + 0.01, 34 + 0.02],
+    [-101 + 0.0, 34 + 0.02],
+    [-101 + 0.0, 34 + 0.0],
+    [-101 + 0.02, 34 + 0.0],
+    [-101 + 0.02, 34 + 0.01],
+  ];
+
+  it("skips it when the ring is open", () => {
+    const { index } = buildExtentGeometry([ring(L_REFLEX_AT_ZERO)], 0);
+
+    expect(index).toHaveLength(0);
+  });
+
+  it("skips it when the ring is closed, which is what the wire sends", () => {
+    // `shape.Corridor` closes every ring it produces, so this is the shape
+    // that actually arrives. A check that only works on open rings would
+    // triangulate this one and fill the concave notch — the same over-claim
+    // the convex hull made at the geometry layer, one package down.
+    const closed = [...L_REFLEX_AT_ZERO, L_REFLEX_AT_ZERO[0]!];
+
+    const { index } = buildExtentGeometry([ring(closed)], 0);
+
+    expect(index).toHaveLength(0);
+  });
+});

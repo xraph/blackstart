@@ -23,23 +23,46 @@ const DEFAULT_COLOR = "#ff8a3d";
  * Checked in a flat local projection (longitude scaled by the cosine of the
  * ring's mean latitude), the same approximation `shape.PolygonAreaM2` makes
  * server-side: adequate at corridor scale, and only the sign of each turn is
- * used here, so the projection's distortion cannot flip the answer. A closed
- * ring (first point repeated last, as every `Corridor` is) works the same as
- * an open one — the repeated vertex just produces a degenerate, collinear
- * turn that contributes no sign.
+ * used here, so the projection's distortion cannot flip the answer.
+ *
+ * A closed ring — first point repeated last, as every `Corridor` is, and as
+ * the wire therefore always sends — has that duplicate dropped first. Walking
+ * triples over it directly does NOT work: both triples straddling the repeat
+ * are degenerate, so the turn at vertex 0 is never evaluated, and vertex 0 is
+ * the fan's apex. A concave ring whose only reflex vertex sat there would be
+ * reported convex and fanned, filling the notch — the same over-claim the
+ * convex hull made one package down, which is why that hull was removed.
  */
-function isConvexRing(ring: readonly Geodetic[]): boolean {
-  if (ring.length < 3) return true;
+/**
+ * Whether a ring repeats its first point last.
+ *
+ * Compared exactly rather than within a tolerance: the server closes a ring by
+ * appending the same point, so the two are identical values, and a tolerance
+ * here would also swallow a genuine short final segment.
+ */
+function closesOnItself(ring: readonly Geodetic[]): boolean {
+  if (ring.length < 2) return false;
 
-  const meanLat = ring.reduce((sum, p) => sum + p.lat, 0) / ring.length;
+  const first = ring[0]!;
+  const last = ring[ring.length - 1]!;
+
+  return first.lon === last.lon && first.lat === last.lat;
+}
+
+function isConvexRing(ring: readonly Geodetic[]): boolean {
+  const open = closesOnItself(ring) ? ring.slice(0, -1) : ring;
+
+  if (open.length < 3) return true;
+
+  const meanLat = open.reduce((sum, p) => sum + p.lat, 0) / open.length;
   const cosLat = Math.cos((meanLat * Math.PI) / 180);
 
   let sign = 0;
 
-  for (let i = 0; i < ring.length; i++) {
-    const a = ring[i]!;
-    const b = ring[(i + 1) % ring.length]!;
-    const c = ring[(i + 2) % ring.length]!;
+  for (let i = 0; i < open.length; i++) {
+    const a = open[i]!;
+    const b = open[(i + 1) % open.length]!;
+    const c = open[(i + 2) % open.length]!;
 
     const abx = (b.lon - a.lon) * cosLat;
     const aby = b.lat - a.lat;

@@ -619,6 +619,26 @@ describe("cascade screen", () => {
     expect(screen.getByText(/1 of 2 tripped/)).toBeTruthy();
     expect(screen.getByText(/1 tripped ordinal the model does not have/)).toBeTruthy();
   });
+
+  // The server was fixed to send [] rather than null for both slices, but the
+  // client does not own the wire and must not throw if that ever regresses —
+  // the same reason `Scene` guards `area` with `!= null`. A crashed screen is
+  // a worse answer than a screen that says less.
+  it("survives a wire that sends null where it promised a list", async () => {
+    extentQuery.current = loadedExtent({
+      runId: CASCADE.run,
+      area: null,
+      halfWidthM: 500,
+      resolved: 3,
+      untraced: 1,
+      unresolved: null,
+    });
+    await renderAt(RUN_URL);
+
+    expect(await screen.findByTestId("scene")).toBeTruthy();
+    // Nothing unresolved is known, so the denominator is what resolved.
+    expect(screen.getByText(/2 of 3 tripped/)).toBeTruthy();
+  });
 });
 
 describe("runs screen", () => {

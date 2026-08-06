@@ -193,6 +193,13 @@ export function CascadeScreen(): React.JSX.Element {
     enabled: search.run !== undefined,
   });
 
+  /* Normalised once, here, rather than guarded at each of the four places the
+   * label reads it. The host was fixed to send [] rather than null for both
+   * slices, but this screen does not own the wire: `Scene` already guards
+   * `area` with `!= null` for the same reason, and a crashed screen is a worse
+   * answer than a screen that says less. */
+  const unresolved = extent?.unresolved ?? [];
+
   const events = run?.events ?? [];
   const lastT = events[events.length - 1]?.t ?? 1;
   const [position, setPosition] = useState(1);
@@ -349,14 +356,14 @@ export function CascadeScreen(): React.JSX.Element {
                         {extent === undefined
                           ? "loading…"
                           : `${extent.resolved - extent.untraced} of ${
-                              extent.resolved + extent.unresolved.length
+                              extent.resolved + unresolved.length
                             } tripped · ±${extent.halfWidthM} m buffer`}
-                        {extent !== undefined && extent.unresolved.length > 0 && (
+                        {unresolved.length > 0 && (
                           <>
                             <br />
                             <span className="text-fg-2">unresolved</span>{" "}
-                            {`${extent.unresolved.length} tripped ordinal${
-                              extent.unresolved.length === 1 ? "" : "s"
+                            {`${unresolved.length} tripped ordinal${
+                              unresolved.length === 1 ? "" : "s"
                             } the model does not have`}
                           </>
                         )}
