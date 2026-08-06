@@ -43,26 +43,43 @@ function formatSimTime(t: number): string {
   return `t+${String(m).padStart(2, "0")}:${s}`;
 }
 
+export type EventOrder = "newest" | "oldest";
+
 export function EventLog({
   events,
+  order = "newest",
   highlightCount = 2,
   onHover,
 }: {
   readonly events: readonly CascadeEvent[];
+  /**
+   * Which end the log reads from.
+   *
+   * The rail's control said `REVERSE`, which never named the order it would
+   * produce — or the one it would be reversing from. Both values here state
+   * an order, and the default is the one the log has always used.
+   */
+  readonly order?: EventOrder;
   /** How many of the most recent rows are tinted as just-arrived. */
   readonly highlightCount?: number;
   readonly onHover?: (e: CascadeEvent | null) => void;
 }): ReactElement {
+  const rows = order === "newest" ? newestFirst(events) : [...events];
+
   return (
     <ol className="m-0 list-none p-0 font-mono text-[9.5px] tabular">
-      {newestFirst(events).map((e, i) => (
+      {rows.map((e, i) => (
         <li
           key={`${e.t}-${e.element}-${e.kind}`}
           onMouseEnter={() => onHover?.(e)}
           onMouseLeave={() => onHover?.(null)}
           className={cn(
             "flex h-[26px] items-center border-b border-line-t px-[11px] text-fg-2",
-            i < highlightCount && "bg-hl",
+            /* Counted from the newest event, not from the top of the screen.
+               The tint means "just arrived", and keyed on position it would
+               mark the *oldest* events in oldest-first order — the opposite
+               claim, made silently. */
+            (order === "newest" ? i : rows.length - 1 - i) < highlightCount && "bg-hl",
           )}
         >
           <span className="w-[52px] shrink-0 text-fg-3">{formatSimTime(e.t)}</span>

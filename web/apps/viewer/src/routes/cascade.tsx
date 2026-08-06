@@ -18,7 +18,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   BottomSheet,
   CascadeCounters,
@@ -28,9 +28,11 @@ import {
   IslandLegend,
   QuantityValue,
   RAIL_BREAKPOINT,
+  Select,
   SideRail,
   Transport,
   useMediaQuery,
+  type SelectOption,
 } from "@blackstart/ui";
 import { Scene } from "@blackstart/globe";
 import {
@@ -44,6 +46,13 @@ import { cascadeRoute } from "../router";
 import { runsSearch } from "../search/params";
 import { useApiClient } from "../api/provider";
 import { useViewerModel } from "../model/use-viewer-model";
+
+/* Each option names the order it produces. `REVERSE` named neither the order
+ * it would produce nor the one it was reversing from. */
+const EVENT_ORDERS: readonly SelectOption<"newest" | "oldest">[] = [
+  { value: "newest", label: "newest first" },
+  { value: "oldest", label: "oldest first" },
+];
 
 /** Simulated seconds advanced per real second at 1×. */
 const BASE_RATE = 1.2;
@@ -146,6 +155,7 @@ function toCascadeRun(wire: WireRun): CascadeRun | undefined {
 
 export function CascadeScreen(): React.JSX.Element {
   const search = cascadeRoute.useSearch();
+  const navigate = useNavigate({ from: cascadeRoute.fullPath });
   const client = useApiClient();
   const { model } = useViewerModel();
   const wide = useMediaQuery(RAIL_BREAKPOINT);
@@ -246,7 +256,7 @@ export function CascadeScreen(): React.JSX.Element {
     .toFixed(2)
     .padStart(5, "0")}`;
 
-  const log = <EventLog events={shown} />;
+  const log = <EventLog events={shown} order={search.order} />;
 
   // No run named in the URL: this is a legitimate state, not a missing
   // fixture, so it points at where a run can be picked rather than guessing.
@@ -382,7 +392,15 @@ export function CascadeScreen(): React.JSX.Element {
             subtitle={
               <>
                 t+00:00.00 → {formatted}
-                <span className="ml-auto">REVERSE ▾</span>
+                <span className="ml-auto">
+                  <Select
+                    label="Order the event sequence"
+                    value={search.order}
+                    options={EVENT_ORDERS}
+                    align="end"
+                    onChange={(order) => void navigate({ search: (p) => ({ ...p, order }) })}
+                  />
+                </span>
               </>
             }
           >

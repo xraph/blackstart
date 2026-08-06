@@ -125,6 +125,16 @@ export function temporalOf(search: ConsoleSearch): BitemporalRef {
  */
 export const cascadeSearch = consoleSearch.extend({
   run: typeId("casc").optional(),
+
+  /**
+   * Which end the event log reads from.
+   *
+   * Both values name an order. The control here said `REVERSE`, which named
+   * neither the order it would produce nor the one it was reversing from —
+   * and since the log called `newestFirst` unconditionally, there was no
+   * stated starting order to reverse.
+   */
+  order: z.enum(["newest", "oldest"]).default("newest"),
 });
 export type CascadeSearch = z.infer<typeof cascadeSearch>;
 
