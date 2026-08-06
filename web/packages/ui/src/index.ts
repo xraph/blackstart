@@ -24,6 +24,7 @@ export * from "./lib/palette";
 
 export * from "./primitives/popup";
 export * from "./primitives/select";
+export * from "./primitives/menu";
 
 export * from "./instrument/quantity";
 export * from "./instrument/identity";
