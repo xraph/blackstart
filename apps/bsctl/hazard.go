@@ -18,6 +18,7 @@ import (
 	"github.com/xraph/blackstart/extensions/networkmodel"
 	"github.com/xraph/blackstart/extensions/networkmodel/canonical"
 	"github.com/xraph/blackstart/extensions/networkmodel/model"
+	nmstore "github.com/xraph/blackstart/extensions/networkmodel/store"
 	wid "github.com/xraph/blackstart/extensions/weather/id"
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
@@ -473,22 +474,29 @@ func assumeCandidates(
 
 		candidate := conductor.Candidate{CarrierID: route.CarrierID, Assigned: assigned}
 
-		if gid.IsCircuit(route.CarrierID) {
-			circuit, err := gx.Circuit(ctx, route.CarrierID)
-			if err != nil {
-				return nil, fmt.Errorf(
-					"bsctl: reading circuit %s: %w", route.CarrierID, err)
-			}
+		// An already-assigned carrier's voltage is never read: PlanAssumptions
+		// buckets it into AlreadyAssigned on candidate.Assigned alone and looks
+		// at neither VoltageKV nor FarEndVoltageKV. Running the lookup anyway is
+		// not just waste — a transient read failure on a carrier whose voltage
+		// will never be used would abort the whole pass over it for nothing.
+		if !assigned {
+			if gid.IsCircuit(route.CarrierID) {
+				circuit, err := gx.Circuit(ctx, route.CarrierID)
+				if err != nil {
+					return nil, fmt.Errorf(
+						"bsctl: reading circuit %s: %w", route.CarrierID, err)
+				}
 
-			candidate.VoltageKV = circuit.VoltageKV
-		} else {
-			fromKV, toKV, err := branchEndVoltages(ctx, nm, route.CarrierID)
-			if err != nil {
-				return nil, err
-			}
+				candidate.VoltageKV = circuit.VoltageKV
+			} else {
+				voltageKV, farEndKV, err := branchEndVoltages(ctx, nm.Store(), route.CarrierID)
+				if err != nil {
+					return nil, err
+				}
 
-			candidate.VoltageKV = fromKV
-			candidate.FarEndVoltageKV = toKV
+				candidate.VoltageKV = voltageKV
+				candidate.FarEndVoltageKV = farEndKV
+			}
 		}
 
 		candidates = append(candidates, candidate)
@@ -497,7 +505,8 @@ func assumeCandidates(
 	return candidates, nil
 }
 
-// branchEndVoltages reads the voltages a branch's two buses sit at, in kV.
+// branchEndVoltages reads the voltage a branch's candidate should carry, and
+// the far end's voltage for the transformer check, both in kV.
 //
 // Three lookups — the branch, then each end — rather than one join, because
 // that is the shape the store offers and a pass over fourteen routes is not
@@ -508,10 +517,15 @@ func assumeCandidates(
 // record rather than a fault: it lands the branch in NoVoltage, counted, which
 // is the honest report. A model that cannot be read at all is a different
 // thing and does fail.
+//
+// st is the store, not the engine. branchEndVoltages and busOrAbsent only
+// ever call Branches() and Buses() on it, and taking the narrower type is
+// what lets a test exercise them against extensions/networkmodel/store/memory
+// directly, without booting an engine or an application.
 func branchEndVoltages(
-	ctx context.Context, nm *networkmodel.Engine, carrier id.ID,
+	ctx context.Context, st nmstore.Store, carrier id.ID,
 ) (float64, float64, error) {
-	branch, err := nm.Store().Branches().Get(ctx, carrier)
+	branch, err := st.Branches().Get(ctx, carrier)
 	if err != nil {
 		if errors.Is(err, bserr.ErrNotFound) {
 			return 0, 0, nil
@@ -520,26 +534,49 @@ func branchEndVoltages(
 		return 0, 0, fmt.Errorf("bsctl: reading branch %s: %w", carrier, err)
 	}
 
-	from, err := busOrAbsent(ctx, nm, branch.ModelID, branch.FromBus)
+	from, err := busOrAbsent(ctx, st, branch.ModelID, branch.FromBus)
 	if err != nil {
 		return 0, 0, err
 	}
 
-	to, err := busOrAbsent(ctx, nm, branch.ModelID, branch.ToBus)
+	to, err := busOrAbsent(ctx, st, branch.ModelID, branch.ToBus)
 	if err != nil {
 		return 0, 0, err
 	}
 
 	fromKV, toKV := branchVoltagesKV(from, to)
 
-	return fromKV, toKV, nil
+	voltageKV, farEndKV := statedEndFirst(fromKV, toKV)
+
+	return voltageKV, farEndKV, nil
+}
+
+// statedEndFirst orders a branch's two end voltages so that a single stated
+// end always becomes the candidate's VoltageKV, whichever end it came from.
+//
+// Without this, VoltageKV was always "from", and a branch whose from-bus row
+// happened to be the missing one landed in NoVoltage while the same branch
+// with its two ends recorded the other way round got a conductor assumed —
+// coverage depending on which way an import happened to write FromBus and
+// ToBus. The far end is reported as zero in that case rather than the
+// unstated end's own zero, because zero already means "unknown" throughout
+// this path, and carrying the unstated end's zero into FarEndVoltageKV would
+// read the same as "not a transformer" for the wrong reason: PlanAssumptions
+// requires both ends stated before it will call one a transformer, so this
+// cannot manufacture one.
+func statedEndFirst(fromKV, toKV float64) (float64, float64) {
+	if fromKV == 0 && toKV != 0 {
+		return toKV, 0
+	}
+
+	return fromKV, toKV
 }
 
 // busOrAbsent reads one bus, treating not-found as a bus that states nothing.
 func busOrAbsent(
-	ctx context.Context, nm *networkmodel.Engine, modelID id.ID, ordinal string,
+	ctx context.Context, st nmstore.Store, modelID id.ID, ordinal string,
 ) (model.Bus, error) {
-	bus, err := nm.Store().Buses().ByOrdinal(ctx, modelID, ordinal)
+	bus, err := st.Buses().ByOrdinal(ctx, modelID, ordinal)
 	if err != nil {
 		if errors.Is(err, bserr.ErrNotFound) {
 			return model.Bus{}, nil
