@@ -466,6 +466,101 @@ func TestReimportingAPartiallyBranchlessModelRepairsIt(t *testing.T) {
 	}
 }
 
+// A repair that goes through PutAll deletes every existing row before
+// writing the fresh set, which re-mints every branch's identifier — not just
+// the missing one — because branchRows mints a fresh ID on every call.
+// Branch identifiers are referenced from outside this package (a geo route's
+// CarrierID, a hazard conductor assignment), so replacing one that already
+// resolves silently orphans everything that pointed at it. Repair must leave
+// a branch that was already there exactly as it was, not just restore the
+// count.
+func TestReimportingAPartiallyBranchlessModelKeepsExistingIdentifiers(t *testing.T) {
+	t.Parallel()
+
+	e, s := engineWithStore(t)
+
+	req := caseWithTwoBranches("two-branch-partial-identity")
+
+	first, err := e.Import(t.Context(), req)
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	got, err := s.Branches().ForModel(t.Context(), first.Model.ID)
+	if err != nil {
+		t.Fatalf("ForModel: %v", err)
+	}
+
+	if len(got) < 2 {
+		t.Fatalf("fixture recorded %d branches, want at least 2 to simulate a partial write", len(got))
+	}
+
+	survivor := got[0]
+
+	// Simulate a PutAll that landed some rows and failed partway: only the
+	// first of the model's two branches survives, keeping the identifier it
+	// was written with.
+	if err := s.Branches().PutAll(t.Context(), first.Model.ID, got[:1]); err != nil {
+		t.Fatalf("PutAll: %v", err)
+	}
+
+	if _, err := e.Import(t.Context(), req); err != nil {
+		t.Fatalf("second Import: %v", err)
+	}
+
+	repaired, err := s.Branches().ByOrdinal(t.Context(), first.Model.ID, survivor.Ordinal)
+	if err != nil {
+		t.Fatalf("ByOrdinal(%s): %v", survivor.Ordinal, err)
+	}
+
+	if repaired.ID != survivor.ID {
+		t.Errorf("repair re-minted %s's identifier: got %s, want the surviving row's %s",
+			survivor.Ordinal, repaired.ID, survivor.ID)
+	}
+}
+
+// The fully-complete case must stay untouched: repairIdentity's own guard
+// skips the store call entirely when nothing is missing, but that guard is
+// exactly the thing a regression could break, and the consequence — every
+// branch identifier re-minted — is invisible to a count-only assertion.
+func TestReimportOfACompleteModelLeavesBranchIdentifiersAlone(t *testing.T) {
+	t.Parallel()
+
+	e, s := engineWithStore(t)
+
+	req := caseWithTwoBranches("two-branch-complete-identity")
+
+	first, err := e.Import(t.Context(), req)
+	if err != nil {
+		t.Fatalf("first Import: %v", err)
+	}
+
+	before, err := s.Branches().ForModel(t.Context(), first.Model.ID)
+	if err != nil {
+		t.Fatalf("ForModel: %v", err)
+	}
+
+	if _, err := e.Import(t.Context(), req); err != nil {
+		t.Fatalf("second Import: %v", err)
+	}
+
+	after, err := s.Branches().ForModel(t.Context(), first.Model.ID)
+	if err != nil {
+		t.Fatalf("ForModel: %v", err)
+	}
+
+	if len(after) != len(before) {
+		t.Fatalf("branch count changed on a complete re-import: %d then %d", len(before), len(after))
+	}
+
+	for i := range before {
+		if after[i].ID != before[i].ID {
+			t.Errorf("branch %s's identifier changed on a complete re-import: %s then %s",
+				before[i].Ordinal, before[i].ID, after[i].ID)
+		}
+	}
+}
+
 // The projection has to carry the voltage each bus stated, not the model
 // base. A mixed-voltage case is the whole reason the field exists.
 func TestImportProjectsEachBusWithItsOwnVoltage(t *testing.T) {
@@ -535,5 +630,94 @@ func TestReimportRepairsAModelThatHasBranchesButNoBuses(t *testing.T) {
 
 	if len(buses) != first.Model.BusCount {
 		t.Fatalf("after repair there are %d buses, want %d", len(buses), first.Model.BusCount)
+	}
+}
+
+// The bus half of the same hazard the branch tests above cover: a repair
+// through PutAll deletes every existing row before writing the fresh set, so
+// a bus that already had a row loses its identifier along with the ones that
+// were actually missing.
+func TestReimportingAPartiallyBuslessModelKeepsExistingIdentifiers(t *testing.T) {
+	t.Parallel()
+
+	engine, memStore := engineWithStore(t)
+
+	req := networkmodel.ImportRequest{Source: []byte(mixedVoltageCase), Name: "mixed-partial-identity"}
+
+	first, err := engine.Import(t.Context(), req)
+	if err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+
+	got, err := memStore.Buses().ForModel(t.Context(), first.Model.ID)
+	if err != nil {
+		t.Fatalf("ForModel: %v", err)
+	}
+
+	if len(got) < 2 {
+		t.Fatalf("fixture recorded %d buses, want at least 2 to simulate a partial write", len(got))
+	}
+
+	survivor := got[0]
+
+	// Simulate an interrupted repair: only the first bus survives, keeping the
+	// identifier it was written with.
+	if err := memStore.Buses().PutAll(t.Context(), first.Model.ID, got[:1]); err != nil {
+		t.Fatalf("PutAll: %v", err)
+	}
+
+	if _, err := engine.Import(t.Context(), req); err != nil {
+		t.Fatalf("re-import: %v", err)
+	}
+
+	repaired, err := memStore.Buses().ByOrdinal(t.Context(), first.Model.ID, survivor.Ordinal)
+	if err != nil {
+		t.Fatalf("ByOrdinal(%s): %v", survivor.Ordinal, err)
+	}
+
+	if repaired.ID != survivor.ID {
+		t.Errorf("repair re-minted %s's identifier: got %s, want the surviving row's %s",
+			survivor.Ordinal, repaired.ID, survivor.ID)
+	}
+}
+
+// The fully-complete case, bus half: repairIdentity's guard should skip the
+// store call entirely, and a count-only assertion cannot tell that from a
+// replace-and-restore that happens to land on the same count.
+func TestReimportOfACompleteModelLeavesBusIdentifiersAlone(t *testing.T) {
+	t.Parallel()
+
+	engine, memStore := engineWithStore(t)
+
+	req := networkmodel.ImportRequest{Source: []byte(mixedVoltageCase), Name: "mixed-complete-identity"}
+
+	first, err := engine.Import(t.Context(), req)
+	if err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+
+	before, err := memStore.Buses().ForModel(t.Context(), first.Model.ID)
+	if err != nil {
+		t.Fatalf("ForModel: %v", err)
+	}
+
+	if _, err := engine.Import(t.Context(), req); err != nil {
+		t.Fatalf("second import: %v", err)
+	}
+
+	after, err := memStore.Buses().ForModel(t.Context(), first.Model.ID)
+	if err != nil {
+		t.Fatalf("ForModel: %v", err)
+	}
+
+	if len(after) != len(before) {
+		t.Fatalf("bus count changed on a complete re-import: %d then %d", len(before), len(after))
+	}
+
+	for i := range before {
+		if after[i].ID != before[i].ID {
+			t.Errorf("bus %s's identifier changed on a complete re-import: %s then %s",
+				before[i].Ordinal, before[i].ID, after[i].ID)
+		}
 	}
 }
