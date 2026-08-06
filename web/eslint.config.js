@@ -4,9 +4,12 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    // Generated, vendored, and build output. shadcn/ui components are vendored
-    // into packages/ui by the shadcn CLI rather than imported as a dependency,
-    // so they are linted for correctness but not for our stylistic rules.
+    // Generated and build output.
+    //
+    // This once anticipated shadcn/ui vendored into packages/ui by its CLI.
+    // Nothing ever was, and the 2026-08-05 primitives design settled the
+    // question the other way: the console's controls are hand-rolled on its
+    // own tokens, so there is no vendored tree to exempt.
     ignores: [
       "**/dist/**",
       "**/node_modules/**",
