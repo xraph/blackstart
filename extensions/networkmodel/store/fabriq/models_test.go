@@ -5,6 +5,40 @@ import (
 	"testing"
 )
 
+// The row's grove tags must reproduce Fabriq's structural contract — id,
+// tenant_id, version — and match the DDL in migrations.go column for column.
+// A mismatch here fails at insert against a real database and nowhere else.
+//
+// Unqualified, not fabriq.BusTable: this file is package fabriq itself
+// (white-box, like the branch and placement tests above it), and a package
+// cannot import itself to qualify its own identifiers.
+func TestTheBusRowDeclaresItsTable(t *testing.T) {
+	if BusTable != "blackstart_networkmodel_bus" {
+		t.Fatalf("bus table is %q", BusTable)
+	}
+
+	if BusEntity != "networkmodel_bus" {
+		t.Fatalf("bus entity is %q", BusEntity)
+	}
+}
+
+// The registry refuses a spec whose Model does not declare the structural
+// columns, so an entity added without a spec is an extension that fails to
+// compose rather than a table nobody writes to.
+func TestTheContributorDeclaresTheBusEntity(t *testing.T) {
+	var found bool
+
+	for _, spec := range (Contributor{}).Specs() {
+		if spec.Name == BusEntity {
+			found = true
+		}
+	}
+
+	if !found {
+		t.Fatal("the contributor declares no bus entity")
+	}
+}
+
 // The stored branch row reproduces Fabriq's structural contract and names the
 // columns the migration creates.
 //

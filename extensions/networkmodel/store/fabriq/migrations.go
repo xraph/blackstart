@@ -23,6 +23,7 @@ func Group() *migrate.Group {
 	g.MustRegister(migration0001Tables)
 	g.MustRegister(migration0002BytePlane)
 	g.MustRegister(migration0003Identity)
+	g.MustRegister(migration0004Buses)
 
 	return g
 }
@@ -186,6 +187,54 @@ func down0003(ctx context.Context, exec migrate.Executor) error {
 	return execAll(ctx, exec, []string{
 		`DROP TABLE IF EXISTS ` + PlacementTable,
 		`DROP TABLE IF EXISTS ` + BranchTable,
+	})
+}
+
+// migration0004Buses adds the bus projection.
+//
+// A fourth migration rather than an edit to 0003, for the reason 0003 was a
+// third: 0003 has run in databases that exist, and grove records it as
+// applied.
+var migration0004Buses = &migrate.Migration{
+	Name:    "networkmodel_bus",
+	Version: "20260805000020",
+	Comment: "bus identity and nominal voltage, projected from the canonical blob",
+	Up:      up0004,
+	Down:    down0004,
+}
+
+func up0004(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`CREATE TABLE IF NOT EXISTS ` + BusTable + ` (
+			id            TEXT PRIMARY KEY,
+			tenant_id     TEXT NOT NULL,
+			version       BIGINT NOT NULL,
+			model_id      TEXT NOT NULL,
+			ordinal       TEXT NOT NULL,
+			v_nominal_v   DOUBLE PRECISION NOT NULL DEFAULT 0
+		)`,
+
+		// One bus per ordinal per model. Unique because two would be a
+		// contradiction rather than a duplicate: nothing could say which
+		// voltage a branch's from-bus runs at.
+		`CREATE UNIQUE INDEX IF NOT EXISTS ` + BusTable + `_ordinal_key
+			ON ` + BusTable + ` (tenant_id, model_id, ordinal)`,
+
+		// Row-level security, forced — the same treatment every other table in
+		// this group gets. Without FORCE the table owner is exempt and tenant
+		// isolation is silently a no-op for exactly the connection most likely
+		// to be used by mistake.
+		`ALTER TABLE ` + BusTable + ` ENABLE ROW LEVEL SECURITY`,
+		`ALTER TABLE ` + BusTable + ` FORCE ROW LEVEL SECURITY`,
+		`DROP POLICY IF EXISTS tenant_isolation ON ` + BusTable,
+		`CREATE POLICY tenant_isolation ON ` + BusTable + `
+			USING (tenant_id = current_setting('app.tenant_id', true))`,
+	})
+}
+
+func down0004(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`DROP TABLE IF EXISTS ` + BusTable,
 	})
 }
 

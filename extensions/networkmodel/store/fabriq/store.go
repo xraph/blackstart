@@ -64,6 +64,9 @@ func (s *Store) Branches() model.BranchStore { return (*branches)(s) }
 // Placements returns the placement store.
 func (s *Store) Placements() model.PlacementStore { return (*placements)(s) }
 
+// Buses returns the bus store.
+func (s *Store) Buses() model.BusStore { return (*buses)(s) }
+
 type models Store
 
 func (s *models) Create(ctx context.Context, in model.NetworkModel) (model.NetworkModel, error) {

@@ -41,5 +41,10 @@ func (Contributor) Specs() []registry.EntitySpec {
 			Kind:  registry.KindAggregate,
 			Model: (*placementRow)(nil),
 		},
+		{
+			Name:  BusEntity,
+			Kind:  registry.KindAggregate,
+			Model: (*busRow)(nil),
+		},
 	}
 }

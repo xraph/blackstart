@@ -28,6 +28,7 @@ const (
 
 	BranchTable    = "blackstart_networkmodel_branch"
 	PlacementTable = "blackstart_networkmodel_placement"
+	BusTable       = "blackstart_networkmodel_bus"
 )
 
 // Entity names as registered with Fabriq.
@@ -36,6 +37,7 @@ const (
 
 	BranchEntity    = "networkmodel_branch"
 	PlacementEntity = "networkmodel_placement"
+	BusEntity       = "networkmodel_bus"
 )
 
 // modelRow is the persistence shape of a network model.

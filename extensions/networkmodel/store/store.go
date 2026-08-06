@@ -23,6 +23,9 @@ type Store interface {
 
 	// Placements reads and writes where a model's buses are.
 	Placements() model.PlacementStore
+
+	// Buses reads and writes a model's buses and the voltage each sits at.
+	Buses() model.BusStore
 }
 
 // BlobStore holds the canonical encoding of a model.
