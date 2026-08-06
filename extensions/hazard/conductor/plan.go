@@ -16,6 +16,17 @@ type Candidate struct {
 	// source did not say, which is a skip rather than a default.
 	VoltageKV float64
 
+	// FarEndVoltageKV is the other end's voltage, for a carrier that has two
+	// ends. Zero for a circuit, which has one voltage and no far end.
+	//
+	// Carried so that PlanAssumptions can tell a line from a transformer. A
+	// branch whose two ends sit at different voltages is a transformer, and no
+	// conductor is strung on one — but the caller that reads the two buses
+	// must not be the one that decides, or the single rule stopping this
+	// command inventing conductors for transformers would be the only rule not
+	// covered by the pure function.
+	FarEndVoltageKV float64
+
 	// Assigned marks a carrier that already has an assignment.
 	Assigned bool
 }
@@ -32,11 +43,13 @@ type Assumption struct {
 
 // Plan is what a bulk assumption pass would do, before it does any of it.
 //
-// Three buckets rather than a list and a count, because the reasons are not
-// interchangeable: a carrier with no voltage is a gap in the source data, and
-// one already assigned is a decision somebody made. Reporting them as a single
-// "skipped" number would leave a reader unable to tell which of those two the
-// map is short of.
+// Four buckets rather than a list and a count, because the reasons are not
+// interchangeable: a carrier with no voltage is a gap in the source data, one
+// already assigned is a decision somebody made, and a transformer is a carrier
+// no conductor will ever be strung on. Reporting them as a single "skipped"
+// number would leave a reader unable to tell which of those the map is short
+// of — and would send somebody hunting for voltage data that would change
+// nothing.
 //
 // Every candidate lands in exactly one bucket. A carrier silently dropped is
 // how somebody comes to believe the map is fuller than it is.
@@ -44,6 +57,7 @@ type Plan struct {
 	Assume          []Assumption
 	NoVoltage       []id.ID
 	AlreadyAssigned []id.ID
+	Transformers    []id.ID
 }
 
 // PlanAssumptions decides what each carrier should get, and writes nothing.
@@ -59,6 +73,23 @@ func PlanAssumptions(candidates []Candidate) Plan {
 		// destroy the only record of somebody having looked.
 		if candidate.Assigned {
 			plan.AlreadyAssigned = append(plan.AlreadyAssigned, candidate.CarrierID)
+			continue
+		}
+
+		// A transformer, and therefore not a conductor run. Checked after
+		// Assigned because a surveyed row outranks every inference, and before
+		// AssumeByVoltage because a transformer that also states nothing at one
+		// end is still a transformer.
+		//
+		// Both ends must state a voltage. One end silent is not evidence of a
+		// transformer, and letting absence imply one would contradict the rule
+		// the rest of this path keeps: absent means unknown, never a
+		// conclusion.
+		if candidate.VoltageKV > 0 &&
+			candidate.FarEndVoltageKV > 0 &&
+			candidate.VoltageKV != candidate.FarEndVoltageKV {
+			plan.Transformers = append(plan.Transformers, candidate.CarrierID)
+
 			continue
 		}
 

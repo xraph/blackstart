@@ -5,10 +5,13 @@ import (
 
 	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/hazard/conductor"
+	nmid "github.com/xraph/blackstart/extensions/networkmodel/id"
 	"github.com/xraph/blackstart/pkg/id"
 )
 
 func circuit() id.ID { return id.MustNew(gid.Circuit) }
+
+func branch() id.ID { return id.MustNew(nmid.Branch) }
 
 // A carrier that states a voltage gets a conductor typical of its class.
 func TestPlanAssumesFromTheCarriersOwnVoltage(t *testing.T) {
@@ -101,11 +104,116 @@ func TestPlanAccountsForEveryCandidate(t *testing.T) {
 		{CarrierID: circuit()},
 		{CarrierID: circuit(), VoltageKV: 230, Assigned: true},
 		{CarrierID: circuit(), VoltageKV: 115},
+		{CarrierID: branch(), VoltageKV: 345, FarEndVoltageKV: 138},
 	})
 
-	total := len(got.Assume) + len(got.NoVoltage) + len(got.AlreadyAssigned)
-	if total != 4 {
-		t.Errorf("accounted for %d of 4 candidates", total)
+	total := len(got.Assume) + len(got.NoVoltage) + len(got.AlreadyAssigned) + len(got.Transformers)
+	if total != 5 {
+		t.Errorf("accounted for %d of 5 candidates", total)
+	}
+}
+
+// A transformer is not a conductor run. Assigning it a conductor would put an
+// assumed_by_voltage row against an element no conductor is ever strung on.
+func TestABranchWhoseEndsDifferIsATransformer(t *testing.T) {
+	t.Parallel()
+
+	carrier := branch()
+
+	plan := conductor.PlanAssumptions([]conductor.Candidate{{
+		CarrierID:       carrier,
+		VoltageKV:       345,
+		FarEndVoltageKV: 138,
+	}})
+
+	if len(plan.Transformers) != 1 {
+		t.Fatalf("got %d transformers, want 1", len(plan.Transformers))
+	}
+
+	if len(plan.Assume) != 0 {
+		t.Fatalf("a transformer was assigned %v", plan.Assume)
+	}
+}
+
+// One end stating nothing is not evidence of a transformer. The rest of this
+// path reads absence as unknown and never lets it imply a conclusion.
+func TestOneStatedEndIsNotATransformer(t *testing.T) {
+	t.Parallel()
+
+	carrier := branch()
+
+	plan := conductor.PlanAssumptions([]conductor.Candidate{{
+		CarrierID:       carrier,
+		VoltageKV:       138,
+		FarEndVoltageKV: 0,
+	}})
+
+	if len(plan.Transformers) != 0 {
+		t.Fatalf("a half-stated branch was called a transformer")
+	}
+
+	if len(plan.Assume) != 1 {
+		t.Fatalf("got %d assumptions, want 1", len(plan.Assume))
+	}
+}
+
+// Two ends at one voltage is a line, which is the ordinary case.
+func TestMatchingEndsAreAssumedNormally(t *testing.T) {
+	t.Parallel()
+
+	carrier := branch()
+
+	plan := conductor.PlanAssumptions([]conductor.Candidate{{
+		CarrierID:       carrier,
+		VoltageKV:       138,
+		FarEndVoltageKV: 138,
+	}})
+
+	if len(plan.Assume) != 1 || plan.Assume[0].ConductorCode != "hawk" {
+		t.Fatalf("got %v, want one hawk", plan.Assume)
+	}
+}
+
+// Already-assigned wins over every other bucket. A surveyed row outranks an
+// assumption whatever else is true of the carrier, and a re-run that demoted
+// one would destroy the only record of somebody having looked.
+func TestAnAssignedTransformerIsReportedAsAssigned(t *testing.T) {
+	t.Parallel()
+
+	carrier := branch()
+
+	plan := conductor.PlanAssumptions([]conductor.Candidate{{
+		CarrierID:       carrier,
+		VoltageKV:       345,
+		FarEndVoltageKV: 138,
+		Assigned:        true,
+	}})
+
+	if len(plan.AlreadyAssigned) != 1 {
+		t.Fatalf("got %d already-assigned, want 1", len(plan.AlreadyAssigned))
+	}
+
+	if len(plan.Transformers) != 0 {
+		t.Fatalf("an assigned carrier was also bucketed as a transformer")
+	}
+}
+
+// Transformer precedes no-voltage: it is the more specific statement, and
+// reporting a transformer as a data gap invites somebody to go and fill a gap
+// that will never produce an assignment.
+func TestATransformerStatingNothingAtOneEndIsStillNoVoltage(t *testing.T) {
+	t.Parallel()
+
+	carrier := branch()
+
+	plan := conductor.PlanAssumptions([]conductor.Candidate{{
+		CarrierID:       carrier,
+		VoltageKV:       0,
+		FarEndVoltageKV: 138,
+	}})
+
+	if len(plan.NoVoltage) != 1 {
+		t.Fatalf("got %d no-voltage, want 1", len(plan.NoVoltage))
 	}
 }
 
