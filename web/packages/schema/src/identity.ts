@@ -90,6 +90,7 @@ export const TYPE_PREFIXES = {
   nmblob: "network model encoding",
   br: "branch",
   nmplc: "bus placement",
+  nmbus: "bus",
 
   /* powerflow */
   pfsol: "power flow solution",
