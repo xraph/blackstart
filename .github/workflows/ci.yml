@@ -187,7 +187,16 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v6
+      # `defaults.run.working-directory` governs `run:` steps only, so this
+      # action resolves `packageManager` from the repository root, which has no
+      # package.json — the workspace is `web/`. Without the path it fails with
+      # "No pnpm version is specified" before installing anything, which is how
+      # this job came to fail on every run since it was written. Naming the
+      # file rather than pinning a version here keeps one source of truth: the
+      # `packageManager` field the repository already sets.
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -217,7 +226,11 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v6
+      # See lint-web: the action reads `packageManager` from the root unless
+      # pointed at the workspace's own package.json.
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
