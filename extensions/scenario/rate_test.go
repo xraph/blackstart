@@ -364,12 +364,13 @@ func TestEachBranchConvertsAgainstItsOwnFromBusVoltage(t *testing.T) {
 	}
 }
 
-// A rating computed against a voltage nobody stated for that bus must not be
-// indistinguishable from one computed against the bus's own. It is not a
-// failure — a static rating for a line the weather did reach would be worse,
-// and a model imported before the contract carried the field falls back
-// everywhere while being entirely correct — but a reader has no other way to
-// know that any of these numbers rests on a substituted voltage.
+// twoVoltageModel's third branch used to be this suite's one fallback: its
+// from-bus, bus-3, states nothing, and under the old from-bus-only rule that
+// was enough to send it to the base. It no longer is. Under stated-end-first
+// the same branch's to-bus is bus-1, which states 345 kV, and a real voltage
+// at the branch's own far end beats the network base — so nothing in this
+// model falls back at all. Genuine fallback, where neither end states a
+// voltage, is TestNeitherEndStatedStillFallsBackToTheBase's job instead.
 func TestTheFallbackToTheModelBaseIsCounted(t *testing.T) {
 	t.Parallel()
 
@@ -383,9 +384,9 @@ func TestTheFallbackToTheModelBaseIsCounted(t *testing.T) {
 		t.Fatalf("rate: %v", err)
 	}
 
-	// Only the third branch: its from-bus states no nominal voltage.
-	if got.BaseVoltageFallback != 1 {
-		t.Errorf("BaseVoltageFallback = %d, want 1 of %d rated branches",
+	if got.BaseVoltageFallback != 0 {
+		t.Errorf("BaseVoltageFallback = %d, want 0 of %d rated branches — every "+
+			"branch here has at least one end stating a voltage",
 			got.BaseVoltageFallback, got.WeatherRated)
 	}
 }
@@ -452,5 +453,183 @@ func TestAZeroNominalVoltageIsTreatedAsAbsent(t *testing.T) {
 
 	if want := math.Sqrt(3) * 345e3 * 900; math.Abs(rating-want) > 1 {
 		t.Errorf("branch 1 is rated %v VA, want the base's %v", rating, want)
+	}
+}
+
+// A branch whose from-bus states nothing but whose to-bus does, in a model
+// whose base is a different voltage again. This is the exact shape §5.1 of
+// the branch-side conductor design names: a from-bus-only rule falls back to
+// the 345 kV base and rates a 138 kV line 2.5 times over its own capacity —
+// correct arithmetic on the wrong voltage, carried into the contingency
+// screen and the cascade. hazard's own statedEndFirst already reads this
+// branch as 138 kV; branchVolts has to agree, or the same network answers
+// "what voltage does this branch run at" two different ways depending on
+// which command asked.
+func fromSilentToStatedModel() *solverv1.NetworkModel {
+	volts := func(v float64) *float64 { return &v }
+
+	return &solverv1.NetworkModel{
+		Name:    "from silent, to stated",
+		SBaseVa: 100e6,
+		VBaseV:  345e3,
+		Buses: []*solverv1.Bus{
+			{Id: "bus-1"},                          // states nothing
+			{Id: "bus-2", VNominalV: volts(138e3)}, // the far end
+		},
+		Branches: []*solverv1.Branch{
+			{Id: lines[0].String(), FromBus: 0, ToBus: 1, RatingVa: 500e6, InService: true, Tap: 1},
+		},
+	}
+}
+
+func TestABranchWhoseFromBusIsSilentConvertsAtItsToBusVoltage(t *testing.T) {
+	t.Parallel()
+
+	got, err := rate(
+		t.Context(), fromSilentToStatedModel(),
+		&fakeGeo{route: aRoute, spans: threeSpans},
+		&fakeHazard{ampacity: 900},
+		issued, valid,
+	)
+	if err != nil {
+		t.Fatalf("rate: %v", err)
+	}
+
+	if len(got.Overrides) != 1 {
+		t.Fatalf("got %d overrides, want 1", len(got.Overrides))
+	}
+
+	want := math.Sqrt(3) * 138e3 * 900
+	if rating := got.Overrides[0].GetBranchRating().GetRatingVa(); math.Abs(rating-want) > 1 {
+		t.Errorf("rating = %v VA, want %v (138 kV, the to-bus) — %v would be the "+
+			"345 kV base, 2.5 times over", rating, want, math.Sqrt(3)*345e3*900)
+	}
+
+	// The to-bus's own voltage is the branch's own voltage, not a substitute
+	// for one: this must not be counted alongside a real fallback.
+	if got.BaseVoltageFallback != 0 {
+		t.Errorf("BaseVoltageFallback = %d, want 0 — the to-bus stated a real voltage",
+			got.BaseVoltageFallback)
+	}
+}
+
+// The from end is still preferred: a branch whose two ends state different
+// voltages — the transformer shape — still converts at the from end,
+// unchanged from before this rule gained a to-bus case at all.
+func TestATransformerShapedBranchStillUsesTheFromEnd(t *testing.T) {
+	t.Parallel()
+
+	volts := func(v float64) *float64 { return &v }
+
+	model := &solverv1.NetworkModel{
+		Name:    "transformer shape",
+		SBaseVa: 100e6,
+		VBaseV:  345e3,
+		Buses: []*solverv1.Bus{
+			{Id: "bus-1", VNominalV: volts(345e3)},
+			{Id: "bus-2", VNominalV: volts(138e3)},
+		},
+		Branches: []*solverv1.Branch{
+			{Id: lines[0].String(), FromBus: 0, ToBus: 1, RatingVa: 500e6, InService: true, Tap: 1},
+		},
+	}
+
+	got, err := rate(
+		t.Context(), model,
+		&fakeGeo{route: aRoute, spans: threeSpans},
+		&fakeHazard{ampacity: 900},
+		issued, valid,
+	)
+	if err != nil {
+		t.Fatalf("rate: %v", err)
+	}
+
+	want := math.Sqrt(3) * 345e3 * 900
+	if rating := got.Overrides[0].GetBranchRating().GetRatingVa(); math.Abs(rating-want) > 1 {
+		t.Errorf("rating = %v VA, want %v — the from end, even though the to end "+
+			"also states one", rating, want)
+	}
+
+	if got.BaseVoltageFallback != 0 {
+		t.Errorf("BaseVoltageFallback = %d, want 0 — the from-bus stated its own voltage",
+			got.BaseVoltageFallback)
+	}
+}
+
+// Neither end stating a voltage is still the one case the model base exists
+// for, and it is still counted.
+func TestNeitherEndStatedStillFallsBackToTheBase(t *testing.T) {
+	t.Parallel()
+
+	model := &solverv1.NetworkModel{
+		Name:    "neither end stated",
+		SBaseVa: 100e6,
+		VBaseV:  345e3,
+		Buses: []*solverv1.Bus{
+			{Id: "bus-1"},
+			{Id: "bus-2"},
+		},
+		Branches: []*solverv1.Branch{
+			{Id: lines[0].String(), FromBus: 0, ToBus: 1, RatingVa: 500e6, InService: true, Tap: 1},
+		},
+	}
+
+	got, err := rate(
+		t.Context(), model,
+		&fakeGeo{route: aRoute, spans: threeSpans},
+		&fakeHazard{ampacity: 900},
+		issued, valid,
+	)
+	if err != nil {
+		t.Fatalf("rate: %v", err)
+	}
+
+	want := math.Sqrt(3) * 345e3 * 900
+	if rating := got.Overrides[0].GetBranchRating().GetRatingVa(); math.Abs(rating-want) > 1 {
+		t.Errorf("rating = %v VA, want %v — the model base, neither end states one",
+			rating, want)
+	}
+
+	if got.BaseVoltageFallback != 1 {
+		t.Errorf("BaseVoltageFallback = %d, want 1", got.BaseVoltageFallback)
+	}
+}
+
+// A to-bus index outside the model's bus list is a broken model, exactly
+// like an out-of-range from-bus index, and this function's job is still to
+// pick a voltage rather than invent an error the rating step cannot fix.
+func TestAToBusIndexOutOfRangeFallsBackRatherThanPanicking(t *testing.T) {
+	t.Parallel()
+
+	model := &solverv1.NetworkModel{
+		Name:    "broken to-bus index",
+		SBaseVa: 100e6,
+		VBaseV:  345e3,
+		Buses: []*solverv1.Bus{
+			{Id: "bus-1"}, // states nothing, so branchVolts must look at ToBus
+		},
+		Branches: []*solverv1.Branch{
+			{Id: lines[0].String(), FromBus: 0, ToBus: 7, RatingVa: 500e6, InService: true, Tap: 1},
+		},
+	}
+
+	got, err := rate(
+		t.Context(), model,
+		&fakeGeo{route: aRoute, spans: threeSpans},
+		&fakeHazard{ampacity: 900},
+		issued, valid,
+	)
+	if err != nil {
+		t.Fatalf("rate: %v", err)
+	}
+
+	want := math.Sqrt(3) * 345e3 * 900
+	if rating := got.Overrides[0].GetBranchRating().GetRatingVa(); math.Abs(rating-want) > 1 {
+		t.Errorf("rating = %v VA, want %v — an out-of-range to-bus falls back to the base",
+			rating, want)
+	}
+
+	if got.BaseVoltageFallback != 1 {
+		t.Errorf("BaseVoltageFallback = %d, want 1", got.BaseVoltageFallback)
 	}
 }

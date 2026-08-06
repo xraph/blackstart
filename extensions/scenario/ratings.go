@@ -223,42 +223,63 @@ func weakestSpan(
 // against, in VOLTS, and whether the model-level base had to stand in.
 //
 // Selection, not computation, and the distinction is load-bearing here: no
-// number is derived, averaged or scaled — one of two voltages the model
+// number is derived, averaged or scaled — one of the voltages the model
 // already states is chosen and returned unaltered. The single arithmetic site
 // in this package is voltAmperes, below, and it stays single.
 //
-// The from-bus's own nominal voltage, because the model-level base is one
-// voltage for a network that may have several: a 138 kV line converted at a
-// 345 kV base is rated 2.5 times too high, and the contingency screen and the
-// cascade then run correct arithmetic on that. The base is the fallback rather
-// than the default.
+// Stated-end-first: the from-bus's own nominal voltage where it states one,
+// otherwise the to-bus's where that end states one, otherwise the model-level
+// base. Still not an average and not the higher of the two — either would
+// derive a number the model never actually stated, and a transformer's ends
+// sit at genuinely different voltages, so no single derived figure is right
+// for both. The from end is still preferred, so nothing changes for a branch
+// whose from-bus states a voltage — which is every branch in a model that
+// states one for every bus. The to end is consulted only when the from end is
+// silent, and even then it wins over the base: a bus at the branch's own far
+// end is a real per-element fact about this branch, where the base is one
+// number for a network that may span several voltage classes. A 138 kV line
+// converted at a 345 kV base is rated 2.5 times too high, and the contingency
+// screen and the cascade then run correct arithmetic on that — the base stays
+// the fallback of last resort, not the default.
 //
-// The FROM end rather than the to end, an average, or the higher of the two.
-// A transformer's ends are at different voltages and no single number is right
-// for both, so the rule has to be stated rather than derived — and it has to
-// be deterministic, because two runs of one pinned scenario must produce
-// byte-identical requests. In practice every branch that reaches this point is
-// a line whose ends are at one voltage: a transformer carries no route with
-// spans, so weakestSpan returns outcomeUnlocated for it and no override is
-// ever emitted. The rule matters for the case where that stops being true.
+// In practice every branch that reaches this point is a line whose ends are
+// at one voltage: a transformer carries no route with spans, so weakestSpan
+// returns outcomeUnlocated for it and no override is ever emitted. The rule
+// matters for the case where that stops being true, and it has to be
+// deterministic either way, because two runs of one pinned scenario must
+// produce byte-identical requests.
 //
-// A from-bus index outside the model's bus list falls back too, rather than
-// failing. It is a broken model and the solver will say so about the model;
-// this function's job is to pick a voltage, and inventing an error here would
-// mean a rating step that fails for a reason the rating step cannot fix.
+// This is the same stated-end-first rule apps/bsctl/hazard.go's
+// statedEndFirst applies when assuming a conductor for the same branch, and
+// the two have to agree: a conductor assumed for one voltage class and then
+// rated at another is exactly the 2.5×-too-high error above, arrived at with
+// correct arithmetic on the wrong input at each end of the pipeline
+// separately.
+//
+// A from-bus or to-bus index outside the model's bus list is read as that end
+// stating nothing, rather than failing. It is a broken model and the solver
+// will say so about the model; this function's job is to pick a voltage, and
+// inventing an error here would mean a rating step that fails for a reason
+// the rating step cannot fix.
 func branchVolts(
 	model *solverv1.NetworkModel, branch *solverv1.Branch, base float64,
 ) (float64, bool) {
 	buses := model.GetBuses()
 
+	// The same predicate the canonical model applies on the way out, not a
+	// second spelling of it: absent is nil on the wire and reads as zero
+	// through the getter, and zero, negative and infinite all mean a bus
+	// that states nothing rather than one that sits at nothing. Converting
+	// against any of them emits a rating of zero or one that cannot be
+	// encoded, and a zero rating is read everywhere as unrated.
 	if from := int(branch.GetFromBus()); from >= 0 && from < len(buses) {
-		// The same predicate the canonical model applies on the way out, not a
-		// second spelling of it: absent is nil on the wire and reads as zero
-		// through the getter, and zero, negative and infinite all mean a bus
-		// that states nothing rather than one that sits at nothing.
-		// Converting against any of them emits a rating of zero or one that
-		// cannot be encoded, and a zero rating is read everywhere as unrated.
 		if volts, stated := canonical.StatedNominalV(buses[from].GetVNominalV()); stated {
+			return volts, false
+		}
+	}
+
+	if to := int(branch.GetToBus()); to >= 0 && to < len(buses) {
+		if volts, stated := canonical.StatedNominalV(buses[to].GetVNominalV()); stated {
 			return volts, false
 		}
 	}
