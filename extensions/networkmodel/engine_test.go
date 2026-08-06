@@ -85,6 +85,28 @@ func caseWithTwoBranches(name string) networkmodel.ImportRequest {
 	return networkmodel.ImportRequest{Source: []byte(threeBusTwoBranches), Name: name}
 }
 
+// mixedVoltageCase gives each of its three buses a different stated
+// voltage — bus-1 at 345 kV, bus-2 at 138 kV, and bus-3 at 0 (states none) —
+// which threeBusTwoBranches cannot do, since every bus there sits at 138 kV.
+// Column 10 is baseKV; the rest of the layout matches threeBusTwoBranches
+// exactly.
+const mixedVoltageCase = `
+mpc.version = '2';
+mpc.baseMVA = 100;
+mpc.bus = [
+	1	3	0	0	0	0	1	1.06	0	345	1	1.06	0.94;
+	2	1	50	20	0	0	1	1.00	0	138	1	1.06	0.94;
+	3	1	30	10	0	0	1	1.00	0	0	1	1.06	0.94;
+];
+mpc.gen = [
+	1	80	0	100	-100	1.06	100	1	200	0;
+];
+mpc.branch = [
+	1	2	0.01	0.1	0.02	200	0	0	0	0	1;
+	2	3	0.01	0.1	0.02	200	0	0	0	0	1;
+];
+`
+
 // A real recorder over its in-memory store, not a fake. The chain this engine
 // writes has to be readable afterwards, and a fake that accepted anything
 // would let a malformed record through.
@@ -441,5 +463,77 @@ func TestReimportingAPartiallyBranchlessModelRepairsIt(t *testing.T) {
 	if len(repaired) != second.Model.BranchCount {
 		t.Fatalf("partially branch-less model was not repaired: got %d branches, model says %d",
 			len(repaired), second.Model.BranchCount)
+	}
+}
+
+// The projection has to carry the voltage each bus stated, not the model
+// base. A mixed-voltage case is the whole reason the field exists.
+func TestImportProjectsEachBusWithItsOwnVoltage(t *testing.T) {
+	t.Parallel()
+
+	engine, memStore := engineWithStore(t)
+
+	result, err := engine.Import(t.Context(), networkmodel.ImportRequest{
+		Source: []byte(mixedVoltageCase),
+		Name:   "mixed",
+	})
+	if err != nil {
+		t.Fatalf("importing: %v", err)
+	}
+
+	buses, err := memStore.Buses().ForModel(t.Context(), result.Model.ID)
+	if err != nil {
+		t.Fatalf("reading buses: %v", err)
+	}
+
+	if len(buses) != result.Model.BusCount {
+		t.Fatalf("projected %d buses, want %d", len(buses), result.Model.BusCount)
+	}
+
+	got, err := memStore.Buses().ByOrdinal(t.Context(), result.Model.ID, "bus-2")
+	if err != nil {
+		t.Fatalf("reading bus-2: %v", err)
+	}
+
+	if got.VNominalV != 138000 {
+		t.Fatalf("bus-2 projected at %v volts, want 138000", got.VNominalV)
+	}
+}
+
+// A model whose branches landed and whose buses did not is exactly the state
+// an interrupted import leaves, and the state every model imported before
+// this migration is in. Re-import must fix it rather than take the
+// already-present path and leave it broken forever.
+func TestReimportRepairsAModelThatHasBranchesButNoBuses(t *testing.T) {
+	t.Parallel()
+
+	engine, memStore := engineWithStore(t)
+
+	first, err := engine.Import(t.Context(), networkmodel.ImportRequest{
+		Source: []byte(mixedVoltageCase), Name: "mixed",
+	})
+	if err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+
+	// Wind the store back to the pre-migration state: branches present, buses
+	// absent.
+	if err := memStore.Buses().PutAll(t.Context(), first.Model.ID, nil); err != nil {
+		t.Fatalf("clearing buses: %v", err)
+	}
+
+	if _, err := engine.Import(t.Context(), networkmodel.ImportRequest{
+		Source: []byte(mixedVoltageCase), Name: "mixed",
+	}); err != nil {
+		t.Fatalf("re-import: %v", err)
+	}
+
+	buses, err := memStore.Buses().ForModel(t.Context(), first.Model.ID)
+	if err != nil {
+		t.Fatalf("reading buses: %v", err)
+	}
+
+	if len(buses) != first.Model.BusCount {
+		t.Fatalf("after repair there are %d buses, want %d", len(buses), first.Model.BusCount)
 	}
 }

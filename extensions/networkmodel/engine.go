@@ -143,15 +143,15 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (ImportResult, er
 			existing = repaired
 		}
 
-		// Same repair, for the same reason, for a model whose branch write
-		// never landed: an interrupted first import that created the model
-		// row and failed on Branches().PutAll, or a model built before this
-		// write existed at all. Re-deriving the rows from the bytes that
-		// hashed to this model cannot produce a different network, and
-		// leaving it unrepaired would mean a re-import of the exact same
-		// file returns AlreadyPresent forever without ever fixing the model
-		// it points at.
-		if err := e.repairBranches(ctx, existing, parsed); err != nil {
+		// Same repair, for the same reason, for a model whose branch or bus
+		// write never landed: an interrupted first import that created the
+		// model row and failed on Branches().PutAll or Buses().PutAll, or a
+		// model built before those writes existed at all. Re-deriving the
+		// rows from the bytes that hashed to this model cannot produce a
+		// different network, and leaving it unrepaired would mean a
+		// re-import of the exact same file returns AlreadyPresent forever
+		// without ever fixing the model it points at.
+		if err := e.repairIdentity(ctx, existing, parsed); err != nil {
 			return ImportResult{}, err
 		}
 
@@ -212,6 +212,16 @@ func (e *Engine) Import(ctx context.Context, in ImportRequest) (ImportResult, er
 			"networkmodel: recording the branches of %s: %w", stored.ID, err)
 	}
 
+	// Buses after branches, under the same non-transactional reasoning: an
+	// interrupted import leaves a model with some identity rows and not
+	// others, and the next import of these same bytes takes the
+	// AlreadyPresent path, which calls repairIdentity and writes what is
+	// missing.
+	if err := e.store.Buses().PutAll(ctx, stored.ID, busRows(stored.ID, parsed)); err != nil {
+		return ImportResult{}, fmt.Errorf(
+			"networkmodel: recording the buses of %s: %w", stored.ID, err)
+	}
+
 	e.emit(ctx, stored)
 
 	return ImportResult{
@@ -247,54 +257,107 @@ func branchRows(modelID id.ID, parsed matpower.Case) []model.Branch {
 	return out
 }
 
-// repairBranches writes a model's branches when a prior import recorded the
-// model row but never recorded them.
+// busRows turns a parsed case's canonical buses into the rows an import
+// records against one stored model.
+//
+// Shared by the fresh-import path and repairIdentity, so a bus minted during
+// a repair is built exactly the same way as one minted during the original
+// import — same ordinal source, same voltage.
+func busRows(modelID id.ID, parsed matpower.Case) []model.Bus {
+	out := make([]model.Bus, 0, len(parsed.Model.Buses))
+
+	for _, canonicalBus := range parsed.Model.Buses {
+		out = append(out, model.Bus{
+			ID:      nmid.NewBus(),
+			ModelID: modelID,
+			// Exactly the identifier the encoder writes and Branch.FromBus
+			// holds. Minting a separate numbering here would produce rows
+			// nothing could look up.
+			Ordinal: canonicalBus.ID,
+			// Copied, not converted. Volts on both sides.
+			VNominalV: canonicalBus.VNominalV,
+		})
+	}
+
+	return out
+}
+
+// repairIdentity writes a model's branches and buses when a prior import
+// recorded the model row but never recorded one or both.
 //
 // Follows restore's example for the analogous BlobRef gap: the bytes are
 // identical by definition — FindByHash matched on content hash — so
 // re-deriving the rows from this parse cannot describe a different network.
-// A model whose BranchCount says it has branches but whose branch store has
+// A model whose BranchCount or BusCount says it has rows but whose store has
 // none is exactly as unusable as one with no stored encoding, and left
 // unrepaired it would keep returning AlreadyPresent forever with no route
 // back to a working state.
 //
-// A model whose BranchCount is genuinely zero — a case with no mpc.branch
-// rows — is not touched: that model is not broken, it correctly has nothing
-// to record.
+// The two halves are checked independently, not one after the other with a
+// shared early return: a model can have complete branches and zero buses —
+// that is the state every model already in a database is in the moment this
+// change ships, since bus rows only start being written by it — and an
+// early return taken by the branch half must not skip the bus half.
 //
-// Compared against BranchCount, not against "any rows at all": PutAll is not
-// transactional with the write that recorded BranchCount (see its own
-// comment), so an interrupted import can leave some rows landed and some
-// not. len(got) > 0 would read that partial state as already repaired and
-// leave it that way forever — the exact state this function exists to fix,
-// not a rarer cousin of the fully-empty case.
+// A model whose BranchCount, or whose BusCount, is genuinely zero is not
+// touched on that half: a case with no mpc.branch rows, or the (nonexistent
+// in practice) case with no mpc.bus rows, is not broken, it correctly has
+// nothing to record there.
+//
+// Compared against BranchCount and BusCount, not against "any rows at all":
+// PutAll is not transactional with the write that recorded those counts (see
+// its own comment), so an interrupted import can leave some rows landed and
+// some not. len(got) > 0 would read that partial state as already repaired
+// and leave it that way forever — the exact state this function exists to
+// fix, not a rarer cousin of the fully-empty case.
 //
 // # Errors
 //
-// Returns an error when the existing rows cannot be read or the repair
-// cannot be written. Both leave the model exactly as it was — missing some
-// or all of its branches — rather than claiming a repair that did not
+// Returns an error when the existing rows cannot be read or a repair cannot
+// be written. Both leave the model exactly as it was — missing some or all
+// of its branches or buses — rather than claiming a repair that did not
 // happen.
-func (e *Engine) repairBranches(
+func (e *Engine) repairIdentity(
 	ctx context.Context, existing model.NetworkModel, parsed matpower.Case,
 ) error {
-	if existing.BranchCount == 0 {
-		return nil
+	if existing.BranchCount > 0 {
+		got, err := e.store.Branches().ForModel(ctx, existing.ID)
+		if err != nil {
+			return fmt.Errorf(
+				"networkmodel: checking %s for recorded branches: %w", existing.ID, err)
+		}
+
+		if len(got) < existing.BranchCount {
+			if err := e.store.Branches().PutAll(ctx, existing.ID, branchRows(existing.ID, parsed)); err != nil {
+				return fmt.Errorf(
+					"networkmodel: repairing the branches of %s: %w", existing.ID, err)
+			}
+		}
 	}
 
-	got, err := e.store.Branches().ForModel(ctx, existing.ID)
-	if err != nil {
-		return fmt.Errorf(
-			"networkmodel: checking %s for recorded branches: %w", existing.ID, err)
-	}
+	// Buses, compared against BusCount for the reason branches are compared
+	// against BranchCount: PutAll is not transactional with the write that
+	// recorded the count, so an interrupted import can leave some rows landed
+	// and some not, and "any rows at all" would read that partial state as
+	// already repaired and leave it that way forever.
+	//
+	// A model whose BusCount is genuinely zero is not touched. There is no
+	// such MATPOWER case, but the branch half makes the same allowance and an
+	// asymmetry here would be a puzzle for the next reader rather than a
+	// safeguard.
+	if existing.BusCount > 0 {
+		heldBuses, err := e.store.Buses().ForModel(ctx, existing.ID)
+		if err != nil {
+			return fmt.Errorf(
+				"networkmodel: checking %s for recorded buses: %w", existing.ID, err)
+		}
 
-	if len(got) >= existing.BranchCount {
-		return nil
-	}
-
-	if err := e.store.Branches().PutAll(ctx, existing.ID, branchRows(existing.ID, parsed)); err != nil {
-		return fmt.Errorf(
-			"networkmodel: repairing the branches of %s: %w", existing.ID, err)
+		if len(heldBuses) < existing.BusCount {
+			if err := e.store.Buses().PutAll(ctx, existing.ID, busRows(existing.ID, parsed)); err != nil {
+				return fmt.Errorf(
+					"networkmodel: repairing the buses of %s: %w", existing.ID, err)
+			}
+		}
 	}
 
 	return nil
