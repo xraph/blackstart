@@ -14,6 +14,13 @@ type Candidate struct {
 
 	// VoltageKV is what the carrier's own source recorded. Zero means the
 	// source did not say, which is a skip rather than a default.
+	//
+	// The caller must already have reduced this through canonical.StatedNominalV
+	// (or the equivalent conversion for a non-bus source) before filling the
+	// struct: zero is the only value PlanAssumptions reads as "unstated", so an
+	// unreduced value — a raw circuit field with no validation behind it, say —
+	// that happens to be negative or infinite would read as stated and produce
+	// a wrong plan.
 	VoltageKV float64
 
 	// FarEndVoltageKV is the other end's voltage, for a carrier that has two
@@ -25,6 +32,13 @@ type Candidate struct {
 	// must not be the one that decides, or the single rule stopping this
 	// command inventing conductors for transformers would be the only rule not
 	// covered by the pure function.
+	//
+	// Same precondition as VoltageKV: already reduced through
+	// canonical.StatedNominalV, zero and only zero meaning "unstated". This is
+	// the one definition of "states a voltage" this project keeps —
+	// PlanAssumptions's `> 0` transformer check is a second spelling of it, not
+	// an independent rule, and it is only safe because every filler of this
+	// struct reduces through the same function first.
 	FarEndVoltageKV float64
 
 	// Assigned marks a carrier that already has an assignment.
