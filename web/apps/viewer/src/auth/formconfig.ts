@@ -128,8 +128,7 @@ export async function signupForm(signal?: AbortSignal): Promise<SignupForm> {
   if (payload.ok !== true) return INACTIVE;
 
   const data = payload.data as
-    | { active?: boolean; title?: string; description?: string; fields?: unknown }
-    | undefined;
+    { active?: boolean; title?: string; description?: string; fields?: unknown } | undefined;
 
   if (data?.active !== true) return INACTIVE;
 

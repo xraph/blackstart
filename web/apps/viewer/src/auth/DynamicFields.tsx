@@ -165,11 +165,7 @@ function Control({
     return (
       <>
         {label}
-        <select
-          {...shared}
-          value={value}
-          onChange={(e) => onChange(field.key, e.target.value)}
-        >
+        <select {...shared} value={value} onChange={(e) => onChange(field.key, e.target.value)}>
           {/* Present even when the field is required: a select that opens
               already showing the first option collects an answer nobody
               chose. */}

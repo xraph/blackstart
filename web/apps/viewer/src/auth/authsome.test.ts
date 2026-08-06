@@ -86,10 +86,7 @@ describe("identity", () => {
   it("registers with the operator's name under the platform's own keys", async () => {
     const fetchMock = stubFetch(201, AUTH_BODY);
 
-    await signUp(
-      { email: "new@test", password: "pw", firstName: "Rex", lastName: "Raphael" },
-      PK,
-    );
+    await signUp({ email: "new@test", password: "pw", firstName: "Rex", lastName: "Raphael" }, PK);
 
     const [, init] = callOf(fetchMock);
     const body = JSON.parse((init as RequestInit).body as string) as Record<string, string>;

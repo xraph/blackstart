@@ -170,9 +170,7 @@ async function authenticate(
   // own object, and a declared field whose key happened to be "password"
   // would otherwise overwrite the credential on its way out.
   const sent =
-    metadata === undefined || Object.keys(metadata).length === 0
-      ? body
-      : { ...body, metadata };
+    metadata === undefined || Object.keys(metadata).length === 0 ? body : { ...body, metadata };
 
   const response = await fetch(`${IDENTITY}${path}`, {
     method: "POST",

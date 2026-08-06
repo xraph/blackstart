@@ -158,16 +158,16 @@ export function LoginScreen(): React.JSX.Element {
           </div>
           <h1 className="mt-1 text-[15px] font-semibold tracking-[-0.018em] text-fg">
             {registering
-              ? (declared?.title !== undefined && declared.title !== ""
-                  ? declared.title
-                  : "Register an operator")
+              ? declared?.title !== undefined && declared.title !== ""
+                ? declared.title
+                : "Register an operator"
               : "Sign in"}
           </h1>
           <p className="mt-1 text-[11px] leading-relaxed text-fg-3">
             {registering
-              ? (declared?.description !== undefined && declared.description !== ""
-                  ? declared.description
-                  : "Your name is attributed to the runs and decisions you record.")
+              ? declared?.description !== undefined && declared.description !== ""
+                ? declared.description
+                : "Your name is attributed to the runs and decisions you record."
               : "Weather-driven outage risk for the transmission network."}
           </p>
 
