@@ -110,6 +110,53 @@ func (s *buses) PutAll(ctx context.Context, modelID id.ID, in []model.Bus) error
 	return nil
 }
 
+// AddMissing inserts only the buses whose ordinal the model does not already
+// have, matching branches.AddMissing: the existing rows are read first,
+// scoped by tenant, and their ordinals filter the incoming set client-side —
+// so an ordinal already stored is never handed to Create, which is what
+// keeps this from ever attempting the insert migration 0004's unique index
+// on (tenant_id, model_id, ordinal) would reject.
+func (s *buses) AddMissing(ctx context.Context, modelID id.ID, in []model.Bus) (int, error) {
+	for _, bus := range in {
+		if err := bus.Validate(); err != nil {
+			return 0, err
+		}
+
+		if bus.ModelID != modelID {
+			return 0, fmt.Errorf(
+				"%w: bus %s says it belongs to model %s, not %s",
+				bserr.ErrInvalid, bus.ID, bus.ModelID, modelID)
+		}
+	}
+
+	existing, err := s.rowsForModel(ctx, modelID)
+	if err != nil {
+		return 0, err
+	}
+
+	held := make(map[string]struct{}, len(existing))
+	for _, row := range existing {
+		held[row.Ordinal] = struct{}{}
+	}
+
+	inserted := 0
+
+	for _, bus := range in {
+		if _, already := held[bus.Ordinal]; already {
+			continue
+		}
+
+		if err := s.base.Create(ctx, BusEntity, bus.ID, busToRow(bus)); err != nil {
+			return inserted, err
+		}
+
+		held[bus.Ordinal] = struct{}{}
+		inserted++
+	}
+
+	return inserted, nil
+}
+
 // ForModel returns a model's buses in ordinal order.
 func (s *buses) ForModel(ctx context.Context, modelID id.ID) ([]model.Bus, error) {
 	rows, err := s.rowsForModel(ctx, modelID)

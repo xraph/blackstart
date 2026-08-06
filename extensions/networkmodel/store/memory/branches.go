@@ -43,6 +43,50 @@ func (s *branches) PutAll(_ context.Context, modelID id.ID, in []model.Branch) e
 	return nil
 }
 
+// AddMissing inserts only the branches whose ordinal the model does not
+// already have.
+//
+// Existing rows are left untouched, in place, rather than deleted and
+// rewritten alongside the new ones — PutAll's approach is wrong here
+// specifically because rewriting a row that survives means minting it a new
+// identifier, which is the one thing a repair must not do to a branch that
+// already resolves.
+func (s *branches) AddMissing(_ context.Context, modelID id.ID, in []model.Branch) (int, error) {
+	for _, branch := range in {
+		if err := branch.Validate(); err != nil {
+			return 0, err
+		}
+
+		if branch.ModelID != modelID {
+			return 0, fmt.Errorf(
+				"%w: branch %s says it belongs to model %s, not %s",
+				bserr.ErrInvalid, branch.ID, branch.ModelID, modelID)
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	held := make(map[string]struct{}, len(s.branches[modelID]))
+	for _, branch := range s.branches[modelID] {
+		held[branch.Ordinal] = struct{}{}
+	}
+
+	inserted := 0
+
+	for _, branch := range in {
+		if _, already := held[branch.Ordinal]; already {
+			continue
+		}
+
+		s.branches[modelID] = append(s.branches[modelID], branch)
+		held[branch.Ordinal] = struct{}{}
+		inserted++
+	}
+
+	return inserted, nil
+}
+
 func (s *branches) ForModel(_ context.Context, modelID id.ID) ([]model.Branch, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

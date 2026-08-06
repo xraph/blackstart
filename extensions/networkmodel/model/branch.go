@@ -97,6 +97,24 @@ type BranchStore interface {
 	// exist" rather than as an interrupted write.
 	PutAll(ctx context.Context, modelID id.ID, in []Branch) error
 
+	// AddMissing inserts only the branches whose ordinal the model does not
+	// already have, and returns how many it inserted.
+	//
+	// The operation a repair needs, and PutAll cannot safely be: PutAll
+	// deletes every existing row before writing the fresh set, and in cannot
+	// be trusted to hand back the identifiers that were already stored — it
+	// is built the same way a fresh import builds it, minting a new
+	// identifier for every ordinal. Calling PutAll to fix a model that is
+	// merely short some rows would re-mint the ones it already had, and a
+	// branch identifier is referenced from outside this package — a geo
+	// route's CarrierID, a hazard conductor assignment — so replacing one
+	// that already resolves orphans everything that pointed at it, silently:
+	// the rows still exist, but nothing about them says they are the same
+	// conductor a decision was recorded against. AddMissing leaves an
+	// ordinal that already has a row exactly as it is and inserts only the
+	// ordinals that do not.
+	AddMissing(ctx context.Context, modelID id.ID, in []Branch) (int, error)
+
 	// ForModel returns a model's branches in ordinal order.
 	ForModel(ctx context.Context, modelID id.ID) ([]Branch, error)
 

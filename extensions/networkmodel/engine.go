@@ -311,6 +311,24 @@ func busRows(modelID id.ID, parsed matpower.Case) []model.Bus {
 // and leave it that way forever — the exact state this function exists to
 // fix, not a rarer cousin of the fully-empty case.
 //
+// The repair itself adds rows through AddMissing rather than replacing them
+// through PutAll — which is a distinction that only matters here, because
+// repairIdentity is the one caller for whom "short some rows" can mean rows
+// already exist. PutAll deletes every row for the model before writing the
+// set it is handed, and branchRows/busRows mint a fresh identifier for every
+// row on every call, the same way they do for a brand-new import. Call PutAll
+// here and a model that is short one branch out of two would not gain the
+// missing one — it would lose the one it already had, get two new rows in
+// its place, and hand the branch identifier a route or a hazard conductor
+// assignment already resolved to nothing that resolves it any more. The rows
+// still exist afterward; nothing has moved or been deleted from the model's
+// perspective. But the identifier is gone, silently, and everything that
+// named the old one is now naming a branch that does not exist. AddMissing
+// is what the fully-empty and fully-complete cases at the top of this
+// comment cannot distinguish from PutAll on their own: they have no existing
+// identifier to lose, so a test built only from them would not catch this.
+// The partial case is the one that would.
+//
 // # Errors
 //
 // Returns an error when the existing rows cannot be read or a repair cannot
@@ -328,7 +346,7 @@ func (e *Engine) repairIdentity(
 		}
 
 		if len(got) < existing.BranchCount {
-			if err := e.store.Branches().PutAll(ctx, existing.ID, branchRows(existing.ID, parsed)); err != nil {
+			if _, err := e.store.Branches().AddMissing(ctx, existing.ID, branchRows(existing.ID, parsed)); err != nil {
 				return fmt.Errorf(
 					"networkmodel: repairing the branches of %s: %w", existing.ID, err)
 			}
@@ -353,7 +371,7 @@ func (e *Engine) repairIdentity(
 		}
 
 		if len(heldBuses) < existing.BusCount {
-			if err := e.store.Buses().PutAll(ctx, existing.ID, busRows(existing.ID, parsed)); err != nil {
+			if _, err := e.store.Buses().AddMissing(ctx, existing.ID, busRows(existing.ID, parsed)); err != nil {
 				return fmt.Errorf(
 					"networkmodel: repairing the buses of %s: %w", existing.ID, err)
 			}

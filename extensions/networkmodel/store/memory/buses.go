@@ -39,6 +39,46 @@ func (s *buses) PutAll(_ context.Context, modelID id.ID, in []model.Bus) error {
 	return nil
 }
 
+// AddMissing inserts only the buses whose ordinal the model does not already
+// have, matching branches.AddMissing's reasoning: an existing row keeps the
+// identifier it was written with rather than being deleted and re-minted
+// alongside whatever else a repair is inserting.
+func (s *buses) AddMissing(_ context.Context, modelID id.ID, in []model.Bus) (int, error) {
+	for _, bus := range in {
+		if err := bus.Validate(); err != nil {
+			return 0, err
+		}
+
+		if bus.ModelID != modelID {
+			return 0, fmt.Errorf(
+				"%w: bus %s says it belongs to model %s, not %s",
+				bserr.ErrInvalid, bus.ID, bus.ModelID, modelID)
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	held := make(map[string]struct{}, len(s.buses[modelID]))
+	for _, bus := range s.buses[modelID] {
+		held[bus.Ordinal] = struct{}{}
+	}
+
+	inserted := 0
+
+	for _, bus := range in {
+		if _, already := held[bus.Ordinal]; already {
+			continue
+		}
+
+		s.buses[modelID] = append(s.buses[modelID], bus)
+		held[bus.Ordinal] = struct{}{}
+		inserted++
+	}
+
+	return inserted, nil
+}
+
 func (s *buses) ForModel(_ context.Context, modelID id.ID) ([]model.Bus, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

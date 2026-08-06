@@ -91,6 +91,21 @@ type BusStore interface {
 	// bus does not exist" rather than as an interrupted write.
 	PutAll(ctx context.Context, modelID id.ID, in []Bus) error
 
+	// AddMissing inserts only the buses whose ordinal the model does not
+	// already have, and returns how many it inserted.
+	//
+	// BranchStore.AddMissing's reason, applied to buses: a repair that went
+	// through PutAll would delete every existing row first, and in mints a
+	// fresh identifier for every ordinal the same way a fresh import does —
+	// so a bus that already had a row would silently get a new one. Nothing
+	// outside this package resolves a bus by its row ID today the way a route
+	// resolves a branch, but the two stores share one repair path in
+	// repairIdentity, and a store whose identity contract only holds for
+	// branches is one waiting to be relied on for buses too. AddMissing
+	// leaves an ordinal that already has a row exactly as it is and inserts
+	// only the ordinals that do not.
+	AddMissing(ctx context.Context, modelID id.ID, in []Bus) (int, error)
+
 	// ForModel returns a model's buses in ordinal order.
 	ForModel(ctx context.Context, modelID id.ID) ([]Bus, error)
 

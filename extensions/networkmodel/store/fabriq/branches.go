@@ -122,6 +122,57 @@ func (s *branches) PutAll(ctx context.Context, modelID id.ID, in []model.Branch)
 	return nil
 }
 
+// AddMissing inserts only the branches whose ordinal the model does not
+// already have.
+//
+// Read-then-create, not upsert: the existing rows are read first — scoped by
+// tenant like every other query in this file — and their ordinals are what
+// filters the incoming set, so an ordinal already stored is never handed to
+// Create at all. That matters beyond tidiness: migration 0003's unique index
+// on (tenant_id, model_id, ordinal) would reject a second insert for an
+// ordinal that already exists, and filtering client-side means AddMissing
+// never attempts one, rather than attempting and tolerating the conflict.
+func (s *branches) AddMissing(ctx context.Context, modelID id.ID, in []model.Branch) (int, error) {
+	for _, branch := range in {
+		if err := branch.Validate(); err != nil {
+			return 0, err
+		}
+
+		if branch.ModelID != modelID {
+			return 0, fmt.Errorf(
+				"%w: branch %s says it belongs to model %s, not %s",
+				bserr.ErrInvalid, branch.ID, branch.ModelID, modelID)
+		}
+	}
+
+	existing, err := s.rowsForModel(ctx, modelID)
+	if err != nil {
+		return 0, err
+	}
+
+	held := make(map[string]struct{}, len(existing))
+	for _, row := range existing {
+		held[row.Ordinal] = struct{}{}
+	}
+
+	inserted := 0
+
+	for _, branch := range in {
+		if _, already := held[branch.Ordinal]; already {
+			continue
+		}
+
+		if err := s.base.Create(ctx, BranchEntity, branch.ID, branchToRow(branch)); err != nil {
+			return inserted, err
+		}
+
+		held[branch.Ordinal] = struct{}{}
+		inserted++
+	}
+
+	return inserted, nil
+}
+
 // ForModel returns a model's branches in ordinal order.
 func (s *branches) ForModel(ctx context.Context, modelID id.ID) ([]model.Branch, error) {
 	rows, err := s.rowsForModel(ctx, modelID)
