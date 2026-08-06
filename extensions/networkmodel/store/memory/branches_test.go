@@ -11,6 +11,52 @@ import (
 	"github.com/xraph/blackstart/pkg/id"
 )
 
+// The lookup a route makes. A route names its carrier and nothing else, so
+// without this there is no path from a br_ identifier to the model whose
+// buses state the voltage it runs at.
+func TestGetFindsABranchByItsIdentifier(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+	modelID := nmid.NewModel()
+
+	want := model.Branch{
+		ID:      nmid.NewBranch(),
+		ModelID: modelID,
+		Ordinal: "branch-0",
+		FromBus: "bus-1",
+		ToBus:   "bus-2",
+	}
+
+	if err := s.Branches().PutAll(t.Context(), modelID, []model.Branch{want}); err != nil {
+		t.Fatalf("writing branches: %v", err)
+	}
+
+	got, err := s.Branches().Get(t.Context(), want.ID)
+	if err != nil {
+		t.Fatalf("reading %s: %v", want.ID, err)
+	}
+
+	if got.ModelID != modelID {
+		t.Fatalf("branch came back under model %s, want %s", got.ModelID, modelID)
+	}
+
+	if got.FromBus != "bus-1" {
+		t.Fatalf("branch came back from %s, want bus-1", got.FromBus)
+	}
+}
+
+func TestGetReportsAMissingBranch(t *testing.T) {
+	t.Parallel()
+
+	s := memory.New()
+
+	_, err := s.Branches().Get(t.Context(), nmid.NewBranch())
+	if !errors.Is(err, bserr.ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}
+
 func branches(modelID id.ID, ordinals ...string) []model.Branch {
 	out := make([]model.Branch, 0, len(ordinals))
 

@@ -100,6 +100,15 @@ type BranchStore interface {
 	// ForModel returns a model's branches in ordinal order.
 	ForModel(ctx context.Context, modelID id.ID) ([]Branch, error)
 
+	// Get finds one branch by its identifier.
+	//
+	// The lookup a route makes. A geo route names its carrier and nothing
+	// else, so this is the only path from a br_ identifier to the model whose
+	// buses state the voltage that branch runs at. Returns bserr.ErrNotFound
+	// when no such branch is stored, which for a route means the model it
+	// belonged to is gone — worth reporting rather than treating as empty.
+	Get(ctx context.Context, branchID id.ID) (Branch, error)
+
 	// ByOrdinal finds one branch by the name the solver uses for it.
 	//
 	// The lookup a cascade event makes. Returns bserr.ErrNotFound when the

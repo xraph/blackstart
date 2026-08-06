@@ -56,6 +56,25 @@ func (s *branches) ForModel(_ context.Context, modelID id.ID) ([]model.Branch, e
 	return out, nil
 }
 
+func (s *branches) Get(_ context.Context, branchID id.ID) (model.Branch, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Scanned rather than indexed. This store exists to back tests and holds
+	// one case at a time; a second map keyed by branch would be a second thing
+	// PutAll has to keep consistent, for no gain at this size.
+	for _, held := range s.branches {
+		for _, branch := range held {
+			if branch.ID == branchID {
+				return branch, nil
+			}
+		}
+	}
+
+	return model.Branch{}, fmt.Errorf(
+		"%w: no branch %s", bserr.ErrNotFound, branchID)
+}
+
 func (s *branches) ByOrdinal(
 	_ context.Context, modelID id.ID, ordinal string,
 ) (model.Branch, error) {

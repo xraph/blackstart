@@ -150,6 +150,25 @@ func (s *branches) ForModel(ctx context.Context, modelID id.ID) ([]model.Branch,
 	return out, nil
 }
 
+// Get finds one branch by its identifier.
+func (s *branches) Get(ctx context.Context, branchID id.ID) (model.Branch, error) {
+	var rows []branchRow
+
+	if err := s.base.Query(ctx, &rows,
+		`SELECT * FROM `+BranchTable+`
+		 WHERE tenant_id = current_setting('app.tenant_id', true)
+		   AND id = $1`, branchID.String()); err != nil {
+		return model.Branch{}, err
+	}
+
+	if len(rows) == 0 {
+		return model.Branch{}, fmt.Errorf(
+			"%w: no branch %s", bserr.ErrNotFound, branchID)
+	}
+
+	return rows[0].toDomain()
+}
+
 // ByOrdinal finds one branch by the name the solver uses for it.
 func (s *branches) ByOrdinal(
 	ctx context.Context, modelID id.ID, ordinal string,
