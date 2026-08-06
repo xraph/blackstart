@@ -37,6 +37,7 @@ export * from "./instrument/provenance";
 export * from "./shell/app-shell";
 export * from "./shell/theme";
 export * from "./shell/account";
+export * from "./shell/clock";
 export * from "./shell/time-axis";
 export * from "./shell/responsive";
 

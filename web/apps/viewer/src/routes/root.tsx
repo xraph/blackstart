@@ -7,8 +7,10 @@
  */
 
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { KnowledgeTime } from "@blackstart/schema";
 import {
   AccountMenu,
+  Clock,
   NavRail,
   TabBar,
   ThemeToggle,
@@ -120,6 +122,14 @@ function RootLayout(): React.JSX.Element {
   const { session, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
 
+  /* Read loosely and validated here rather than taken from a route's typed
+   * search: the root outlives every screen, and the runs index does not carry
+   * a knowledge time at all. An unparseable one is treated as absent, which
+   * is the live case — the screen below will reject it on its own terms. */
+  const known = useRouterState({
+    select: (s) => KnowledgeTime.safeParse((s.location.search as { known?: unknown }).known),
+  });
+
   /* Navigating without search drops the current params, which would lose the
    * valid time. The console and cascade screens share a schema, so carrying
    * them across is correct; the runs screen validates its own and ignores
@@ -135,7 +145,7 @@ function RootLayout(): React.JSX.Element {
           { label: "scenario", value: "TX-2026-0802-DERECHO", menu: true },
           { label: "case", value: "ACTIVSg2000", menu: true },
         ]}
-        clock="18:14:07 Z"
+        clock={<Clock {...(known.success ? { knownAt: known.data } : {})} />}
         aside={<ThemeToggle theme={theme} onChange={setTheme} />}
         account={
           <AccountMenu
