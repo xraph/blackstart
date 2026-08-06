@@ -3,6 +3,9 @@
  *
  * Three layers, and the boundary between them is deliberate:
  *
+ *  - `primitives` are the interactive parts with no opinion about the domain:
+ *    a popup, a listbox, a menu. They import no schema, which is exactly what
+ *    separates them from `instrument`.
  *  - `instrument` renders one measured thing. Every component here takes a
  *    schema type rather than a primitive, which is how the "no number without
  *    its unit" rule is enforced rather than remembered.
@@ -18,6 +21,9 @@
 export { cn } from "./cn";
 export { Field, Panel } from "./Panel";
 export * from "./lib/palette";
+
+export * from "./primitives/popup";
+export * from "./primitives/select";
 
 export * from "./instrument/quantity";
 export * from "./instrument/identity";
