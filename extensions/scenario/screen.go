@@ -27,7 +27,17 @@ func (e *Engine) screen(
 	}
 
 	screened, err := e.collaborator.Screener.Screen(ctx, contingency.Request{
-		Model:         model,
+		Model: model,
+		// The manifest's pinned hash, which resolve verified against the bytes
+		// it decoded — so this is not a claim, it is the hash the model on the
+		// line above actually has. contingency cannot compute it: it holds a
+		// wire model, and the canonical encoding is already gone by then.
+		//
+		// Without it the sweep records only the solver's protobuf hash, and
+		// "every sweep against the network this scenario pins" has no answer:
+		// the two are hashes over different encodings, so the string an
+		// operator reads off the manifest matches nothing.
+		CanonicalHash: m.ModelHash,
 		Contingencies: contingencies,
 		Overrides:     overrides,
 	})

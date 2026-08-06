@@ -43,6 +43,43 @@ func executing(t *testing.T, f *fakes) (scn.ScenarioRun, scnstore.Store) {
 	return executed, store
 }
 
+// The manifest's pinned hash reaches both children.
+//
+// This is the join the whole hash-vocabulary change exists to make possible.
+// A scenario navigates to its sweep and cascade by run id, so nothing was
+// broken at runtime — but an operator holding the manifest's hash could not
+// ask contingency or cascade "what else has been run against this network",
+// because those records named it only in the solver's protobuf space and the
+// manifest pins the canonical one.
+//
+// The assertion is on the REQUESTS rather than on the stored runs, because the
+// fakes stand in for the two engines: what this extension is responsible for is
+// handing the hash over, and contingency's and cascade's own tests cover what
+// each does with it.
+//
+// Deleting `CanonicalHash: m.ModelHash` from screen.go fails the first half;
+// deleting it from execute.go's cascade.Request fails the second. Both were
+// run, and each fails with the empty string.
+func TestBothChildRequestsCarryTheManifestsPinnedHash(t *testing.T) {
+	t.Parallel()
+
+	f := working()
+	executed, _ := executing(t, f)
+
+	want := executed.Manifest.ModelHash
+	if want == "" {
+		t.Fatal("the fixture's manifest pins no model, so this test proves nothing")
+	}
+
+	if got := f.screener.request.CanonicalHash; got != want {
+		t.Errorf("the screen was told canonical hash %q, want the manifest's %q", got, want)
+	}
+
+	if got := f.simulator.request.CanonicalHash; got != want {
+		t.Errorf("the cascade was told canonical hash %q, want the manifest's %q", got, want)
+	}
+}
+
 // A completed run names both children and the solver that produced the
 // answer. Without both ids nothing links the manifest that was requested to
 // the numbers that came out of it.

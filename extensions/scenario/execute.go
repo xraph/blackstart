@@ -91,8 +91,13 @@ func (e *Engine) Execute(ctx context.Context, in scn.ScenarioRun) (scn.ScenarioR
 	// The same overrides the screen ran against, so the cascade simulates the
 	// network the ranking came from rather than the nameplate one.
 	simulated, err := e.collaborator.Simulator.Simulate(ctx, cascade.Request{
-		Model:     resolved.model,
-		Overrides: rated.Overrides,
+		Model: resolved.model,
+		// The same verified hash the screen was given, for the same reason —
+		// and one more here: cascade.Engine.Extent resolves a run's model
+		// through networkmodel, which only knows the canonical hash. A cascade
+		// stored without it cannot have its blast radius drawn at all.
+		CanonicalHash: in.Manifest.ModelHash,
+		Overrides:     rated.Overrides,
 		// One outage, the worst the screen ranked. Everything after it is the
 		// simulator's consequence rather than a further instruction.
 		Initiating: []uint32{worst.Branch},
