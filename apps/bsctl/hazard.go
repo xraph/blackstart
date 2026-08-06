@@ -15,6 +15,9 @@ import (
 	"github.com/xraph/blackstart/extensions/hazard/conductor"
 	hid "github.com/xraph/blackstart/extensions/hazard/id"
 	hzstore "github.com/xraph/blackstart/extensions/hazard/store"
+	"github.com/xraph/blackstart/extensions/networkmodel"
+	"github.com/xraph/blackstart/extensions/networkmodel/canonical"
+	"github.com/xraph/blackstart/extensions/networkmodel/model"
 	wid "github.com/xraph/blackstart/extensions/weather/id"
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
@@ -357,15 +360,15 @@ func hazardAssumeCommand() cli.Command {
 		"assume",
 		"Assume a conductor for every carrier whose voltage is known",
 		func(ctx cli.CommandContext) error {
-			hazardEngine, geoEngine, cleanup, err := hazardAndGeo(ctx.Context())
+			hazardEngine, geoEngine, modelEngine, cleanup, err := hazardGeoAndModel(ctx.Context())
 			if err != nil {
 				return err
 			}
 
 			defer cleanup()
 
-			candidates, branches, err := assumeCandidates(
-				ctx.Context(), hazardEngine, geoEngine, ctx.Int("limit"))
+			candidates, err := assumeCandidates(
+				ctx.Context(), hazardEngine, geoEngine, modelEngine, ctx.Int("limit"))
 			if err != nil {
 				return err
 			}
@@ -387,14 +390,14 @@ func hazardAssumeCommand() cli.Command {
 
 			// Every number, every time. A command reporting only what it did is
 			// how somebody comes to believe the map is fuller than it is — and
-			// the two skip reasons are not interchangeable: no voltage is a gap
-			// in the source data, already assigned is a decision somebody made,
-			// and a branch cannot state a voltage at all because the canonical
-			// model keeps one voltage base for the whole network.
+			// the skip reasons are not interchangeable: no voltage is a gap in
+			// the source data, already assigned is a decision somebody made,
+			// and a transformer is neither — it is a carrier this command
+			// correctly refuses to string a conductor onto.
 			ctx.Printf("\nassigned          %d\n", len(plan.Assume))
 			ctx.Printf("no voltage        %d\n", len(plan.NoVoltage))
+			ctx.Printf("transformers      %d\n", len(plan.Transformers))
 			ctx.Printf("already assigned  %d\n", len(plan.AlreadyAssigned))
-			ctx.Printf("branches skipped  %d\n", branches)
 
 			return nil
 		},
@@ -406,74 +409,165 @@ func hazardAssumeCommand() cli.Command {
 	)
 }
 
-// assumeCandidates collects the carriers a pass could assign, and counts the
-// ones it cannot.
+// branchVoltagesKV converts a branch's two end voltages into the kilovolts a
+// conductor.Candidate carries.
 //
-// Branches are counted rather than offered. A branch has no voltage anywhere in
-// this platform — the canonical model keeps a single voltage base for the whole
-// network, deliberately — so there is nothing to assume from, and handing one
-// an operator-supplied default would record assumed_by_voltage against a
-// voltage that was never the element's.
+// The one conversion site: model.Bus.VNominalV is VOLTS and Candidate is
+// kilovolts, and doing this in two places is how the two drift.
+//
+// "States a voltage" is canonical.StatedNominalV and is not re-spelled here.
+// That function exists because this question had been answered three different
+// ways, and a bus holding +Inf read as stated in two of them.
+func branchVoltagesKV(from, to model.Bus) (float64, float64) {
+	return statedKV(from), statedKV(to)
+}
+
+// statedKV is one bus's voltage in kilovolts, or zero when it states none.
+//
+// Zero rather than an error: PlanAssumptions already reads zero as "the source
+// did not say", which is a skip rather than a default, and raising here would
+// abandon a pass over every other carrier for one quiet bus.
+func statedKV(bus model.Bus) float64 {
+	volts, stated := canonical.StatedNominalV(bus.VNominalV)
+	if !stated {
+		return 0
+	}
+
+	return volts / 1e3
+}
+
+// assumeCandidates collects the carriers a pass could assign.
+//
+// Both carrier kinds, uniformly. A circuit states its own voltage from the
+// source it was imported from; a branch runs at the voltage its buses sit at,
+// which the model records per bus since the canonical encoding started
+// carrying it. Neither is an operator-supplied default, which is the thing
+// this command refuses to record as assumed_by_voltage.
+//
+// A branch whose ends sit at different voltages is a transformer.
+// PlanAssumptions decides that, not this function — collecting is not
+// deciding, and the rule that stops this command inventing conductors for
+// transformers belongs with the other rules, where it is testable without a
+// store.
 func assumeCandidates(
-	ctx context.Context, hz *hazard.Engine, gx *geo.Engine, limit int,
-) ([]conductor.Candidate, int, error) {
+	ctx context.Context, hz *hazard.Engine, gx *geo.Engine, nm *networkmodel.Engine, limit int,
+) ([]conductor.Candidate, error) {
 	routes, err := gx.Routes(ctx, limit)
 	if err != nil {
-		return nil, 0, fmt.Errorf("bsctl: reading routes: %w", err)
+		return nil, fmt.Errorf("bsctl: reading routes: %w", err)
 	}
 
 	candidates := make([]conductor.Candidate, 0, len(routes))
-	branches := 0
 
 	for _, route := range routes {
-		if !gid.IsCircuit(route.CarrierID) {
-			branches++
-
-			continue
-		}
-
-		circuit, err := gx.Circuit(ctx, route.CarrierID)
-		if err != nil {
-			return nil, 0, fmt.Errorf(
-				"bsctl: reading circuit %s: %w", route.CarrierID, err)
-		}
-
 		// Absence is not an error here. ForCarrier missing is the ordinary
-		// answer for a carrier nobody has assigned, which is the whole set this
-		// command exists to shrink.
-		_, err = hz.AssignmentForCarrier(ctx, route.CarrierID)
+		// answer for a carrier nobody has assigned, which is the whole set
+		// this command exists to shrink.
+		_, err := hz.AssignmentForCarrier(ctx, route.CarrierID)
 		assigned := err == nil
 
 		if err != nil && !errors.Is(err, bserr.ErrNotFound) {
-			return nil, 0, fmt.Errorf(
+			return nil, fmt.Errorf(
 				"bsctl: reading the assignment of %s: %w", route.CarrierID, err)
 		}
 
-		candidates = append(candidates, conductor.Candidate{
-			CarrierID: route.CarrierID,
-			VoltageKV: circuit.VoltageKV,
-			Assigned:  assigned,
-		})
+		candidate := conductor.Candidate{CarrierID: route.CarrierID, Assigned: assigned}
+
+		if gid.IsCircuit(route.CarrierID) {
+			circuit, err := gx.Circuit(ctx, route.CarrierID)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"bsctl: reading circuit %s: %w", route.CarrierID, err)
+			}
+
+			candidate.VoltageKV = circuit.VoltageKV
+		} else {
+			fromKV, toKV, err := branchEndVoltages(ctx, nm, route.CarrierID)
+			if err != nil {
+				return nil, err
+			}
+
+			candidate.VoltageKV = fromKV
+			candidate.FarEndVoltageKV = toKV
+		}
+
+		candidates = append(candidates, candidate)
 	}
 
-	return candidates, branches, nil
+	return candidates, nil
 }
 
-// hazardAndGeo resolves both engines from one application.
+// branchEndVoltages reads the voltages a branch's two buses sit at, in kV.
 //
-// One application, not two. Each helper starts its own, and starting the stack
-// twice in one command opens two connection pools and runs the migration
-// orchestrator concurrently against the same database.
-func hazardAndGeo(
+// Three lookups — the branch, then each end — rather than one join, because
+// that is the shape the store offers and a pass over fourteen routes is not
+// where this platform's time goes.
+//
+// A bus row that is absent yields zero rather than an error. A model imported
+// before buses were projected has no bus rows at all, and that is a gap in the
+// record rather than a fault: it lands the branch in NoVoltage, counted, which
+// is the honest report. A model that cannot be read at all is a different
+// thing and does fail.
+func branchEndVoltages(
+	ctx context.Context, nm *networkmodel.Engine, carrier id.ID,
+) (float64, float64, error) {
+	branch, err := nm.Store().Branches().Get(ctx, carrier)
+	if err != nil {
+		if errors.Is(err, bserr.ErrNotFound) {
+			return 0, 0, nil
+		}
+
+		return 0, 0, fmt.Errorf("bsctl: reading branch %s: %w", carrier, err)
+	}
+
+	from, err := busOrAbsent(ctx, nm, branch.ModelID, branch.FromBus)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	to, err := busOrAbsent(ctx, nm, branch.ModelID, branch.ToBus)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	fromKV, toKV := branchVoltagesKV(from, to)
+
+	return fromKV, toKV, nil
+}
+
+// busOrAbsent reads one bus, treating not-found as a bus that states nothing.
+func busOrAbsent(
+	ctx context.Context, nm *networkmodel.Engine, modelID id.ID, ordinal string,
+) (model.Bus, error) {
+	bus, err := nm.Store().Buses().ByOrdinal(ctx, modelID, ordinal)
+	if err != nil {
+		if errors.Is(err, bserr.ErrNotFound) {
+			return model.Bus{}, nil
+		}
+
+		return model.Bus{}, fmt.Errorf(
+			"bsctl: reading bus %s of %s: %w", ordinal, modelID, err)
+	}
+
+	return bus, nil
+}
+
+// hazardGeoAndModel resolves all three engines from one application.
+//
+// One application, not two or three. Each helper starts its own, and starting
+// the stack more than once in one command opens multiple connection pools and
+// runs the migration orchestrator concurrently against the same database —
+// the same reasoning as modelAndGeo, for the same one-application pattern.
+func hazardGeoAndModel(
 	ctx context.Context,
-) (*hazard.Engine, *geo.Engine, func(), error) {
+) (*hazard.Engine, *geo.Engine, *networkmodel.Engine, func(), error) {
 	app, err := App()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	if err := app.Start(ctx); err != nil {
-		return nil, nil, nil, fmt.Errorf("starting the application: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("starting the application: %w", err)
 	}
 
 	cleanup := func() { _ = app.Stop(context.WithoutCancel(ctx)) }
@@ -482,15 +576,22 @@ func hazardAndGeo(
 	if err != nil {
 		cleanup()
 
-		return nil, nil, nil, fmt.Errorf("resolving the hazard engine: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("resolving the hazard engine: %w", err)
 	}
 
 	gx, err := forge.Inject[*geo.Engine](app.Container())
 	if err != nil {
 		cleanup()
 
-		return nil, nil, nil, fmt.Errorf("resolving the geo engine: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("resolving the geo engine: %w", err)
 	}
 
-	return hz, gx, cleanup, nil
+	nm, err := forge.Inject[*networkmodel.Engine](app.Container())
+	if err != nil {
+		cleanup()
+
+		return nil, nil, nil, nil, fmt.Errorf("resolving the model engine: %w", err)
+	}
+
+	return hz, gx, nm, cleanup, nil
 }

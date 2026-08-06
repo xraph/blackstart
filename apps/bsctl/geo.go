@@ -267,7 +267,7 @@ func traceCandidates(
 // One application, not two. Each helper starts its own, and starting the
 // stack twice in one command opens two connection pools and runs the
 // migration orchestrator concurrently against the same database — the same
-// reasoning as hazardAndGeo, for the same pair-of-engines shape.
+// reasoning as hazardGeoAndModel, for the same one-application pattern.
 func modelAndGeo(
 	ctx context.Context,
 ) (*networkmodel.Engine, *geo.Engine, func(), error) {
