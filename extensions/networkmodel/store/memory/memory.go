@@ -31,6 +31,7 @@ type Store struct {
 	byHash     map[string]id.ID
 	blobs      map[string][]byte
 	branches   map[id.ID][]model.Branch
+	buses      map[id.ID][]model.Bus
 	placements map[id.ID][]model.Placement
 }
 
@@ -41,6 +42,7 @@ func New() *Store {
 		byHash:     map[string]id.ID{},
 		blobs:      map[string][]byte{},
 		branches:   map[id.ID][]model.Branch{},
+		buses:      map[id.ID][]model.Bus{},
 		placements: map[id.ID][]model.Placement{},
 	}
 }
