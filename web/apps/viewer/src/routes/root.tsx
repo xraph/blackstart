@@ -7,7 +7,15 @@
  */
 
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { NavRail, TabBar, ThemeToggle, TopBar, useTheme, type NavItem } from "@blackstart/ui";
+import {
+  AccountMenu,
+  NavRail,
+  TabBar,
+  ThemeToggle,
+  TopBar,
+  useTheme,
+  type NavItem,
+} from "@blackstart/ui";
 
 import { useAuth } from "../auth/provider";
 
@@ -128,9 +136,22 @@ function RootLayout(): React.JSX.Element {
           { label: "case", value: "ACTIVSg2000", menu: true },
         ]}
         clock="18:14:07 Z"
-        initials={initialsOfSession(session)}
-        onSignOut={() => void signOut()}
         aside={<ThemeToggle theme={theme} onChange={setTheme} />}
+        account={
+          <AccountMenu
+            initials={initialsOfSession(session)}
+            session={
+              session === null
+                ? null
+                : {
+                    userId: session.userId,
+                    email: session.email,
+                    name: [session.firstName, session.lastName].filter((p) => p !== "").join(" "),
+                  }
+            }
+            onSignOut={() => void signOut()}
+          />
+        }
       />
 
       <div className="flex min-h-0 flex-1">
