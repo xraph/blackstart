@@ -109,6 +109,19 @@ type Request struct {
 	// Model is the network, in the contract's SI units.
 	Model *solverv1.NetworkModel
 
+	// CanonicalHash is the model's identity as networkmodel stores it —
+	// canonical.Hash, the string a manifest pins. Supplied by the caller
+	// because only the caller can: what arrives here is a wire model, and the
+	// canonical encoding it was built from is already gone. The solver's own
+	// hash comes back on the response and needs no help.
+	//
+	// Optional, and deliberately not required by Validate, for the reason
+	// contingency.Request.CanonicalHash is not: this engine accepts any
+	// *solverv1.NetworkModel, and a model networkmodel never stored has no
+	// canonical hash to give. Empty here means unknown, and is recorded as
+	// absent rather than as "".
+	CanonicalHash string
+
 	// Overrides adjust the model for this run without re-uploading it.
 	Overrides []*solverv1.Override
 
@@ -175,6 +188,9 @@ func (e *Engine) Simulate(ctx context.Context, in Request) (run.CascadeRun, erro
 
 	built := fromWire(response, in.Model)
 	built.ID = cid.NewRun()
+	// Set here rather than in fromWire, alongside the other three the response
+	// cannot supply: the canonical hash came off the request, not the wire.
+	built.CanonicalHash = optionalHash(in.CanonicalHash)
 	built.StartedAt = started
 	built.FinishedAt = e.now().UTC()
 
@@ -194,10 +210,29 @@ func (e *Engine) Get(ctx context.Context, runID id.ID) (run.CascadeRun, error) {
 }
 
 // ListByModel returns what is known about one network, most recent first.
+//
+// The hash may be in either space — see run.Store.ListByModel. The canonical
+// one is what a caller holding a scenario manifest has, and answering it is
+// why a run carries two hashes.
 func (e *Engine) ListByModel(
 	ctx context.Context, modelHash string, limit int,
 ) ([]run.CascadeRun, error) {
 	return e.store.Runs().ListByModel(ctx, modelHash, limit)
+}
+
+// optionalHash turns a caller's unset hash into an absent one.
+//
+// The empty string is how a Go struct literal says "I did not supply this",
+// and it must not survive as a pointer to "": stored, that reads as a
+// canonical hash which is known and blank, and every run from a caller that
+// supplied nothing would list together as one network. See
+// run.CascadeRun.CanonicalHash.
+func optionalHash(given string) *string {
+	if given == "" {
+		return nil
+	}
+
+	return &given
 }
 
 // fromWire converts a simulation response into the domain shape.

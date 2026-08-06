@@ -129,7 +129,23 @@ func (e *Engine) Extent(ctx context.Context, runID id.ID, halfWidthM float64) (E
 		return ExtentResult{}, fmt.Errorf("cascade: reading run %s: %w", runID, err)
 	}
 
-	model, err := e.models.FindByHash(ctx, found.ModelHash)
+	// The canonical hash, not ModelHash. nmmodel.Store.FindByHash matches on
+	// NetworkModel.ContentHash, which is canonical.Hash over the canonical
+	// encoding; ModelHash is sha256 over the deterministic protobuf the solver
+	// was handed. Passing the second where the first is expected is a lookup
+	// that cannot succeed except by collision — this call was written before
+	// the run carried a canonical hash, and it is the concrete cost of the two
+	// spaces having shared one name.
+	if found.CanonicalHash == nil {
+		return ExtentResult{}, fmt.Errorf(
+			"%w: cascade run %s records no canonical model hash, so the network it "+
+				"simulated cannot be resolved; the run predates that field, or was "+
+				"simulated against a model this platform never stored — either way "+
+				"its solver-side hash names bytes, not a stored network",
+			bserr.ErrNotFound, runID)
+	}
+
+	model, err := e.models.FindByHash(ctx, *found.CanonicalHash)
 	if err != nil {
 		return ExtentResult{}, fmt.Errorf(
 			"cascade: resolving the model run %s simulated: %w", runID, err)

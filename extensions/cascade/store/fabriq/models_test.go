@@ -262,8 +262,10 @@ func TestAStoredIdentifierOfTheWrongTypeIsRefused(t *testing.T) {
 func TestEveryTaggedColumnExistsInTheSchema(t *testing.T) {
 	t.Parallel()
 
-	ddl := strings.Join(tables(), "\n") + "\n" + strings.Join(initiatingColumn(), "\n") +
-		"\n" + strings.Join(sBaseColumn(), "\n")
+	ddl := strings.Join(tables(), "\n") +
+		"\n" + strings.Join(initiatingColumn(), "\n") +
+		"\n" + strings.Join(sBaseColumn(), "\n") +
+		"\n" + strings.Join(canonicalHashColumn(), "\n")
 
 	for field := range reflect.TypeFor[runRow]().Fields() {
 		tag := field.Tag.Get("grove")

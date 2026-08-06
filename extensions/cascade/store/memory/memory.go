@@ -98,7 +98,10 @@ func (s *runs) ListByModel(
 	var out []run.CascadeRun
 
 	for _, key := range s.order {
-		if found := s.runs[key]; found.ModelHash == modelHash {
+		// Either hash. run.CascadeRun.NamesModel owns that rule, so this store
+		// and the Fabriq one cannot come to disagree about which runs are
+		// about one network.
+		if found := s.runs[key]; found.NamesModel(modelHash) {
 			out = append(out, found)
 		}
 	}

@@ -42,7 +42,14 @@ type runRow struct {
 	TenantID string `grove:"tenant_id,notnull"`
 	Version  int64  `grove:"version,notnull"`
 
-	ModelHash     string `grove:"model_hash,notnull"`
+	ModelHash string `grove:"model_hash,notnull"`
+
+	// CanonicalHash carries no notnull tag because NULL is the only honest
+	// value for a run recorded before the column existed: that run's canonical
+	// hash was never observed, and an empty string would claim it was observed
+	// to be blank. The pointer is what carries NULL through grove.
+	CanonicalHash *string `grove:"canonical_hash"`
+
 	SolverVersion string `grove:"solver_version,notnull"`
 	Outcome       string `grove:"outcome,notnull"`
 
@@ -92,6 +99,7 @@ func fromDomain(in run.CascadeRun) (runRow, error) {
 	return runRow{
 		ID:            in.ID.String(),
 		ModelHash:     in.ModelHash,
+		CanonicalHash: in.CanonicalHash,
 		SolverVersion: in.SolverVersion,
 		Outcome:       string(in.Outcome),
 		SBaseVA:       in.SBaseVA,
@@ -114,8 +122,11 @@ func (r runRow) toDomain() (run.CascadeRun, error) {
 	}
 
 	out := run.CascadeRun{
-		ID:            runID,
-		ModelHash:     r.ModelHash,
+		ID:        runID,
+		ModelHash: r.ModelHash,
+		// Straight across, NULL included: the round trip must not turn "never
+		// recorded" into a hash of no characters.
+		CanonicalHash: r.CanonicalHash,
 		SolverVersion: r.SolverVersion,
 		Outcome:       run.Outcome(r.Outcome),
 		SBaseVA:       r.SBaseVA,

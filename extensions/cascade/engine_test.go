@@ -105,6 +105,87 @@ func TestASimulationFailureStoresNothing(t *testing.T) {
 	}
 }
 
+// A cascade produced from a model resolved by canonical hash is found again by
+// that same hash — the lookup a scenario's operator has, and the one that
+// returned nothing before the run carried two.
+//
+// Two mutations make it fail: dropping the CanonicalHash assignment in
+// Simulate, and reverting the memory store's filter to compare only ModelHash.
+// Both were run; both fail on "found 0 cascades".
+func TestACascadeIsFoundByTheCanonicalHashItWasResolvedBy(t *testing.T) {
+	const canonical = "canonical-side-of-the-same-network"
+
+	simulator := &fakeSimulator{response: settledResponse()}
+	e := engine(t, simulator, nil)
+
+	result, err := e.Simulate(t.Context(), cascade.Request{
+		Model:         model(),
+		CanonicalHash: canonical,
+	})
+	if err != nil {
+		t.Fatalf("Simulate: %v", err)
+	}
+
+	if result.CanonicalHash == nil || *result.CanonicalHash != canonical {
+		t.Fatalf("the run recorded canonical hash %v, want %q", result.CanonicalHash, canonical)
+	}
+
+	// The solver's own hash is a different string, so a store that compared
+	// only that one cannot pass by coincidence.
+	if result.ModelHash == canonical {
+		t.Fatal("the solver's hash equals the canonical hash, so this test proves nothing")
+	}
+
+	found, err := e.ListByModel(t.Context(), canonical, 0)
+	if err != nil {
+		t.Fatalf("ListByModel: %v", err)
+	}
+
+	if len(found) != 1 || found[0].ID != result.ID {
+		t.Fatalf("found %d cascades for the canonical hash, want the one just simulated", len(found))
+	}
+
+	// And the solver-side hash keeps working: every run recorded before this
+	// field existed has only that one.
+	bySolver, err := e.ListByModel(t.Context(), result.ModelHash, 0)
+	if err != nil {
+		t.Fatalf("ListByModel by the solver's hash: %v", err)
+	}
+
+	if len(bySolver) != 1 || bySolver[0].ID != result.ID {
+		t.Fatalf("found %d cascades for the solver's hash, want the one just simulated", len(bySolver))
+	}
+}
+
+// A caller with no canonical hash records absence, not a blank one.
+//
+// Replacing optionalHash with a plain &in.CanonicalHash makes this fail —
+// Validate refuses the pointer to "" before the run reaches the store.
+func TestACascadeWithNoCanonicalHashRecordsNothingRatherThanEmptiness(t *testing.T) {
+	simulator := &fakeSimulator{response: settledResponse()}
+	e := engine(t, simulator, nil)
+
+	result, err := e.Simulate(t.Context(), cascade.Request{Model: model()})
+	if err != nil {
+		t.Fatalf("Simulate: %v", err)
+	}
+
+	if result.CanonicalHash != nil {
+		t.Errorf("the run invented a canonical hash %q from a caller that supplied none",
+			*result.CanonicalHash)
+	}
+
+	found, err := e.ListByModel(t.Context(), "", 0)
+	if err != nil {
+		t.Fatalf("ListByModel: %v", err)
+	}
+
+	if len(found) != 0 {
+		t.Errorf("the empty hash matched %d runs; a run that does not know its "+
+			"canonical hash must not answer to one of no characters", len(found))
+	}
+}
+
 func TestARunIsStoredBeforeItIsReturned(t *testing.T) {
 	simulator := &fakeSimulator{response: settledResponse()}
 	e := engine(t, simulator, nil)

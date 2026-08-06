@@ -2,8 +2,10 @@ package cascade_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/xraph/blackstart/extensions/cascade"
@@ -82,12 +84,25 @@ func aLine() shape.Line {
 // extentFixture is one branch tripped in a run, resolved against one model,
 // with geometry a test can choose to withhold.
 type extentFixture struct {
-	modelHash string
-	model     nmmodel.NetworkModel
-	branch    nmmodel.Branch
-	route     asset.Route
-	spans     []asset.Span
+	// canonicalHash is the CANONICAL hash — nmmodel.NetworkModel.ContentHash,
+	// which is what FindByHash matches on. Named for its space rather than
+	// left as a bare modelHash, because the run below deliberately carries a
+	// different string in ModelHash: a fixture where the two coincided would
+	// pass whichever hash Extent looked up by, which is how a lookup in the
+	// wrong space stayed invisible here for as long as it did.
+	canonicalHash string
+
+	model  nmmodel.NetworkModel
+	branch nmmodel.Branch
+	route  asset.Route
+	spans  []asset.Span
 }
+
+// solverSideHash is what the SOLVER returned for the same network: sha256 over
+// the deterministic protobuf rather than over the canonical encoding. It names
+// no stored model, which is exactly the point — every extent fixture carries
+// it so that resolving by it cannot accidentally work.
+const solverSideHash = "protobuf-side-hash-extent"
 
 // tripped builds a model with a single branch, "branch-0", ready to be
 // tripped in a run. traced controls whether that branch has a route with
@@ -97,7 +112,7 @@ func tripped(traced bool) extentFixture {
 	branchID := nmid.NewBranch()
 
 	fixture := extentFixture{
-		modelHash: "model-hash-extent",
+		canonicalHash: "model-hash-extent",
 		model: nmmodel.NetworkModel{
 			ID:          modelID,
 			ContentHash: "model-hash-extent",
@@ -151,8 +166,12 @@ func extentEngine(t *testing.T, fixture extentFixture, events []run.Event) (*cas
 	runID := cid.NewRun()
 
 	if _, err := store.Runs().Create(t.Context(), run.CascadeRun{
-		ID:            runID,
-		ModelHash:     fixture.modelHash,
+		ID: runID,
+		// Two different strings, deliberately. Extent must resolve the model
+		// by the canonical one; a run whose solver-side hash happened to equal
+		// its canonical hash would let a lookup in either space pass.
+		ModelHash:     solverSideHash,
+		CanonicalHash: &fixture.canonicalHash,
 		SolverVersion: "0.1.0-test",
 		Initiating:    []string{},
 		Events:        events,
@@ -348,6 +367,84 @@ func TestExtentDedupesRepeatedTripsOfTheSameBranch(t *testing.T) {
 	if !reflect.DeepEqual(resultOnce.Area, resultTwice.Area) {
 		t.Errorf("area differs between one trip and two trips of the same branch:\n%v\nvs\n%v",
 			resultOnce.Area, resultTwice.Area)
+	}
+}
+
+// Extent resolves the model by the canonical hash, not the solver's.
+//
+// The two live in different spaces — nmmodel.Store.FindByHash matches
+// ContentHash, which is canonical.Hash over the canonical encoding, while
+// ModelHash is sha256 over the deterministic protobuf the solver was handed —
+// so the run's ModelHash names bytes rather than a stored network.
+//
+// Reverting Extent to `e.models.FindByHash(ctx, found.ModelHash)` makes this
+// fail: the fixture's two hashes differ, so the lookup finds nothing and the
+// call errors instead of returning a corridor. Run, and it does.
+func TestExtentResolvesTheModelByItsCanonicalHash(t *testing.T) {
+	fixture := tripped(true)
+	events := []run.Event{{Kind: run.EventTrip, Element: "branch-0"}}
+
+	e, runID := extentEngine(t, fixture, events)
+
+	// The premise, stated rather than assumed: if these ever coincided the
+	// assertion below would hold for either lookup and prove nothing.
+	if fixture.canonicalHash == solverSideHash {
+		t.Fatal("the fixture's two hashes are equal, so this test cannot distinguish them")
+	}
+
+	result, err := e.Extent(t.Context(), runID, 25)
+	if err != nil {
+		t.Fatalf("Extent: %v", err)
+	}
+
+	if result.Resolved != 1 {
+		t.Errorf("resolved = %d, want 1; the model was not found by its canonical hash",
+			result.Resolved)
+	}
+}
+
+// A run that never recorded a canonical hash says so rather than searching for
+// a model under a hash that cannot name one.
+//
+// Every run stored before the field existed is in this state, and the
+// difference between "this model is not here" and "this run cannot say which
+// model" is the difference between a data problem and a history problem.
+func TestExtentRefusesARunThatRecordsNoCanonicalHash(t *testing.T) {
+	fixture := tripped(true)
+	events := []run.Event{{Kind: run.EventTrip, Element: "branch-0"}}
+
+	// Stored without one, which is what a row written before the column reads
+	// back as.
+	store := memory.New()
+	runID := cid.NewRun()
+
+	if _, err := store.Runs().Create(t.Context(), run.CascadeRun{
+		ID:            runID,
+		ModelHash:     solverSideHash,
+		SolverVersion: "0.1.0-test",
+		Initiating:    []string{},
+		Events:        events,
+	}); err != nil {
+		t.Fatalf("seeding the older run: %v", err)
+	}
+
+	older, err := cascade.NewEngine(store, &fakeSimulator{}, nil,
+		cascade.WithExtent(&fakeModels{model: fixture.model}, &fakeBranches{}, &fakeGeo{}))
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+
+	_, err = older.Extent(t.Context(), runID, 25)
+	if err == nil {
+		t.Fatal("Extent resolved a model for a run that records no canonical hash")
+	}
+
+	if !errors.Is(err, bserr.ErrNotFound) {
+		t.Errorf("got %v, want it to wrap ErrNotFound", err)
+	}
+
+	if !strings.Contains(err.Error(), "canonical") {
+		t.Errorf("message %q does not say what is missing", err)
 	}
 }
 

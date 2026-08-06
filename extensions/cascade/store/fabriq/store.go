@@ -103,14 +103,20 @@ func (s *runs) ListByModel(
 
 	var rows []runRow
 
-	// Ordered in SQL rather than in Go, because the index is already on
-	// (tenant_id, model_hash, started_at DESC). Identifier breaks the tie so
-	// two runs recorded in the same instant still order reproducibly, which is
-	// the same rule the memory store sorts by.
+	// Ordered in SQL rather than in Go, because the indexes are already on
+	// (tenant_id, model_hash, started_at DESC) and its canonical counterpart.
+	// Identifier breaks the tie so two runs recorded in the same instant still
+	// order reproducibly, which is the same rule the memory store sorts by.
+	//
+	// An OR over the two columns rather than two queries stitched together:
+	// Postgres can bitmap-or the pair, and a union would have to re-sort and
+	// re-limit in Go, which is where the two stores' orderings would start to
+	// differ. A NULL canonical_hash never matches, which is what "unknown"
+	// should do. run.CascadeRun.NamesModel is this same predicate in Go.
 	if err := s.base.Query(ctx, &rows,
 		`SELECT * FROM `+RunTable+`
 		 WHERE tenant_id = current_setting('app.tenant_id', true)
-		   AND model_hash = $1
+		   AND (model_hash = $1 OR canonical_hash = $1)
 		 ORDER BY started_at DESC, id DESC
 		 LIMIT $2`, modelHash, limit); err != nil {
 		return nil, err

@@ -24,6 +24,7 @@ func Group() *migrate.Group {
 	g.MustRegister(migration0001Tables)
 	g.MustRegister(migration0002Initiating)
 	g.MustRegister(migration0003SBase)
+	g.MustRegister(migration0004CanonicalHash)
 
 	return g
 }
@@ -68,8 +69,58 @@ var migration0003SBase = &migrate.Migration{
 	Down:    down0003,
 }
 
+// migration0004CanonicalHash adds the column for
+// run.CascadeRun.CanonicalHash — the network's identity as networkmodel
+// stores it, beside the solver's own.
+//
+// A fourth migration for the reason 0002 and 0003 were new migrations rather
+// than edits: grove never hands back a version it has recorded.
+var migration0004CanonicalHash = &migrate.Migration{
+	Name:    "cascade_canonical_hash",
+	Version: "20260803000033",
+	Comment: "the network's identity as networkmodel stores it, beside the solver's",
+	Up:      up0004,
+	Down:    down0004,
+}
+
 func up0002(ctx context.Context, exec migrate.Executor) error {
 	return execAll(ctx, exec, initiatingColumn())
+}
+
+func up0004(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, canonicalHashColumn())
+}
+
+// canonicalHashColumn is the DDL, separated from the executor so a test can
+// read it alongside the rest of the schema — the same split the two columns
+// above use.
+//
+// Nullable, and pointedly unlike the two before it: 0002 and 0003 could both
+// default, because an empty initiating list and a base of zero are values the
+// domain already reads as "none stated". A canonical hash has no such value.
+// Every run stored before this migration was recorded by a binary that never
+// saw one, so the honest answer is unknown — and defaulting to the empty
+// string would instead give every one of those runs the same hash, which a
+// listing would then return as if they were one network.
+//
+// The index is partial for the same reason: a row with no canonical hash can
+// never be a match, so indexing those would be indexing the platform's history.
+func canonicalHashColumn() []string {
+	return []string{
+		`ALTER TABLE ` + RunTable + `
+			ADD COLUMN IF NOT EXISTS canonical_hash TEXT`,
+
+		`CREATE INDEX IF NOT EXISTS ` + RunTable + `_canonical_idx
+			ON ` + RunTable + ` (tenant_id, canonical_hash, started_at DESC)
+			WHERE canonical_hash IS NOT NULL`,
+	}
+}
+
+func down0004(ctx context.Context, exec migrate.Executor) error {
+	return execAll(ctx, exec, []string{
+		`DROP INDEX IF EXISTS ` + RunTable + `_canonical_idx`,
+		`ALTER TABLE ` + RunTable + ` DROP COLUMN IF EXISTS canonical_hash`,
+	})
 }
 
 // initiatingColumn is the DDL, separated from the executor so a test can read
