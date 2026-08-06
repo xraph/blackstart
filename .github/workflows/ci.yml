@@ -199,6 +199,34 @@ jobs:
       - run: pnpm run lint
       - run: pnpm run typecheck
 
+  # The web suite had no CI job at all: `lint-web` above checks formatting,
+  # lint and types, so every vitest suite in the workspace ran only on the
+  # laptop of whoever remembered. Its own job rather than a fourth step there,
+  # to match how Go and Rust are split — a failing test and a failing lint are
+  # different kinds of news and read better as separate checks.
+  #
+  # Checked out whole, not just `web/`: packages/schema's prefix drift test
+  # reads `extensions/*/id/id.go` to assert the client accepts every
+  # identifier the platform issues, and fails loudly rather than skipping if
+  # that tree is absent.
+  test-web:
+    name: Test (web)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test
+
   lint-rust:
     name: Lint (rust)
     runs-on: ubuntu-latest
