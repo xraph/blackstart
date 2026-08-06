@@ -226,6 +226,97 @@ func TestARunRecordsWhatProducedIt(t *testing.T) {
 	}
 }
 
+// The test this whole change exists for.
+//
+// A caller that resolved a network by its canonical hash — a scenario reading
+// its manifest, an operator typing a hash into bsctl — must be able to find the
+// sweep again by the same string. Before CanonicalHash the run recorded only
+// the solver's protobuf hash, so this lookup returned nothing at all.
+//
+// Two mutations make it fail: dropping `CanonicalHash: optionalHash(...)` from
+// the run the engine builds, and reverting ListByModel's predicate to compare
+// only ModelHash. Both were run; both fail on "found 0 sweeps".
+func TestASweepIsFoundByTheCanonicalHashItWasResolvedBy(t *testing.T) {
+	const canonical = "4f1c9ab27e0d5583aa61b8f4cd2e7091" +
+		"3b5d6c8e2fa47019dd3c5b8e6710a2f4"
+
+	screener := &fakeScreener{results: []*solverv1.ScreenContingenciesResponse{
+		screenedWire(0, 0.5),
+	}}
+
+	e := engine(t, screener, nil)
+
+	run, err := e.Screen(t.Context(), contingency.Request{
+		Model:         model(),
+		CanonicalHash: canonical,
+	})
+	if err != nil {
+		t.Fatalf("Screen: %v", err)
+	}
+
+	if run.CanonicalHash == nil || *run.CanonicalHash != canonical {
+		t.Fatalf("the run recorded canonical hash %v, want %q", run.CanonicalHash, canonical)
+	}
+
+	// The two are genuinely different strings; a test where they coincided
+	// would pass on a store that only ever compared the protobuf one.
+	if run.ModelHash == canonical {
+		t.Fatal("the solver's hash equals the canonical hash, so this test proves nothing")
+	}
+
+	found, err := e.ListByModel(t.Context(), canonical, 0)
+	if err != nil {
+		t.Fatalf("ListByModel: %v", err)
+	}
+
+	if len(found) != 1 || found[0].ID != run.ID {
+		t.Fatalf("found %d sweeps for the canonical hash, want the one just screened", len(found))
+	}
+
+	// And the solver-side hash keeps working, because every run recorded
+	// before this field existed has only that one.
+	bySolver, err := e.ListByModel(t.Context(), run.ModelHash, 0)
+	if err != nil {
+		t.Fatalf("ListByModel by the solver's hash: %v", err)
+	}
+
+	if len(bySolver) != 1 || bySolver[0].ID != run.ID {
+		t.Fatalf("found %d sweeps for the solver's hash, want the one just screened", len(bySolver))
+	}
+}
+
+// A caller with no canonical hash records absence, not a blank one.
+//
+// Replacing optionalHash with a plain &in.CanonicalHash makes this fail on the
+// nil check — and would make every such run answer to ListByModel("").
+func TestASweepWithNoCanonicalHashRecordsNothingRatherThanEmptiness(t *testing.T) {
+	screener := &fakeScreener{results: []*solverv1.ScreenContingenciesResponse{
+		screenedWire(0, 0.5),
+	}}
+
+	e := engine(t, screener, nil)
+
+	run, err := e.Screen(t.Context(), contingency.Request{Model: model()})
+	if err != nil {
+		t.Fatalf("Screen: %v", err)
+	}
+
+	if run.CanonicalHash != nil {
+		t.Errorf("the run invented a canonical hash %q from a caller that supplied none",
+			*run.CanonicalHash)
+	}
+
+	found, err := e.ListByModel(t.Context(), "", 0)
+	if err != nil {
+		t.Fatalf("ListByModel: %v", err)
+	}
+
+	if len(found) != 0 {
+		t.Errorf("the empty hash matched %d runs; a run that does not know its "+
+			"canonical hash must not answer to one of no characters", len(found))
+	}
+}
+
 func TestTheRequestReachesTheScreenerIntact(t *testing.T) {
 	screener := &fakeScreener{}
 

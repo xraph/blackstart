@@ -93,6 +93,20 @@ type Request struct {
 	// Model is the network, in the contract's SI units.
 	Model *solverv1.NetworkModel
 
+	// CanonicalHash is the model's identity as networkmodel stores it —
+	// canonical.Hash, the string a manifest pins and bsctl prints. Supplied by
+	// the caller because only the caller can: what arrives here is a wire
+	// model, and the canonical encoding it was built from is already gone.
+	//
+	// Optional, and deliberately not required by Validate. Every caller in
+	// this tree resolves its model through networkmodel and passes it, but the
+	// engine accepts any *solverv1.NetworkModel by design and a model that was
+	// never stored has no canonical hash to give. Requiring one would make
+	// such a caller invent a value, which is the exact failure the pointer on
+	// sweep.Run.CanonicalHash exists to prevent. Empty here means unknown, and
+	// is recorded as absent rather than as "".
+	CanonicalHash string
+
 	// Contingencies is what to evaluate, in the order to evaluate it.
 	//
 	// Empty means every in-service branch. The ordering is the caller's
@@ -167,8 +181,12 @@ func (e *Engine) Screen(ctx context.Context, in Request) (sweep.Run, error) {
 	}
 
 	run := sweep.Run{
-		ID:            cid.NewRun(),
-		ModelHash:     modelHash,
+		ID:        cid.NewRun(),
+		ModelHash: modelHash,
+		// Recorded beside the solver's hash rather than instead of it: they
+		// name the same network in two spaces, and the platform's is the one a
+		// person can look a sweep up by.
+		CanonicalHash: optionalHash(in.CanonicalHash),
 		SolverVersion: e.solverVersion,
 		Candidates:    candidates,
 		StartedAt:     started,
@@ -191,10 +209,29 @@ func (e *Engine) Get(ctx context.Context, runID id.ID) (sweep.Run, error) {
 }
 
 // ListByModel returns what is known about one network, most recent first.
+//
+// The hash may be in either space — see sweep.Store.ListByModel. The canonical
+// one is what a caller holding a scenario manifest or a bsctl printout has, and
+// answering it is the reason sweep.Run carries two hashes at all.
 func (e *Engine) ListByModel(
 	ctx context.Context, modelHash string, limit int,
 ) ([]sweep.Run, error) {
 	return e.store.Runs().ListByModel(ctx, modelHash, limit)
+}
+
+// optionalHash turns a caller's unset hash into an absent one.
+//
+// The empty string is how a Go struct literal says "I did not supply this",
+// and it must not survive as a pointer to "": stored, that reads as a
+// canonical hash which is known and blank, and every run from a caller that
+// supplied nothing would then list together as one network. See
+// sweep.Run.CanonicalHash.
+func optionalHash(given string) *string {
+	if given == "" {
+		return nil
+	}
+
+	return &given
 }
 
 // fromWire converts one streamed screen result into the domain shape.

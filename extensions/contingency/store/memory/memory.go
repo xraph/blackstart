@@ -87,7 +87,10 @@ func (s *runs) Get(_ context.Context, runID id.ID) (sweep.Run, error) {
 
 // ListByModel returns runs for one network, most recent first.
 //
-// A limit of zero or less returns everything, which is what a CLI wants.
+// A limit of zero or less returns everything, which is what a CLI wants. The
+// hash may be in either space, which is sweep.Run.NamesModel's rule rather than
+// this store's — written once so this and the Fabriq store cannot come to
+// disagree about which runs are about one network.
 func (s *runs) ListByModel(
 	_ context.Context, modelHash string, limit int,
 ) ([]sweep.Run, error) {
@@ -97,7 +100,7 @@ func (s *runs) ListByModel(
 	var out []sweep.Run
 
 	for _, key := range s.order {
-		if found := s.runs[key]; found.ModelHash == modelHash {
+		if found := s.runs[key]; found.NamesModel(modelHash) {
 			out = append(out, found)
 		}
 	}

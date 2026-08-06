@@ -75,6 +75,11 @@ func (s *runs) Get(ctx context.Context, want id.ID) (sweep.Run, error) {
 }
 
 // ListByModel returns runs for one network, most recent first.
+//
+// The hash may be in either space — sweep.Store.ListByModel says why. The SQL
+// below is that predicate expressed for the database; sweep.Run.NamesModel is
+// the same rule in Go, and the two are checked against each other by the
+// integration tests rather than trusted to stay aligned.
 func (s *runs) ListByModel(
 	ctx context.Context, modelHash string, limit int,
 ) ([]sweep.Run, error) {
@@ -90,10 +95,15 @@ func (s *runs) ListByModel(
 
 	var rows []runRow
 
+	// An OR over two indexed columns rather than two queries stitched
+	// together: Postgres can bitmap-or the model and canonical indexes, and a
+	// union would have to re-sort and re-limit the combined result in Go,
+	// which is where the two stores' orderings would start to differ. NULL
+	// canonical_hash simply never matches, which is what "unknown" should do.
 	if err := s.base.Query(ctx, &rows,
 		`SELECT * FROM `+RunTable+`
 		 WHERE tenant_id = current_setting('app.tenant_id', true)
-		   AND model_hash = $1
+		   AND (model_hash = $1 OR canonical_hash = $1)
 		 ORDER BY started_at DESC, id DESC
 		 LIMIT $2`, modelHash, limit); err != nil {
 		return nil, err

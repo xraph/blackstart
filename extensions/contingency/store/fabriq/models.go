@@ -36,7 +36,16 @@ type runRow struct {
 	TenantID string `grove:"tenant_id,notnull"`
 	Version  int64  `grove:"version,notnull"`
 
-	ModelHash     string    `grove:"model_hash,notnull"`
+	ModelHash string `grove:"model_hash,notnull"`
+
+	// CanonicalHash is nullable, and carries no notnull tag, because NULL is
+	// the only honest value for a run recorded before the column existed: that
+	// run's canonical hash was never observed, and an empty string would claim
+	// it was observed to be blank. The pointer is what carries NULL through
+	// grove — see sweep.Run.CanonicalHash for why the distinction matters
+	// rather than being tidiness.
+	CanonicalHash *string `grove:"canonical_hash"`
+
 	SolverVersion string    `grove:"solver_version,notnull"`
 	StartedAt     time.Time `grove:"started_at,notnull"`
 	FinishedAt    time.Time `grove:"finished_at,notnull"`
@@ -60,6 +69,7 @@ func fromDomain(in sweep.Run) (runRow, error) {
 	return runRow{
 		ID:            in.ID.String(),
 		ModelHash:     in.ModelHash,
+		CanonicalHash: in.CanonicalHash,
 		SolverVersion: in.SolverVersion,
 		StartedAt:     in.StartedAt,
 		FinishedAt:    in.FinishedAt,
@@ -76,8 +86,12 @@ func (r runRow) toDomain() (sweep.Run, error) {
 	}
 
 	out := sweep.Run{
-		ID:            runID,
-		ModelHash:     r.ModelHash,
+		ID:        runID,
+		ModelHash: r.ModelHash,
+		// Straight across, NULL included. A row written before the column
+		// existed comes back nil and stays nil: the round trip must not turn
+		// "never recorded" into a hash of no characters.
+		CanonicalHash: r.CanonicalHash,
 		SolverVersion: r.SolverVersion,
 		StartedAt:     r.StartedAt,
 		FinishedAt:    r.FinishedAt,

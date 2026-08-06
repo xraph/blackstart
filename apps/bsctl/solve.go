@@ -35,7 +35,7 @@ func solveCommand() cli.Command {
 			}
 			defer cleanup()
 
-			model, err := wireModel(ctx, app)
+			model, _, err := wireModel(ctx, app)
 			if err != nil {
 				return err
 			}
@@ -106,7 +106,7 @@ func n1Command() cli.Command {
 			}
 			defer cleanup()
 
-			model, err := wireModel(ctx, app)
+			model, canonicalHash, err := wireModel(ctx, app)
 			if err != nil {
 				return err
 			}
@@ -120,6 +120,11 @@ func n1Command() cli.Command {
 
 			run, err := engine.Screen(ctx.Context(), contingency.Request{
 				Model: model,
+				// The hash the user typed on the command line resolves to, so
+				// the sweep this produces can be listed back by the same string
+				// they already have. wireModel read the model out of
+				// networkmodel, so this is never a guess.
+				CanonicalHash: canonicalHash,
 				// Zero means the rating itself, which the engine documents, so
 				// an unset flag needs no default here.
 				ViolationThreshold: float64(ctx.Int("threshold-percent")) / 100,
@@ -137,7 +142,14 @@ func n1Command() cli.Command {
 			} else {
 				ctx.Printf("  threshold  the rating itself\n")
 			}
-			ctx.Printf("  model      %s\n", run.ModelHash[:16])
+			// Both hashes, each labeled with the space it lives in. One
+			// unlabelled line is what left an operator holding a scenario's
+			// pinned hash beside a sweep's and no way to tell whether the two
+			// 64-character strings describe the same network.
+			ctx.Printf("  model      %s  (canonical, what this platform stores)\n",
+				short(canonicalHash))
+			ctx.Printf("  solved as  %s  (protobuf, what the solver cached)\n",
+				short(run.ModelHash))
 			ctx.Printf("  evaluated  %d contingencies\n", len(run.Candidates))
 
 			report(ctx, run, ctx.Int("top"))
@@ -240,33 +252,61 @@ func worstBranch(result solution.Solution) (string, float64) {
 }
 
 // wireModel resolves the model named on the command line and converts it to
-// the solver's SI contract.
+// the solver's SI contract, returning the canonical content hash alongside.
 //
 // Read from the stored canonical bytes rather than re-parsed from a source
 // file, so what is solved is what the content hash names — and so a result
 // citing that hash cites the network it was actually computed from.
-func wireModel(ctx cli.CommandContext, app forge.App) (*solverv1.NetworkModel, error) {
+//
+// The hash is returned rather than discarded because this function is the only
+// place in the CLI that has it: past this point there is a wire model and no
+// way back to the canonical encoding it came from, so a caller that wants to
+// record which stored network a run was about has to be handed it here. That is
+// the whole reason contingency.Request has a CanonicalHash field.
+func wireModel(
+	ctx cli.CommandContext, app forge.App,
+) (model *solverv1.NetworkModel, canonicalHash string, err error) {
 	engine, err := forge.Inject[*networkmodel.Engine](app.Container())
 	if err != nil {
-		return nil, fmt.Errorf("resolving the model engine: %w", err)
+		return nil, "", fmt.Errorf("resolving the model engine: %w", err)
 	}
 
 	found, err := resolveModel(ctx, engine, ctx.Args()[0])
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	encoded, err := engine.Encoding(ctx.Context(), found.ContentHash)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	decoded, err := canonical.Decode(encoded)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return wire.Model(found.Name, decoded)
+	built, err := wire.Model(found.Name, decoded)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return built, found.ContentHash, nil
+}
+
+// short is the readable prefix of a hash, without assuming it has one.
+//
+// A slice expression would panic on anything shorter than the width — and one
+// of the two hashes this command prints can be absent or truncated in a record
+// that predates it, which is not a reason to crash the CLI.
+func short(hash string) string {
+	const width = 16
+
+	if len(hash) <= width {
+		return hash
+	}
+
+	return hash[:width]
 }
 
 // startApp builds and starts an application, returning a cleanup.
