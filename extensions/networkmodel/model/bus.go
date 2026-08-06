@@ -104,6 +104,17 @@ type BusStore interface {
 	// branches is one waiting to be relied on for buses too. AddMissing
 	// leaves an ordinal that already has a row exactly as it is and inserts
 	// only the ordinals that do not.
+	//
+	// "Exactly as it is" means the whole row, not just the identifier: an
+	// ordinal already stored is skipped, not overwritten, so a bus written
+	// before VNominalV existed keeps reading as the zero it was written with
+	// — the value this field's own comment says a source stating none looks
+	// like — rather than being refreshed to whatever this parse states. That
+	// is consistent with the complete case rather than a departure from it: a
+	// model whose buses are already complete is never handed to AddMissing at
+	// all, since repairIdentity skips the call entirely, so a partial repair
+	// now leaves a stale row exactly as untouched as a complete one always
+	// was.
 	AddMissing(ctx context.Context, modelID id.ID, in []Bus) (int, error)
 
 	// ForModel returns a model's buses in ordinal order.

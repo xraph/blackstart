@@ -346,9 +346,28 @@ func (e *Engine) repairIdentity(
 		}
 
 		if len(got) < existing.BranchCount {
-			if _, err := e.store.Branches().AddMissing(ctx, existing.ID, branchRows(existing.ID, parsed)); err != nil {
+			want := existing.BranchCount - len(got)
+
+			inserted, err := e.store.Branches().AddMissing(ctx, existing.ID, branchRows(existing.ID, parsed))
+			if err != nil {
 				return fmt.Errorf(
 					"networkmodel: repairing the branches of %s: %w", existing.ID, err)
+			}
+
+			// Cannot happen under this function's own premise: the rows
+			// AddMissing is handed come from parsed, and existing was found
+			// by FindByHash matching this same parse's content hash, so
+			// every ordinal the store is short of is necessarily present in
+			// branchRows. Checked anyway, because "cannot happen" is a claim
+			// about today's callers, not a proof, and an impossible state
+			// reported as a named error costs one comparison — the
+			// alternative is repairIdentity claiming a repair that left the
+			// model still short some branches.
+			if inserted != want {
+				return fmt.Errorf(
+					"networkmodel: repairing the branches of %s inserted %d row(s), want %d "+
+						"(%d stored, %d recorded)",
+					existing.ID, inserted, want, len(got), existing.BranchCount)
 			}
 		}
 	}
@@ -371,9 +390,22 @@ func (e *Engine) repairIdentity(
 		}
 
 		if len(heldBuses) < existing.BusCount {
-			if _, err := e.store.Buses().AddMissing(ctx, existing.ID, busRows(existing.ID, parsed)); err != nil {
+			want := existing.BusCount - len(heldBuses)
+
+			inserted, err := e.store.Buses().AddMissing(ctx, existing.ID, busRows(existing.ID, parsed))
+			if err != nil {
 				return fmt.Errorf(
 					"networkmodel: repairing the buses of %s: %w", existing.ID, err)
+			}
+
+			// The branch half's reasoning, for buses: impossible under this
+			// function's own premise, checked anyway because that premise is
+			// a claim about today's callers, not a proof.
+			if inserted != want {
+				return fmt.Errorf(
+					"networkmodel: repairing the buses of %s inserted %d row(s), want %d "+
+						"(%d stored, %d recorded)",
+					existing.ID, inserted, want, len(heldBuses), existing.BusCount)
 			}
 		}
 	}

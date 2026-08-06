@@ -113,6 +113,16 @@ type BranchStore interface {
 	// conductor a decision was recorded against. AddMissing leaves an
 	// ordinal that already has a row exactly as it is and inserts only the
 	// ordinals that do not.
+	//
+	// "Exactly as it is" means the whole row, not just the identifier: an
+	// ordinal already stored is skipped, not overwritten, so its FromBus,
+	// ToBus and Alias are whatever they were written with too, even if this
+	// parse would produce different ones for that ordinal — the same
+	// allowance BusStore.AddMissing makes for a bus's VNominalV. Consistent
+	// with the complete case rather than a departure from it: a model whose
+	// branches are already complete is never handed to AddMissing at all,
+	// since repairIdentity skips the call entirely, so a partial repair now
+	// leaves a stale row exactly as untouched as a complete one always was.
 	AddMissing(ctx context.Context, modelID id.ID, in []Branch) (int, error)
 
 	// ForModel returns a model's branches in ordinal order.
