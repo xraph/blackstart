@@ -18,17 +18,19 @@ import { AnyTypeId } from "@blackstart/schema";
 import { Scene, type Selection } from "@blackstart/globe";
 import {
   BottomSheet,
-  ContingencyRail,
   ElementInspector,
   GlassPanel,
   LayerStackPanel,
   MeasureRamp,
   RAIL_BREAKPOINT,
+  ScreeningRail,
+  Select,
   SideRail,
   TimeAxis,
   Transport,
   layerSummary,
   useMediaQuery,
+  type SelectOption,
 } from "@blackstart/ui";
 
 import { consoleRoute } from "../router";
@@ -37,9 +39,28 @@ import { useViewerModel } from "../model/use-viewer-model";
 import { useRouteGeometry } from "../api/use-route-geometry";
 import { useHazardLayer } from "../api/use-hazard-layer";
 import { useSelectedCase } from "../api/use-context-options";
+import { useScreening } from "../api/use-screening";
 import { AMPACITY, LOADING, colorOf } from "../api/hazard";
 import { hazardLayerStack } from "./layers";
-import { CONTINGENCIES, HORIZON, INSPECTED, LINE_TULIA_LEVELLAND } from "../fixtures/derecho";
+import { HORIZON, INSPECTED, LINE_TULIA_LEVELLAND } from "../fixtures/derecho";
+
+/* Each option states the order it produces, not the operation it performs.
+ * "Reverse" and "expected cost ▾" both left the reader to work out what they
+ * would be looking at afterwards. */
+const SORTS: readonly SelectOption<"loading" | "violations" | "branch">[] = [
+  { value: "loading", label: "worst loading" },
+  { value: "violations", label: "most violations" },
+  { value: "branch", label: "branch order" },
+];
+
+/* The filter is server-side and the sort is not, which is why they are two
+ * controls rather than one: `concerning` is a smaller request, and a rail that
+ * showed a subset without saying so would be the truncation the route
+ * geometry already reports rather than hides. */
+const SCOPES: readonly SelectOption<"concerning" | "all">[] = [
+  { value: "concerning", label: "concerning" },
+  { value: "all", label: "all screened" },
+];
 
 export function ConsoleScreen(): React.JSX.Element {
   const search = consoleRoute.useSearch();
@@ -71,6 +92,8 @@ export function ConsoleScreen(): React.JSX.Element {
    * produces a new model under the same name: the hash is what tells a
    * screenshot of this build from a screenshot of the next. */
   const networkCase = useSelectedCase(search.case);
+
+  const screening = useScreening(networkCase?.contentHash, search.sort, search.scope === "all");
 
   const layers = hazardLayerStack({
     encoding,
@@ -111,16 +134,26 @@ export function ConsoleScreen(): React.JSX.Element {
    * because a docked rail and a sheet each already have one and nesting them
    * would print the title twice. */
   const railBody =
-    search.sel === undefined ? (
-      <ContingencyRail rows={CONTINGENCIES} onSelect={(c) => select(c.element)} />
-    ) : (
+    search.sel !== undefined ? (
       <p className="p-3 text-[11px] leading-snug text-fg-2">
         No explanation is available for <span className="font-mono text-fg">{search.sel}</span>. The
         element is in the network but has not been scored in this run.
       </p>
+    ) : screening.gap !== null ? (
+      /* Which step came up empty, not a spinner. "No case is selected" and
+       * "this network has never been screened" are different problems with
+       * different answers, and the same emptiness for both sends the reader
+       * looking in the wrong place. */
+      <p className="p-3 text-[11px] leading-snug text-fg-2">
+        {screening.gap === "no-case"
+          ? "Choose a case in the top bar to see what an N-1 screen made of it."
+          : "This network has no recorded contingency run. Nothing has screened it yet."}
+      </p>
+    ) : (
+      <ScreeningRail rows={screening.rows} />
     );
 
-  const railTitle = search.sel === undefined ? "Ranked contingencies" : "Selection";
+  const railTitle = search.sel === undefined ? "N-1 screening" : "Selection";
 
   return (
     <div
@@ -204,8 +237,14 @@ export function ConsoleScreen(): React.JSX.Element {
               open={sheetOpen}
               onOpenChange={setSheetOpen}
               peek={
+                /* The worst row, which is the one a reader opening the sheet
+                   is looking for. It says nothing when there is nothing —
+                   a peek naming a row that is not under it is worse than a
+                   blank one. */
                 <span className="font-mono text-[10px] tabular text-fg-2">
-                  {CONTINGENCIES[0]?.name} · rank 1 of {CONTINGENCIES.length}
+                  {screening.gap !== null || screening.rows.length === 0
+                    ? "nothing screened"
+                    : `branch ${screening.rows[0]?.branch} · ${screening.rows.length} shown`}
                 </span>
               }
             >
@@ -220,14 +259,30 @@ export function ConsoleScreen(): React.JSX.Element {
           ) : (
             <SideRail
               title={railTitle}
-              count={`${CONTINGENCIES.length} solved`}
+              count={
+                screening.isPending
+                  ? "…"
+                  : /* The unevaluated count is printed even at zero. It is the
+                       number that says whether the ranking can be trusted as
+                       a ranking, and its absence would read as "none" only to
+                       a reader who already knew to look. */
+                    `${screening.rows.length} · ${screening.unevaluated} unevaluated`
+              }
               subtitle={
                 <>
-                  SORT
-                  <span className="rounded-[2px] border border-line-2 px-1.5 text-fg-2">
-                    EXPECTED COST ▾
-                  </span>
-                  <span className="ml-auto">N-1 · f+{String(search.lead).padStart(2, "0")}</span>
+                  <Select
+                    label="Sort the screening"
+                    value={search.sort}
+                    options={SORTS}
+                    onChange={(sort) => void navigate({ search: (p) => ({ ...p, sort }) })}
+                  />
+                  <Select
+                    label="How much of the screening to show"
+                    value={search.scope}
+                    options={SCOPES}
+                    onChange={(scope) => void navigate({ search: (p) => ({ ...p, scope }) })}
+                  />
+                  <span className="ml-auto">f+{String(search.lead).padStart(2, "0")}</span>
                 </>
               }
             >

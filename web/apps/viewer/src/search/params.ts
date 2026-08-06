@@ -17,6 +17,7 @@ import { z } from "zod";
 import {
   AnyTypeId,
   KnowledgeTime,
+  SCREENING_SORTS,
   ValidTime,
   typeId,
   type BitemporalRef,
@@ -74,6 +75,21 @@ export const consoleSearch = z.object({
 
   /** The selected element, which is what opens the inspector. */
   sel: AnyTypeId.optional(),
+
+  /**
+   * How the screening rail is ordered, and how much of it is shown.
+   *
+   * In the URL for the same reason the drawn layer is: they change what a
+   * screenshot of the rail says, and a figure in a review has to be
+   * reproducible from its link.
+   *
+   * `scope` is the honest half. The platform returns only the concerning
+   * candidates unless asked for everything, so a rail that never said which
+   * it was showing would be the truncation problem the route geometry already
+   * solved by reporting its cap.
+   */
+  sort: z.enum(SCREENING_SORTS).default("loading"),
+  scope: z.enum(["concerning", "all"]).default("concerning"),
 });
 export type ConsoleSearch = z.infer<typeof consoleSearch>;
 
