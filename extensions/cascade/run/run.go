@@ -172,11 +172,35 @@ type CascadeRun struct {
 	// ID identifies this run.
 	ID id.ID `json:"id"`
 
-	// ModelHash names the network that was simulated. Carried from the
-	// solver's own response rather than recomputed here, because
-	// SimulateCascadeResponse — unlike ScreenContingenciesResponse — states
-	// it directly.
+	// ModelHash names the network as the SOLVER knows it: the hash of the
+	// deterministic protobuf that was uploaded, which is the key the solver
+	// caches a model against. Carried from the solver's own response rather
+	// than recomputed here, because SimulateCascadeResponse — unlike
+	// ScreenContingenciesResponse — states it directly.
+	//
+	// It keeps the plain name for the reason sweep.Run.ModelHash does: the
+	// key is published, a generated client and web/apps/viewer read it, and
+	// powerflow.Solution.ModelHash is the same value under the same name. The
+	// meaning has not changed, so neither has the name.
 	ModelHash string `json:"model_hash"`
+
+	// CanonicalHash names the same network as the PLATFORM knows it:
+	// canonical.Hash over networkmodel's canonical encoding. That is what
+	// networkmodel stores a model under, what a scenario manifest pins, and
+	// therefore the only one of the two that can be turned back into a stored
+	// model — see Engine.Extent, which needs exactly that and used to attempt
+	// it with the solver's hash.
+	//
+	// A pointer because absent and empty are different. A run recorded before
+	// this field existed never observed a canonical hash, and neither does one
+	// simulated against a model networkmodel never stored; writing "" for
+	// either would record a hash of no characters that every such run shares.
+	//
+	// No optional:"true", unlike scn.ScenarioRun's omitzero fields: Forge
+	// leaves a pointer with omitempty out of an OpenAPI component's required
+	// array already, which was confirmed by reading the generated document
+	// back rather than assumed.
+	CanonicalHash *string `json:"canonical_hash,omitempty"`
 
 	// SolverVersion is the solver that produced the simulation, likewise
 	// read from the response rather than configured into the engine.
@@ -247,6 +271,16 @@ func (r CascadeRun) Validate() error {
 				"be reproduced", bserr.ErrInvalid)
 	}
 
+	// A present-but-empty canonical hash is a third state the field has no
+	// meaning for, and the one that does damage quietly: nil says unknown, a
+	// real hash says which network, and "" says neither while still comparing
+	// equal to itself in every listing.
+	if r.CanonicalHash != nil && *r.CanonicalHash == "" {
+		return fmt.Errorf(
+			"%w: a run's canonical hash is present and empty; leave it absent to "+
+				"say it is unknown", bserr.ErrInvalid)
+	}
+
 	if r.SolverVersion == "" {
 		return fmt.Errorf(
 			"%w: a run must name the solver version that produced it",
@@ -254,6 +288,20 @@ func (r CascadeRun) Validate() error {
 	}
 
 	return nil
+}
+
+// NamesModel reports whether a run names this network under either hash.
+//
+// Shared by both store implementations so the two cannot drift on what "this
+// network" means — the memory store filters in Go and the Fabriq store in SQL,
+// and a rule written twice eventually says two things. The same predicate
+// sweep.Run carries, for the same reason.
+func (r CascadeRun) NamesModel(hash string) bool {
+	if r.ModelHash == hash {
+		return true
+	}
+
+	return r.CanonicalHash != nil && *r.CanonicalHash == hash
 }
 
 // Store persists cascade runs.
@@ -270,5 +318,10 @@ type Store interface {
 	Get(ctx context.Context, runID id.ID) (CascadeRun, error)
 
 	// ListByModel returns runs for one network, most recent first.
+	//
+	// The hash may be in EITHER space — a run matches when it equals the run's
+	// ModelHash or its CanonicalHash. A caller has whichever one it has: a
+	// user or a scenario manifest holds the canonical hash, while every run
+	// recorded before CanonicalHash existed carries only the solver's.
 	ListByModel(ctx context.Context, modelHash string, limit int) ([]CascadeRun, error)
 }
