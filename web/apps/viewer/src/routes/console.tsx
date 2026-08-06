@@ -36,6 +36,7 @@ import { temporalOf } from "../search/params";
 import { useViewerModel } from "../model/use-viewer-model";
 import { useRouteGeometry } from "../api/use-route-geometry";
 import { useHazardLayer } from "../api/use-hazard-layer";
+import { useSelectedCase } from "../api/use-context-options";
 import { AMPACITY, LOADING, colorOf } from "../api/hazard";
 import { hazardLayerStack } from "./layers";
 import { CONTINGENCIES, HORIZON, INSPECTED, LINE_TULIA_LEVELLAND } from "../fixtures/derecho";
@@ -62,12 +63,24 @@ export function ConsoleScreen(): React.JSX.Element {
     [hazard, encoding],
   );
 
+  /* The layer stack's source column, from the model actually selected. It
+   * read `ACTIVSg2000 v3` — a model this platform has never held — in the one
+   * panel whose doc comment claims a screenshot of it is self-describing.
+   *
+   * Name and hash together, because a model is immutable and correcting one
+   * produces a new model under the same name: the hash is what tells a
+   * screenshot of this build from a screenshot of the next. */
+  const networkCase = useSelectedCase(search.case);
+
   const layers = hazardLayerStack({
     encoding,
     issuance: hazard.issuance,
     rated: hazard.rated,
     unrated: hazard.unrated,
-    network: "ACTIVSg2000 v3",
+    network:
+      networkCase === null
+        ? "no case selected"
+        : `${networkCase.name} ${networkCase.contentHash.slice(0, 8)}`,
   });
 
   const temporal = temporalOf(search);

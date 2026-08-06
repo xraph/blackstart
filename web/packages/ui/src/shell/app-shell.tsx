@@ -9,6 +9,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { cn } from "../cn";
 import { AdvisoryChip } from "../instrument/status";
+import { Select, type SelectOption } from "../primitives/select";
 
 export interface AppShellProps {
   readonly topBar: ReactNode;
@@ -56,11 +57,24 @@ export function AppShell({
 
 /* ── top bar ─────────────────────────────────────────────────────────── */
 
-export interface TopBarContext {
-  readonly label: string;
-  readonly value: string;
-  readonly menu?: boolean;
-}
+/**
+ * One labelled value in the bar, with or without a way to change it.
+ *
+ * `options` and `onChange` travel together rather than beside a `menu`
+ * boolean, because a boolean is what let the bar draw a `▾` with nothing
+ * behind it. A chevron on a control that does not open is now unexpressible.
+ */
+export type TopBarContext =
+  | { readonly label: string; readonly value: string }
+  | {
+      readonly label: string;
+      /** The chosen option's value, or undefined when nothing is chosen. */
+      readonly value: string | undefined;
+      readonly options: readonly SelectOption<string>[];
+      readonly onChange: (value: string) => void;
+      /** What the trigger reads when nothing is chosen. */
+      readonly placeholder?: string;
+    };
 
 export function TopBar({
   contexts,
@@ -95,10 +109,24 @@ export function TopBar({
       {contexts.map((c) => (
         <div key={c.label} className="flex h-full items-center">
           <span aria-hidden="true" className="h-[18px] w-px bg-line-2" />
-          <span className="flex h-full items-center gap-2 px-3">
-            <span className="text-[10px] uppercase tracking-[0.1em] text-fg-3">{c.label}</span>
-            <span className="font-mono text-[11.5px] text-fg">{c.value}</span>
-            {c.menu === true && <span className="text-[9px] text-fg-3">▾</span>}
+          {/* The label goes below the tablet breakpoint and the value stays.
+              `scenario` is guessable from what sits under it; the name of the
+              scenario is not. */}
+          <span className="flex h-full items-center gap-2 px-1.5 md:px-3">
+            <span className="text-[10px] uppercase tracking-[0.1em] text-fg-3 max-md:hidden">
+              {c.label}
+            </span>
+            {"options" in c ? (
+              <Select
+                label={c.label}
+                value={c.value}
+                options={c.options}
+                onChange={c.onChange}
+                {...(c.placeholder === undefined ? {} : { placeholder: c.placeholder })}
+              />
+            ) : (
+              <span className="font-mono text-[11.5px] text-fg">{c.value}</span>
+            )}
           </span>
         </div>
       ))}

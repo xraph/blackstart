@@ -20,6 +20,7 @@ import {
 } from "@blackstart/ui";
 
 import { useAuth } from "../auth/provider";
+import { useCaseOptions, useScenarioOptions } from "../api/use-context-options";
 
 /* Inline SVG rather than an icon dependency: four of them do not justify
  * shipping a set, and these are drawn at the shell's own stroke weight. */
@@ -130,6 +131,26 @@ function RootLayout(): React.JSX.Element {
     select: (s) => KnowledgeTime.safeParse((s.location.search as { known?: unknown }).known),
   });
 
+  const scenarios = useScenarioOptions();
+  const cases = useCaseOptions();
+
+  /* Same loose read as the knowledge time above, and for the same reason: the
+   * runs index carries neither of these, so the root cannot take them from a
+   * typed route search without excluding a screen it also frames. */
+  const chosen = useRouterState({
+    select: (s) => s.location.search as { scenario?: string; case?: string },
+  });
+
+  /* Written to the URL rather than to component state, so the choice survives
+   * a reload and can be cited. Merged into whatever is already there — a
+   * scenario change must not drop the valid time beside it. */
+  const set = (key: "scenario" | "case", id: string): void => {
+    void navigate({
+      to: pathname,
+      search: (prev: Record<string, unknown>) => ({ ...prev, [key]: id }),
+    });
+  };
+
   /* Navigating without search drops the current params, which would lose the
    * valid time. The console and cascade screens share a schema, so carrying
    * them across is correct; the runs screen validates its own and ignores
@@ -142,8 +163,20 @@ function RootLayout(): React.JSX.Element {
     <div className="flex h-full flex-col bg-bg text-fg">
       <TopBar
         contexts={[
-          { label: "scenario", value: "TX-2026-0802-DERECHO", menu: true },
-          { label: "case", value: "ACTIVSg2000", menu: true },
+          {
+            label: "scenario",
+            value: chosen.scenario,
+            options: scenarios.options,
+            onChange: (id) => set("scenario", id),
+            placeholder: scenarios.isPending ? "loading…" : "none",
+          },
+          {
+            label: "case",
+            value: chosen.case,
+            options: cases.options,
+            onChange: (id) => set("case", id),
+            placeholder: cases.isPending ? "loading…" : "none",
+          },
         ]}
         clock={<Clock {...(known.success ? { knownAt: known.data } : {})} />}
         aside={<ThemeToggle theme={theme} onChange={setTheme} />}

@@ -29,11 +29,25 @@ export const TYPE_PREFIXES = {
   scn: "scenario",
   run: "run",
   casc: "cascade run",
+  crun: "contingency run",
+  nmdl: "network model",
   mdl: "model",
   ds: "dataset",
   fs: "feature set",
   tx: "network version",
 } as const;
+
+/*
+ * This table has drifted from what the platform issues, and `crun` and `nmdl`
+ * are the two the console now needs — a network model comes back as
+ * `nmdl_…` and was being rejected as not a TypeID at all.
+ *
+ * The drift runs both ways and is wider than these two: `extensions/*` also
+ * issue `srun`, `rte`, `strc`, `dsrc`, `sub`, `vlev` and more, while `mdl`,
+ * `ds`, `fs` and `tx` below are issued by nothing. Reconciling the whole
+ * table is worth doing and is not this change — adding only what is used
+ * keeps the list honest about being incomplete rather than looking settled.
+ */
 
 export type TypePrefix = keyof typeof TYPE_PREFIXES;
 

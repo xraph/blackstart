@@ -26,7 +26,31 @@ import {
 export const MAX_LEAD_HOUR = 18;
 
 export const consoleSearch = z.object({
-  scenario: z.string().min(1).default("tx-2026-0802-derecho"),
+  /**
+   * Which scenario, by the identifier the platform issues.
+   *
+   * This was a slug defaulting to `tx-2026-0802-derecho`, which named
+   * nothing: a `Scenario` is `{id, name, manifest, createdAt}` and has never
+   * had a slug. Matching on `name` instead was the alternative and is worse —
+   * names are neither unique nor stable, so a rename silently breaks a cited
+   * URL, and §9 of the console design makes a citable URL a provenance
+   * concern rather than a routing nicety.
+   *
+   * Undefined rather than defaulted, so two operators opening the same bare
+   * URL on different days see the same thing: nothing chosen, and a selector
+   * saying so.
+   */
+  scenario: typeId("scn").optional(),
+
+  /**
+   * Which network model the console is reasoning about.
+   *
+   * In the URL alongside the scenario because it is not decoration: it
+   * supplies the content hash that finds the contingency run the rail ranks,
+   * so two readers on the same link have to be looking at the same network.
+   */
+  case: typeId("nmdl").optional(),
+
   valid: ValidTime,
   /** Absent means live. Present means the console is pinned to a past view. */
   known: KnowledgeTime.optional(),
@@ -54,7 +78,6 @@ export const consoleSearch = z.object({
 export type ConsoleSearch = z.infer<typeof consoleSearch>;
 
 export const DEFAULT_CONSOLE_SEARCH = {
-  scenario: "tx-2026-0802-derecho",
   lead: 4,
 } as const;
 

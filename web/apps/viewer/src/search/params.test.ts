@@ -64,6 +64,48 @@ describe("console search params", () => {
   it("coerces the lead hour, since a search param arrives as a string", () => {
     expect(consoleSearch.parse({ valid: "2026-08-02T22:00Z", lead: "6" }).lead).toBe(6);
   });
+
+  it("leaves the scenario unset rather than naming one nobody chose", () => {
+    // It used to default to the slug `tx-2026-0802-derecho`, which the
+    // platform has never issued: a Scenario is `{id, name, manifest}` with no
+    // slug at all, so that default named nothing.
+    const s = consoleSearch.parse({ valid: "2026-08-02T22:00Z" });
+
+    expect(s.scenario).toBeUndefined();
+    expect(s.case).toBeUndefined();
+  });
+
+  it("carries the scenario and the case as the identifiers the platform issues", () => {
+    const s = consoleSearch.parse({
+      valid: "2026-08-02T22:00Z",
+      scenario: "scn_01k3qf8m2xw7rb4n09ytvdhjkm",
+      case: "nmdl_01k3qf8m2xw7rb4n09ytvdhjkn",
+    });
+
+    expect(s.scenario).toBe("scn_01k3qf8m2xw7rb4n09ytvdhjkm");
+    expect(s.case).toBe("nmdl_01k3qf8m2xw7rb4n09ytvdhjkn");
+  });
+
+  it("rejects the old slug rather than resolving it against a name", () => {
+    // Names are neither unique nor stable, so matching one would let a rename
+    // silently break a cited URL.
+    expect(
+      consoleSearch.safeParse({ valid: "2026-08-02T22:00Z", scenario: "tx-2026-0802-derecho" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("refuses a scenario identifier in the case slot", () => {
+    // The two are branded apart in the schema for this reason: the case
+    // determines which run the rail ranks, and the wrong one produces an
+    // empty rail rather than an error.
+    expect(
+      consoleSearch.safeParse({
+        valid: "2026-08-02T22:00Z",
+        case: "scn_01k3qf8m2xw7rb4n09ytvdhjkm",
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("runs search params", () => {
