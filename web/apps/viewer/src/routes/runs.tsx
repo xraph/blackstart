@@ -402,6 +402,7 @@ function ScenarioTable({ runs }: { readonly runs: readonly ScenarioRun[] }): Rea
           <th className={TH}>Status</th>
           <th className={TH}>Weather</th>
           <th className={TH}>Failure</th>
+          <th className={TH}>Sweep</th>
           <th className={TH}>Cascade</th>
           <th className={TH}>Queued</th>
         </tr>
@@ -417,6 +418,9 @@ function ScenarioTable({ runs }: { readonly runs: readonly ScenarioRun[] }): Rea
             <td className={TD}>{weatherCoverage(r)}</td>
             <td className={TD}>
               <FailureCell run={r} />
+            </td>
+            <td className={TD}>
+              <SweepLink run={r} />
             </td>
             <td className={TD}>
               <CascadeLink run={r} />
@@ -451,7 +455,10 @@ function ScenarioCard({ run }: { readonly run: ScenarioRun }): React.JSX.Element
           )}
         </span>
       )}
-      <CascadeLink run={run} />
+      <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <SweepLink run={run} />
+        <CascadeLink run={run} />
+      </span>
     </li>
   );
 }
@@ -632,6 +639,37 @@ function cascadeLinkSearch(run: ScenarioRun): CascadeSearch | undefined {
   });
 
   return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * The contingency sweep this run produced, in the listing that holds it.
+ *
+ * The cascade answers "what happened"; the sweep answers "why that outage and
+ * not another one", because it is the screen that ranked the candidates the
+ * cascade then simulated. A run linking only to its cascade shows the
+ * consequence without the reasoning.
+ *
+ * This lands on the runs index rather than a detail view because there is no
+ * per-sweep route to land on — the sweep is a row in this same screen. So the
+ * link filters to sweeps and pre-selects the row, which the table already
+ * renders highlighted for comparison. Honest about what exists rather than
+ * inventing a destination.
+ */
+function SweepLink({ run }: { readonly run: ScenarioRun }): React.JSX.Element {
+  const sweep = run.sweepRunId;
+
+  if (sweep === undefined) return <span className="text-fg-4">—</span>;
+
+  return (
+    <Link
+      to="/runs"
+      search={{ kind: "sweep", status: "any", compare: [sweep] } satisfies RunsSearch}
+      className="text-fg underline"
+      aria-label={`Show contingency sweep ${sweep} from scenario run ${run.id}`}
+    >
+      {abbreviateTypeId(sweep)}
+    </Link>
+  );
 }
 
 function Notice({

@@ -811,6 +811,26 @@ describe("runs index, scenario runs", () => {
     expect(screen.queryByRole("link", { name: /play back cascade/i })).toBeNull();
   });
 
+  it("links a scenario run to the sweep that chose its outage", async () => {
+    // The cascade says what happened; the sweep says why that outage and not
+    // another, because it ranked the candidates the cascade then simulated.
+    // There is no per-sweep route, so the link filters the index to sweeps and
+    // pre-selects the row — a destination that exists rather than an invented
+    // one.
+    await renderAt("/runs?kind=scenario");
+    const link = screen.getByRole("link", { name: new RegExp(SWEEP.id) });
+    const href = decodeURIComponent(link.getAttribute("href") ?? "");
+    expect(href.startsWith("/runs")).toBe(true);
+    expect(href).toContain("kind=sweep");
+    expect(href).toContain(SWEEP.id);
+  });
+
+  it("offers no sweep link for a run that produced no sweep", async () => {
+    scenarioQuery.current = loaded([SCENARIO_UNRATED]);
+    await renderAt("/runs?kind=scenario");
+    expect(screen.queryByRole("link", { name: /contingency sweep/i })).toBeNull();
+  });
+
   it("says both where a failed run stopped and why", async () => {
     // The step is the coarse classification; the reason is the sentence
     // somebody acts on, and the backend keeps them apart precisely so a
