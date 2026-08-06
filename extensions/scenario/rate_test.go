@@ -364,18 +364,42 @@ func TestEachBranchConvertsAgainstItsOwnFromBusVoltage(t *testing.T) {
 	}
 }
 
-// twoVoltageModel's third branch used to be this suite's one fallback: its
-// from-bus, bus-3, states nothing, and under the old from-bus-only rule that
-// was enough to send it to the base. It no longer is. Under stated-end-first
-// the same branch's to-bus is bus-1, which states 345 kV, and a real voltage
-// at the branch's own far end beats the network base — so nothing in this
-// model falls back at all. Genuine fallback, where neither end states a
-// voltage, is TestNeitherEndStatedStillFallsBackToTheBase's job instead.
+// A model with one branch that leaves a stated bus and one branch whose two
+// ends both state nothing. Two branches rather than one, so the count has to
+// land on the specific one that falls back rather than merely being
+// non-zero: a counter stuck reporting every rated branch as a fallback would
+// pass a one-branch fixture just as well as a correct one.
+func modelWithOneGenuineFallback() *solverv1.NetworkModel {
+	volts := func(v float64) *float64 { return &v }
+
+	return &solverv1.NetworkModel{
+		Name:    "one genuine fallback",
+		SBaseVa: 100e6,
+		VBaseV:  345e3,
+		Buses: []*solverv1.Bus{
+			{Id: "bus-1", VNominalV: volts(345e3)},
+			{Id: "bus-2"}, // states nothing
+			{Id: "bus-3"}, // states nothing
+		},
+		Branches: []*solverv1.Branch{
+			// Leaves the stated bus: never falls back.
+			{Id: lines[0].String(), FromBus: 0, ToBus: 1, RatingVa: 500e6, InService: true, Tap: 1},
+			// Neither end states a voltage: the one branch that does.
+			{Id: lines[1].String(), FromBus: 1, ToBus: 2, RatingVa: 500e6, InService: true, Tap: 1},
+		},
+	}
+}
+
+// A rating computed against a voltage nobody stated for that bus must not be
+// indistinguishable from one computed against a bus's own. It is not a
+// failure — a static rating for a line the weather did reach would be worse
+// — but a reader has no other way to know that one of these ratings rests on
+// a substituted voltage rather than the branch's own.
 func TestTheFallbackToTheModelBaseIsCounted(t *testing.T) {
 	t.Parallel()
 
 	got, err := rate(
-		t.Context(), twoVoltageModel(),
+		t.Context(), modelWithOneGenuineFallback(),
 		&fakeGeo{route: aRoute, spans: threeSpans},
 		&fakeHazard{ampacity: 900},
 		issued, valid,
@@ -384,10 +408,16 @@ func TestTheFallbackToTheModelBaseIsCounted(t *testing.T) {
 		t.Fatalf("rate: %v", err)
 	}
 
-	if got.BaseVoltageFallback != 0 {
-		t.Errorf("BaseVoltageFallback = %d, want 0 of %d rated branches — every "+
-			"branch here has at least one end stating a voltage",
+	if got.BaseVoltageFallback != 1 {
+		t.Errorf("BaseVoltageFallback = %d, want 1 of %d rated branches — only the "+
+			"branch whose two ends both state nothing falls back",
 			got.BaseVoltageFallback, got.WeatherRated)
+	}
+
+	// The falling-back branch itself converts at the base, not at zero.
+	want := math.Sqrt(3) * 345e3 * 900
+	if rating := got.Overrides[1].GetBranchRating().GetRatingVa(); math.Abs(rating-want) > 1 {
+		t.Errorf("branch 1 is rated %v VA, want the base's %v", rating, want)
 	}
 }
 
