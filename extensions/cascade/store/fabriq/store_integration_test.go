@@ -270,6 +270,62 @@ func TestListByModelHonoursTheLimit(t *testing.T) {
 	}
 }
 
+// The SQL predicate matches either hash, and a NULL canonical hash matches
+// nothing.
+//
+// The Go side of this rule is covered by run.CascadeRun.NamesModel's own test;
+// this is the half that only Postgres can answer, and the half where "absent"
+// is a NULL rather than a nil pointer. Reverting the WHERE clause to
+// `model_hash = $1` fails the canonical lookup here — the SQL is the only place
+// a listing against a real database is decided.
+func TestListByModelMatchesEitherHash(t *testing.T) {
+	s := harness(t)
+	ctx := context.Background()
+
+	canonical := "sha256:canonical-side"
+
+	both := aRun("sha256:protobuf-side", startedAt)
+	both.CanonicalHash = &canonical
+
+	if _, err := s.Runs().Create(ctx, both); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// A run from before the column: canonical_hash lands as NULL.
+	older := aRun("sha256:protobuf-only", startedAt.Add(time.Hour))
+	if _, err := s.Runs().Create(ctx, older); err != nil {
+		t.Fatalf("Create (older): %v", err)
+	}
+
+	for _, hash := range []string{"sha256:protobuf-side", canonical} {
+		got, err := s.Runs().ListByModel(ctx, hash, 0)
+		if err != nil {
+			t.Fatalf("ListByModel(%q): %v", hash, err)
+		}
+
+		if len(got) != 1 || got[0].ID != both.ID {
+			t.Errorf("listing by %q returned %d runs, want the one that carries it",
+				hash, len(got))
+		}
+	}
+
+	// The older run is still findable by the only hash it has, and its absent
+	// canonical hash comes back absent rather than as an empty string.
+	got, err := s.Runs().ListByModel(ctx, "sha256:protobuf-only", 0)
+	if err != nil {
+		t.Fatalf("ListByModel (older): %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("listing a run that predates the column returned %d rows, want 1", len(got))
+	}
+
+	if got[0].CanonicalHash != nil {
+		t.Errorf("a NULL canonical hash read back as %q; absent must stay absent",
+			*got[0].CanonicalHash)
+	}
+}
+
 // Every run names the network it simulated, so a listing with no model hash is
 // a question with no answer rather than a request for everything.
 func TestListByModelNeedsAModel(t *testing.T) {

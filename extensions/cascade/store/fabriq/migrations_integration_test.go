@@ -12,12 +12,24 @@ import (
 	"github.com/xraph/blackstart/internal/testsupport"
 )
 
-// registered is how many migrations this group carries.
+// rollBackFully unwinds every migration this group carries.
 //
-// Grove rolls back one migration per call rather than a whole batch, so a
-// group with more than one needs that many calls to unwind. Discovering this
-// by watching a table survive a rollback is how it got written down.
-const registered = 2
+// Grove rolls back one migration per call rather than a whole batch, so a group
+// with more than one needs that many calls to unwind. Discovering that by
+// watching a table survive a rollback is how it first got written down — as a
+// constant, which then went stale the moment a third migration landed without
+// anyone bumping it, and this test failed for a reason that had nothing to do
+// with either migration's correctness. Asking the group how many it has cannot
+// go stale.
+func rollBackFully(t *testing.T, dsn string) {
+	t.Helper()
+
+	for step := range len(cscfabriq.Group().Migrations()) {
+		if err := testsupport.Rollback(t, dsn, cscfabriq.Group()); err != nil {
+			t.Fatalf("rolling back step %d: %v", step+1, err)
+		}
+	}
+}
 
 // Spec section 10 requires migrations to run forward and backward cleanly.
 func TestMigrationsRunBothWays(t *testing.T) {
@@ -36,16 +48,6 @@ func TestMigrationsRunBothWays(t *testing.T) {
 	}
 }
 
-func rollBackFully(t *testing.T, dsn string) {
-	t.Helper()
-
-	for step := range registered {
-		if err := testsupport.Rollback(t, dsn, cscfabriq.Group()); err != nil {
-			t.Fatalf("rolling back step %d: %v", step+1, err)
-		}
-	}
-}
-
 // A second forward pass must succeed after a rollback, which is what makes the
 // down step usable for anything other than a one-way experiment.
 func TestMigrationsReapplyAfterRollback(t *testing.T) {
@@ -61,18 +63,44 @@ func TestMigrationsReapplyAfterRollback(t *testing.T) {
 		t.Fatal("re-applying after a rollback created no cascade tables")
 	}
 
-	// And the column the second migration adds comes back with it.
-	if got := initiatingColumnCount(t, superDSN); got != 1 {
-		t.Errorf("the initiating column did not survive a rollback and re-apply")
+	// And the columns the later migrations add come back with it.
+	for _, column := range []string{"initiating", "canonical_hash"} {
+		if got := columnCount(t, superDSN, column); got != 1 {
+			t.Errorf("the %s column did not survive a rollback and re-apply", column)
+		}
 	}
 }
 
-func initiatingColumnCount(t *testing.T, dsn string) int {
+// The canonical hash column takes no default, so an existing row's answer stays
+// unknown rather than becoming a hash every historical run shares.
+//
+// Asserted against the live schema rather than the DDL string, because the
+// thing that matters is what Postgres ended up with: a NOT NULL DEFAULT ''
+// added later would read perfectly well in review and would silently make every
+// pre-existing run list as one network.
+func TestTheCanonicalHashColumnIsNullableWithNoDefault(t *testing.T) {
+	superDSN := testsupport.Postgres(t)
+
+	testsupport.Migrate(t, superDSN, cscfabriq.Group())
+
+	if got := scalar(t, superDSN,
+		`SELECT count(*) AS n FROM information_schema.columns
+		 WHERE table_name = 'blackstart_cascade_run'
+		   AND column_name = 'canonical_hash'
+		   AND is_nullable = 'YES'
+		   AND column_default IS NULL`); got != 1 {
+		t.Error("canonical_hash is not nullable-with-no-default; a run recorded " +
+			"before this column has an unknown canonical hash, and any default " +
+			"would claim every one of them belongs to the same network")
+	}
+}
+
+func columnCount(t *testing.T, dsn, column string) int {
 	t.Helper()
 
 	return scalar(t, dsn,
 		`SELECT count(*) AS n FROM information_schema.columns
-		 WHERE table_name = 'blackstart_cascade_run' AND column_name = 'initiating'`)
+		 WHERE table_name = 'blackstart_cascade_run' AND column_name = '`+column+`'`)
 }
 
 func cascadeTableCount(t *testing.T, dsn string) int {
