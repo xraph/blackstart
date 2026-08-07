@@ -16,6 +16,7 @@ import (
 	gid "github.com/xraph/blackstart/extensions/geo/id"
 	"github.com/xraph/blackstart/extensions/geo/shape"
 	"github.com/xraph/blackstart/extensions/networkmodel"
+	"github.com/xraph/blackstart/extensions/networkmodel/canonical"
 	"github.com/xraph/blackstart/extensions/networkmodel/model"
 	"github.com/xraph/blackstart/pkg/bserr"
 	"github.com/xraph/blackstart/pkg/id"
@@ -137,7 +138,7 @@ func geoTraceModelCommand() cli.Command {
 				return err
 			}
 
-			candidates, noPlacement, alreadyTraced, err := traceCandidates(
+			candidates, noPlacement, alreadyTraced, transformers, err := traceCandidates(
 				ctx.Context(), nmEngine, gxEngine, found.ID)
 			if err != nil {
 				return err
@@ -171,11 +172,13 @@ func geoTraceModelCommand() cli.Command {
 			// prints all of its counts. "No placement" is a gap in the
 			// coordinate file; "already traced" is a previous run having done
 			// its job, and running this command twice must not double the
-			// routes.
+			// routes; "transformers" is a branch this command correctly
+			// refuses to trace a corridor for.
 			ctx.Printf("\ntraced            %d\n", traced)
-			ctx.Printf("no placement      %d\n", noPlacement)
+			ctx.Printf("transformers      %d\n", transformers)
 			ctx.Printf("already traced    %d\n", alreadyTraced)
-			ctx.Printf("branches total    %d\n", traced+noPlacement+alreadyTraced)
+			ctx.Printf("no placement      %d\n", noPlacement)
+			ctx.Printf("branches total    %d\n", traced+transformers+alreadyTraced+noPlacement)
 
 			return nil
 		},
@@ -195,25 +198,61 @@ type traceCandidate struct {
 	From, To shape.Point
 }
 
-// traceCandidates walks a model's branches and sorts each into one of three
-// piles: ready to trace, missing a placement at one or both ends, or already
-// traced.
+// traceCandidates walks a model's branches and sorts each into one of four
+// piles: a transformer, already traced, missing a placement at one or both
+// ends, or ready to trace.
+//
+// Checked in that order, and the order is not arbitrary:
+//
+//   - A transformer is decided first because it is the most specific
+//     statement that can be made about a branch: a transformer is never
+//     traceable whatever else is true of it, so nothing else needs deciding
+//     once its two ends state different voltages — not whether it already
+//     has a route, not whether it has placements at all. This is the
+//     identical rule extensions/hazard/conductor.PlanAssumptions applies to
+//     keep from inventing a conductor for a transformer, read from the same
+//     model.Bus rows, so geo and hazard land on the same branches by
+//     construction rather than by coincidence.
+//   - Already traced comes next because it is a fact about the world: a
+//     route exists. That fact must win over "no placement" or this command
+//     would stop being idempotent — a placement removed after a route was
+//     traced must not make the route reappear as untraced.
+//   - No placement is last because it is the one gap of the three somebody
+//     could still close by adding a coordinate. A transformer never becomes
+//     traceable and an existing route is not undone by this command, but a
+//     missing placement is exactly the kind of absence a later import might
+//     fill.
 //
 // A branch missing either placement is counted and skipped rather than given
 // an invented coordinate — a model with no placements, or an incomplete one,
 // is a legitimate state, and everything downstream reports its absence as a
 // count rather than a guess.
+//
+// The transformer check only catches a branch whose two ends state different
+// voltages. It does not catch a 1:1 transformer or a same-voltage phase
+// shifter — both state one voltage at both ends and pass this check exactly
+// like an ordinary conductor run. canonical.Branch carries Tap and Shift,
+// which would catch them, but the relational model.Branch row this function
+// reads does not project those fields, and adding them would mean a
+// migration, an import-path change, and a re-import of every model —
+// deliberately out of scope here. This gap is not closed by this change; it
+// is only the gap that remains once the accidental one is.
 func traceCandidates(
 	ctx context.Context, nm *networkmodel.Engine, gx *geo.Engine, modelID id.ID,
-) (candidates []traceCandidate, noPlacement, alreadyTraced int, err error) {
+) (candidates []traceCandidate, noPlacement, alreadyTraced, transformers int, err error) {
 	branches, err := nm.Store().Branches().ForModel(ctx, modelID)
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("bsctl: reading branches of %s: %w", modelID, err)
+		return nil, 0, 0, 0, fmt.Errorf("bsctl: reading branches of %s: %w", modelID, err)
 	}
 
 	placements, err := nm.Store().Placements().ForModel(ctx, modelID)
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("bsctl: reading placements of %s: %w", modelID, err)
+		return nil, 0, 0, 0, fmt.Errorf("bsctl: reading placements of %s: %w", modelID, err)
+	}
+
+	buses, err := nm.Store().Buses().ForModel(ctx, modelID)
+	if err != nil {
+		return nil, 0, 0, 0, fmt.Errorf("bsctl: reading buses of %s: %w", modelID, err)
 	}
 
 	byBus := make(map[string]model.Placement, len(placements))
@@ -221,17 +260,19 @@ func traceCandidates(
 		byBus[placement.Bus] = placement
 	}
 
+	busByOrdinal := make(map[string]model.Bus, len(buses))
+	for _, bus := range buses {
+		busByOrdinal[bus.Ordinal] = bus
+	}
+
 	for _, branch := range branches {
-		from, ok := byBus[branch.FromBus]
-		if !ok {
-			noPlacement++
-
-			continue
-		}
-
-		to, ok := byBus[branch.ToBus]
-		if !ok {
-			noPlacement++
+		// A bus absent from the map — a model with no bus rows at all, or one
+		// missing just this end — zero-values to a Bus whose VNominalV is 0,
+		// which canonical.StatedNominalV reads as unstated. That is exactly
+		// the reading this check needs: an absent bus row must never be
+		// mistaken for a stated voltage of zero.
+		if branchIsTransformer(busByOrdinal[branch.FromBus], busByOrdinal[branch.ToBus]) {
+			transformers++
 
 			continue
 		}
@@ -247,8 +288,22 @@ func traceCandidates(
 		}
 
 		if !errors.Is(err, bserr.ErrNotFound) {
-			return nil, 0, 0, fmt.Errorf(
+			return nil, 0, 0, 0, fmt.Errorf(
 				"bsctl: checking whether %s is already traced: %w", branch.ID, err)
+		}
+
+		from, ok := byBus[branch.FromBus]
+		if !ok {
+			noPlacement++
+
+			continue
+		}
+
+		to, ok := byBus[branch.ToBus]
+		if !ok {
+			noPlacement++
+
+			continue
 		}
 
 		candidates = append(candidates, traceCandidate{
@@ -258,7 +313,31 @@ func traceCandidates(
 		})
 	}
 
-	return candidates, noPlacement, alreadyTraced, nil
+	return candidates, noPlacement, alreadyTraced, transformers, nil
+}
+
+// branchIsTransformer reports whether a branch's two ends state different
+// nominal voltages.
+//
+// This is the same rule extensions/hazard/conductor.PlanAssumptions applies
+// to bucket transformers out of its own candidates, reproduced here rather
+// than shared by import so geo does not have to depend on hazard to agree
+// with it: both read canonical.StatedNominalV off the same model.Bus rows,
+// so the two commands land on the same branches by construction.
+//
+// Both ends must state a voltage before this returns true. One end silent is
+// not evidence of a transformer — absence must never imply a conclusion —
+// so a branch with only one stated end is left to trace normally, exactly as
+// PlanAssumptions leaves it to be assumed by voltage rather than flagged as a
+// transformer. "States a voltage" is canonical.StatedNominalV and is not
+// re-spelled here as `volts > 0`: that function exists because this question
+// had already been answered three different ways once, and a bus holding
+// +Inf read as stated in two of them.
+func branchIsTransformer(from, to model.Bus) bool {
+	fromVolts, fromStated := canonical.StatedNominalV(from.VNominalV)
+	toVolts, toStated := canonical.StatedNominalV(to.VNominalV)
+
+	return fromStated && toStated && fromVolts != toVolts
 }
 
 // modelAndGeo resolves both the network-model and geo engines from one
