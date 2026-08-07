@@ -242,12 +242,19 @@ func weakestSpan(
 // screen and the cascade then run correct arithmetic on that — the base stays
 // the fallback of last resort, not the default.
 //
-// In practice every branch that reaches this point is a line whose ends are
-// at one voltage: a transformer carries no route with spans, so weakestSpan
-// returns outcomeUnlocated for it and no override is ever emitted. The rule
-// matters for the case where that stops being true, and it has to be
-// deterministic either way, because two runs of one pinned scenario must
-// produce byte-identical requests.
+// Every branch that reaches this point is a line whose ends are at one
+// voltage: a transformer carries no route with spans, so weakestSpan returns
+// outcomeUnlocated for it and no override is ever emitted. For a model whose
+// buses state their voltages, that is enforced, not merely observed —
+// apps/bsctl/geo.go's traceCandidates refuses to mint a route for a branch
+// whose two ends state different voltages, so no transformer's terminals
+// reach this package with a route between them to begin with. The rule still
+// has to be deterministic either way, because two runs of one pinned scenario
+// must produce byte-identical requests — and the enforcement at the tracing
+// step has a known gap: a 1:1 transformer and a same-voltage phase shifter
+// both state one voltage at both ends, pass traceCandidates unnoticed, and so
+// for those two shapes this comment's premise is still only true in
+// practice, the same way it was for every branch before that step existed.
 //
 // This is the same stated-end-first rule apps/bsctl/hazard.go's
 // statedEndFirst applies when assuming a conductor for the same branch, and
