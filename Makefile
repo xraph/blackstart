@@ -12,7 +12,7 @@ RUST_DIR := rust
 WEB_DIR  := web
 
 # Stamped into the binaries so that every result the platform produces can name
-# the code that produced it. See a private design note.
+# the code that produced it.
 VERSION   := $(shell git describe --tags --always --dirty 2>/dev/null || echo "unknown")
 COMMIT    := $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 BUILDDATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
