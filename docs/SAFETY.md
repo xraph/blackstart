@@ -42,6 +42,8 @@ disabled.
   in protocol and adapter packages. It runs in the required CI check.
 - Protocol client interfaces are defined with read methods only; adding a write method
   is a visible interface change, not an implementation detail.
+- Architecture decision record `docs/adr/0004-advisory-only.md` records the decision
+  and the reasoning.
 
 A promise that continuous integration cannot check is not an architectural boundary.
 If you find a gap in this enforcement, it is a bug — please report it per
