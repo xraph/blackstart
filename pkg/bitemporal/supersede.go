@@ -9,8 +9,7 @@ import "fmt"
 // getting this arithmetic wrong produces data that reads correctly today and
 // makes every backtest silently invalid — the worst possible failure shape.
 //
-// The storage model, decided in a private design note, is a
-// current table plus a history table. The current table holds each entity's
+// The storage model is a current table plus a history table. The current table holds each entity's
 // present belief: its knowledge interval is open. When that belief is
 // superseded, the prior image is archived to history with its knowledge
 // interval closed, in the same transaction as the new current row.

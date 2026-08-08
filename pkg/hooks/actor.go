@@ -20,7 +20,7 @@
 //     completed — travel on the Bus in this package. It is out of transaction
 //     and best-effort.
 //
-// The Bus is not an audit trail. See a private design note.
+// The Bus is not an audit trail.
 package hooks
 
 import (

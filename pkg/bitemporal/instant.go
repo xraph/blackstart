@@ -18,7 +18,7 @@
 //
 // Neither Grove nor Fabriq offers anything here — no AsOf, no valid-time or
 // knowledge-time support of any kind. This package and the history tables it
-// describes are the whole mechanism. See a private design note.
+// describes are the whole mechanism.
 package bitemporal
 
 import (

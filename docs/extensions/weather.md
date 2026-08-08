@@ -144,6 +144,5 @@ process with the goldens committed. See `rust/bs-grib/tests/oracle.rs`.
 
 ## Related
 
-- Design: `a private design note`
-- Plans: `a private design note,decoder,ingest}.md`
-- ADR 0006 (provenance), spec §2.1 (bitemporality), §8 (the registry)
+- Decoder oracle: `rust/bs-grib/tests/oracle.rs`
+- Hazard, which consumes these samples: `docs/extensions/hazard.md`

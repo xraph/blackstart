@@ -41,7 +41,7 @@ PATTERNS=(
 # Paths exempt because they define or document the boundary rather than cross
 # it. Tests and testdata are exempt because asserting a capability is absent
 # requires naming it.
-EXCLUDE_RE='^(docs/SAFETY\.md|\.golangci\.yml|scripts/check-safety-boundary\.sh|CONTRIBUTING\.md|README\.md|a private design note)$'
+EXCLUDE_RE='^(docs/SAFETY\.md|\.golangci\.yml|scripts/check-safety-boundary\.sh|CONTRIBUTING\.md|README\.md|.*_test\.go|.*/testdata/.*|data/.*|proto/gen/.*)$'
 
 # Source extensions only. Lockfiles and generated stubs are out of scope.
 # Written to a temp file rather than a bash array: macOS ships bash 3.2, which

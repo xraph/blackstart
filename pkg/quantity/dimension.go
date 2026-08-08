@@ -16,7 +16,7 @@
 // Dimension and Unit are usable with no magnitude in hand. That is a
 // requirement, not an accident: the Formula engine's dimensional checker walks
 // an expression tree before any value exists, so it reasons entirely in terms
-// of units. See a private design note and pkg/quantity/dtl.go.
+// of units. See pkg/quantity/dtl.go.
 package quantity
 
 import "strconv"

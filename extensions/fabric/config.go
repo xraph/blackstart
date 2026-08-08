@@ -20,7 +20,8 @@
 //   - WithUpcasters is how event payload shapes evolve. Without it, the first
 //     schema change to a stored event is unrecoverable.
 //
-// See a private design note.
+// Every entity write goes through the fabric. No extension writes to a store
+// directly.
 package fabric
 
 import (

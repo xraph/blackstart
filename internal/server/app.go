@@ -239,7 +239,7 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 	// Chronicle is the audit trail. Blackstart does not own one: chronicle is
 	// hash-chained, supports per-subject crypto-erasure, and produces
 	// compliance reports, none of which a hand-written append-only table would
-	// have. See a private design note.
+	// have.
 	//
 	// It borrows the same grove database, so its migrations run alongside the
 	// platform's rather than needing a second connection to manage.

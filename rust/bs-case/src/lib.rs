@@ -10,7 +10,7 @@
 //! Index order is load-bearing. It comes from the canonical encoding on the Go
 //! side, which sorts entities by identifier before serializing, so the same
 //! network always produces the same matrix ordering and therefore the same
-//! floating-point summation order. See `a private design note`.
+//! floating-point summation order.
 
 #![forbid(unsafe_code)]
 

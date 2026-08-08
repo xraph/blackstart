@@ -11,8 +11,7 @@ import (
 //
 // Blackstart does not own an audit log. Chronicle does — hash-chained, with
 // per-subject crypto-erasure and compliance reporting — and this is the whole
-// of blackstart's part: turning an event into a record. See
-// a private design note.
+// of blackstart's part: turning an event into a record.
 //
 // Subscribed to the bus rather than wired into each extension, so an extension
 // that emits an event is audited without knowing an audit trail exists. An

@@ -9,7 +9,7 @@
 #
 # Blackstart promises same-machine determinism and documented tolerances across
 # machines. It does not promise bit-identical results across architectures,
-# because that is not achievable. See a private design note.
+# because that is not achievable.
 
 [build]
 rustflags = []
