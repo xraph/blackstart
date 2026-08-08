@@ -6,7 +6,7 @@ Weather-driven outage risk and cascading failure analysis for electric power sys
 
 Every number this API returns names the network it was computed from by content hash, the solver version that produced it, and the dataset version behind that. A figure you cannot trace to those three things is a bug.
 
-Generated client for blackstart API unknown
+Generated client for blackstart API 2a9668a7
 
 ## Installation
 
@@ -52,8 +52,8 @@ This API supports the following authentication methods:
 
 ## API Overview
 
-- **Total Endpoints**: 48
-- **REST Endpoints**: 48
+- **Total Endpoints**: 50
+- **REST Endpoints**: 50
 
 ### Servers
 

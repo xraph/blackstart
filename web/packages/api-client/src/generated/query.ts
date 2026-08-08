@@ -34,6 +34,8 @@ import * as types from './types';
  * `queryClient.invalidateQueries({ queryKey: ['networkmodel'] })`.
  */
 export const queryKeys = {
+  cascadeRunsExtent: (id: string, halfWidthM?: number | undefined) =>
+    ['cascade', 'runs', 'extent', { id, halfWidthM }] as const,
   cascadeRunsGet: (id: string) =>
     ['cascade', 'runs', 'get', { id }] as const,
   cascadeRunsIslands: (id: string) =>
@@ -102,6 +104,8 @@ export const queryKeys = {
     ['scenario', 'runs', 'get', { id }] as const,
   scenarioRunsList: (id: string, limit?: number | undefined) =>
     ['scenario', 'runs', 'list', { id, limit }] as const,
+  scenarioRunsRecent: (limit?: number | undefined) =>
+    ['scenario', 'runs', 'recent', { limit }] as const,
   scenarioScenariosGet: (id: string) =>
     ['scenario', 'scenarios', 'get', { id }] as const,
   scenarioScenariosList: (limit?: number | undefined) =>
@@ -127,6 +131,20 @@ export const queryKeys = {
   weatherStationsObservations: (id: string, field?: string | undefined, from?: string, to?: string) =>
     ['weather', 'stations', 'observations', { id, field, from, to }] as const,
 } as const;
+
+/** The corridor area within half_width_m (default 500, in meters on each side of a traced route) of every branch the run tripped. Corridors that overlap are returned whole rather than merged, so this is corridor area, not a single figure of distinct ground — see shape.Cover. */
+export function useCascadeRunsExtent(
+  client: RESTClient,
+  id: string,
+  halfWidthM?: number | undefined,
+  options?: Omit<UseQueryOptions<types.extentResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.cascadeRunsExtent(id, halfWidthM),
+    queryFn: ({ signal }) => client.cascade.runs.extent(id, halfWidthM, { signal }),
+    ...options,
+  });
+}
 
 /** One recorded simulation, with every event in the order it happened in simulated time. */
 export function useCascadeRunsGet(
@@ -600,6 +618,19 @@ export function useScenarioRunsList(
   return useQuery({
     queryKey: queryKeys.scenarioRunsList(id, limit),
     queryFn: ({ signal }) => client.scenario.runs.list(id, limit, { signal }),
+    ...options,
+  });
+}
+
+/** Every recorded run, most recent first, whatever scenario it belongs to. This is what a run index reads; a single scenario's history is /scenarios/{id}/runs. */
+export function useScenarioRunsRecent(
+  client: RESTClient,
+  limit?: number | undefined,
+  options?: Omit<UseQueryOptions<types.scenarioRunsResponse, Error>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: queryKeys.scenarioRunsRecent(limit),
+    queryFn: ({ signal }) => client.scenario.runs.recent(limit, { signal }),
     ...options,
   });
 }

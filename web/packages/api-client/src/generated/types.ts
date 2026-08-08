@@ -39,6 +39,7 @@ export interface Candidate {
 }
 
 export interface CascadeRun {
+  canonicalHash?: string;
   elapsedS: number;
   events: Event[];
   finishedAt: string;
@@ -147,7 +148,7 @@ export interface Grid {
   nx: number;
   ny: number;
   projection: string;
-  sampledAt: string;
+  sampledAt?: string;
   total: number;
 }
 
@@ -264,6 +265,7 @@ export interface Route {
 
 export interface Run {
   candidates: Candidate[];
+  canonicalHash?: string;
   finishedAt: string;
   id: string;
   modelHash: string;
@@ -293,6 +295,7 @@ export interface Scenario {
 }
 
 export interface ScenarioRun {
+  baseVoltageFallback?: number;
   branchCount?: number;
   cascadeRunId?: string;
   failure?: Failure;
@@ -424,6 +427,19 @@ export interface encodingResponse {
   encoding: number[];
   modelId: string;
   sizeBytes: number;
+}
+
+export interface extentResponse {
+  area: {
+  elevation: number;
+  lat: number;
+  lon: number;
+}[][];
+  halfWidthM: number;
+  resolved: number;
+  runId: string;
+  unresolved: string[];
+  untraced: number;
 }
 
 export interface feedsResponse {

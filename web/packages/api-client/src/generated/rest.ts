@@ -6,6 +6,31 @@ export class RESTClient extends Client {
   public readonly cascade = {
     runs: {
       /**
+       * Get a cascade run's extent
+       * The corridor area within half_width_m (default 500, in meters on each side of a traced route) of every branch the run tripped. Corridors that overlap are returned whole rather than merged, so this is corridor area, not a single figure of distinct ground — see shape.Cover.
+       */
+      extent: async (id: string, halfWidthM?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.extentResponse> => {
+        let __path = `/api/v1/cascade/runs/${encodeURIComponent(String(id))}/extent`;
+        const queryParams: Record<string, any> = {};
+        if (halfWidthM !== undefined) {
+          queryParams['half_width_m'] = halfWidthM;
+        }
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "extentResponse",
+        };
+
+        return this.request<types.extentResponse>(config);
+      },
+
+      /**
        * Get a cascade run
        * One recorded simulation, with every event in the order it happened in simulated time.
        */
@@ -833,6 +858,31 @@ export class RESTClient extends Client {
        */
       list: async (id: string, limit?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.scenarioRunsResponse> => {
         let __path = `/api/v1/scenario/scenarios/${encodeURIComponent(String(id))}/runs`;
+        const queryParams: Record<string, any> = {};
+        if (limit !== undefined) {
+          queryParams['limit'] = limit;
+        }
+        const queryString = new URLSearchParams(queryParams).toString();
+        if (queryString) {
+          __path += '?' + queryString;
+        }
+        const config: RequestConfig = {
+          method: 'GET',
+          url: __path,
+          signal: options?.signal,
+          retry: options?.retry,
+          responseCodec: "scenarioRunsResponse",
+        };
+
+        return this.request<types.scenarioRunsResponse>(config);
+      },
+
+      /**
+       * List runs across every scenario
+       * Every recorded run, most recent first, whatever scenario it belongs to. This is what a run index reads; a single scenario's history is /scenarios/{id}/runs.
+       */
+      recent: async (limit?: number | undefined, options?: { signal?: AbortSignal; retry?: { maxAttempts?: number } }): Promise<types.scenarioRunsResponse> => {
+        let __path = `/api/v1/scenario/runs`;
         const queryParams: Record<string, any> = {};
         if (limit !== undefined) {
           queryParams['limit'] = limit;
