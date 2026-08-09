@@ -4,7 +4,7 @@
 
 Please report security issues privately through
 [GitHub Security Advisories](https://github.com/xraph/blackstart/security/advisories/new),
-or by email to **rex.i.raphael@gmail.com**.
+or by email to **rex@xraph.com**.
 
 Please do not open a public issue for a security problem.
 
