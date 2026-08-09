@@ -15,9 +15,9 @@ the weather grids and datasets underneath those.
 | Quantity | Unit | Scales with | Model |
 |---|---|---|---|
 | `conductor_failure` | probability, dimensionless | span length | exponential aggregation of a monotone rate, §below |
-| `structure_failure` | probability, dimensionless | — | lognormal fragility curve, cited per class |
+| `structure_failure` | probability, dimensionless | lognormal fragility curve, cited per class |
 
-Both per component, per valid hour, per forecast issuance — the same three
+Both per component, per valid hour, per forecast issuance. The same three
 axes `hazard`'s own values carry.
 
 **These are two quantities describing different components, not two ways of
@@ -25,8 +25,8 @@ computing one number.** A conductor fails *between* two structures at a rate
 proportional to how much of it is exposed to the weather, so its probability
 scales with the span's length: a longer span sees more wire in the wind and
 is more likely to lose some of it. A structure fails *at a point*, according
-to what it is built like — a lattice tower and a wood pole do not fail the
-same way regardless of how far apart they stand — so its probability carries
+to what it is built like. A lattice tower and a wood pole do not fail the
+same way regardless of how far apart they stand. So its probability carries
 no length term at all. Storing them under one column would force a choice
 about which structure a shared length belongs to, and there is no right
 answer to that; `store.Quantity` keeps them as two named series instead.
@@ -49,7 +49,7 @@ PutBatch values · provenance Run
 ```
 
 `risk` reads hazard's already-computed values rather than a forecast sample
-or a grid directly — the only reason it depends on `weather` at all is to
+or a grid directly. The only reason it depends on `weather` at all is to
 turn the cycle a request names into the issuance that keys those values.
 
 ## The model is uncalibrated
@@ -57,13 +57,13 @@ turn the cycle a request names into the issuance that keys those values.
 Every probability this extension writes is multiplied by a scalar, and today
 that scalar is `risk.ScalarUncalibrated`, which is `1.0`. A later piece fits
 a global scalar against historical outage counts; until it does, `1.0` is
-what every stored row carries, and every row carries it explicitly —
+what every stored row carries, and every row carries it explicitly 
 `ComponentValue.Scalar` rides along with the probability rather than being
 applied and discarded, so a figure computed now and one computed after
 calibration can be told apart by reading the row instead of by trusting
 which day it was written.
 
-The consequence is not that the numbers are wrong — it is that the model's
+The consequence is not that the numbers are wrong. It is that the model's
 **absolute** values are not yet checkable against anything. Two spans scored
 `0.02` and `0.06` under this pass are correctly ordered: the second really
 is riskier by the fragility literature's own reasoning. Whether `0.06` is
@@ -71,7 +71,7 @@ the right probability for a real transmission structure in a real storm is a
 question only calibration against real outages can answer, and until it
 does, that answer does not exist. `bsctl risk compute` and `bsctl risk show`
 both print the scalar with an explicit `(uncalibrated)` label for exactly
-this reason — a risk figure that does not say whether it was calibrated
+this reason. A risk figure that does not say whether it was calibrated
 invites being read as though it already were.
 
 ## The curves are transferred, not local
@@ -80,7 +80,7 @@ Both structure curves in the `fragility` package library are fitted to
 structures somewhere other than this platform's network: a 220 kV lattice
 tower design in Liu & Yan (2022), a Class 3 Southern Yellow Pine pole in
 Mohammadi Darestani & Shafieezadeh (2019). Neither paper measured a
-blackstart-network structure, and nothing in this package adjusts for that —
+blackstart-network structure, and nothing in this package adjusts for that 
 the median and dispersion are read from the cited figure or table and stored
 as given.
 
@@ -88,10 +88,10 @@ Both are stated in the source paper as a **wind speed**, not the wind load
 this platform's intensity measure is. `fragility.windLoadFromSpeed` converts
 each published median through the same drag equation `hazard`'s own wind
 model uses, against a reference conductor (ACSR Drake, the platform's
-existing worked example — not a value picked to make the conversion land
+existing worked example, not a value picked to make the conversion land
 somewhere convenient). Because that conversion is quadratic, not linear, the
 published dispersion has to be doubled to describe the load-space curve
-correctly — a lognormal random variable pushed through a power-law map of
+correctly. A lognormal random variable pushed through a power-law map of
 exponent *p* is still lognormal, with its log-scale spread multiplied by
 *p*; `curve.go`'s comments carry the derivation beside each constant it
 produces.
@@ -102,23 +102,23 @@ a rounding error. `windLoadFromSpeed` builds its load from the raw gust speed
 against one fixed reference diameter (Drake, 0.02814 m). What `compute.go`
 actually hands `Curve.Probability` is hazard's `wind_load`, computed as
 `½·ρ(T)·Cd·(D_span + 2·t_ice)·V⊥²` where `V⊥ = gust × |sin(angle between
-wind and span azimuth)|` (`extensions/hazard/mechanical/wind.go`) — a value
+wind and span azimuth)|` (`extensions/hazard/mechanical/wind.go`), a value
 that depends on the span's bearing relative to the wind and on whichever
 conductor is actually strung on it, neither of which the curve's median was
 built from. With the Lattice curve's β = 0.0794 giving it a near-step
 transition at 15.85 N/m, both gaps dominate the answer: a 40 m/s gust 20°
 off a span's line gives roughly 3.2 N/m and P≈0, while the same gust
-perpendicular to the span gives roughly 27.6 N/m and P≈1 — a tower's
+perpendicular to the span gives roughly 27.6 N/m and P≈1. A tower's
 collapse fragility is not a function of which way its line runs, but as fed
 today, it is. The adjacent conductor's diameter varies 0.0218–0.0304 m
 across `extensions/hazard/conductor`'s library, about 2.6β of swing on its
-own. This is disclosed rather than corrected here — see Known gaps — because
+own. This is disclosed rather than corrected here, see Known gaps, because
 re-deriving the azimuth and diameter dependence into the curve itself is a
 model change, not a bookkeeping fix, and the calibration scalar this
 extension already carries is the wrong tool for a directional error.
 
-This transfer — a different structure population, in different weather, on
-a different network — is exactly the error the calibration scalar exists to
+This transfer. A different structure population, in different weather, on
+a different network, is exactly the error the calibration scalar exists to
 absorb. A curve fitted to a Chinese 220 kV tower and a curve fitted to a
 North American pole cannot both be exactly right for structures on this
 platform's own lines, and the model does not pretend otherwise; it says so
@@ -131,15 +131,15 @@ Every probability `risk` writes is a marginal: P(this one component fails),
 computed as if nothing else in the storm existed. Nothing in this extension
 models the fact that one gust loading a span also loads its neighbors, or
 that a structure and the spans it bounds share the same wind at the same
-moment. That correlation is real — an ice storm that snaps one conductor
-snaps the one next to it far more often than independence would predict —
+moment. That correlation is real. An ice storm that snaps one conductor
+snaps the one next to it far more often than independence would predict 
 and it is entirely absent here.
 
 The consequence: **any P(N components fail) derived by combining these
 marginals as though they were independent understates the tail.** Two spans
 each scored at 5% do not fail together 0.25% of the time in a real storm;
 they are both exposed to the same front, and the true joint probability is
-higher — sometimes much higher — than the product of the marginals. Nothing
+higher, sometimes much higher, than the product of the marginals. Nothing
 in this package corrects for that, and nothing should: modeling how failures
 correlate under a shared weather event is a sampling problem over an entire
 network state, not a property of one component's fragility curve. That
@@ -151,13 +151,13 @@ of `risk` values.
 ## The closed class set
 
 `fragility.Class` has exactly two members: `Lattice` and `Pole`. That is not
-an incomplete list waiting on more literature to be read — it is every class
+an incomplete list waiting on more literature to be read. It is every class
 this package found a citable fragility curve for. The search covered
 PNNL-33587's own catalog and the open-access journal literature, and turned
 up nothing with a numeric median and dispersion for a portal (H-frame)
 structure. Rather than approximate one, `Portal` was never added to the
 closed set at all: there is no `fragility.Portal` constant, so a structure
-kind that would map to it — `"portal"` — is unrecognized by `ClassOf` for a
+kind that would map to it, `"portal"`, is unrecognized by `ClassOf` for a
 different reason than `"monopole"` or `"H-frame"` are. Those two lack a
 curve; portal lacks a *class*.
 
@@ -168,22 +168,22 @@ read it as this gap operating as designed, not as a bug to chase.
 
 `Unclassed` and `Unhazarded` are counted separately and never summed,
 because they are different failures. `Unclassed` is a gap in the **asset
-record** — a structure whose `Kind` maps to no curve, whether because nobody
+record**, a structure whose `Kind` maps to no curve, whether because nobody
 classified it or because no curve exists for what it is. `Unhazarded` is a
-gap in the **weather coverage** — a span `hazard` never rated for this
+gap in the **weather coverage**, a span `hazard` never rated for this
 cycle, so there is no loading to score a curve against. Only the first is
 anybody's to fix by going out and surveying a structure; the second is fixed
 by rerunning or widening `hazard`'s own pass, not by this extension or the
 person who classified the asset.
 
 Neither produces a stored zero. A structure with no curve and a structure
-scored at 0% probability are different claims — one says "not evaluated,"
-the other says "evaluated and found safe" — and only the second belongs in
+scored at 0% probability are different claims. One says "not evaluated,"
+the other says "evaluated and found safe", and only the second belongs in
 the value table.
 
 ## The higher of two spans, not the average
 
-A structure typically bounds two spans — the one before it and the one
+A structure typically bounds two spans. The one before it and the one
 after it, by the route's ordinal sequence. When both have wind loading for
 the same hour, `computeStructure` scores the structure against **the higher
 of the two**, not their average. A structure is exposed to the worst of what
@@ -194,10 +194,10 @@ other has barely felt it yet.
 
 ## The conductor rate's shape is not itself a citation
 
-`ConductorProbability` is `1 − exp(−λ·L·Δt)` — equation (1) of Jamieson,
+`ConductorProbability` is `1 − exp(−λ·L·Δt)`, equation (1) of Jamieson,
 Strbac and Bell (2020), reproduced exactly because it is open access and the
-equation itself needs no adaptation. That aggregation form — turning a rate
-into a probability over a span length and a duration — is the part of the
+equation itself needs no adaptation. That aggregation form, turning a rate
+into a probability over a span length and a duration, is the part of the
 paper this package actually reproduces.
 
 `λ` itself is not. Jamieson et al.'s own rate is empirical: bins of
@@ -205,13 +205,13 @@ historical fault counts indexed by wind speed, not a closed-form function,
 and not published in the wind-load and ice-load units `hazard` publishes.
 There is no `λ(wind_load, ice_load)` in that paper to transcribe.
 `ConductorRate` in `fragility/conductor.go` is instead a **monotone
-construction** — zero at zero load, smoothly rising, saturating at the order
+construction**, zero at zero load, smoothly rising, saturating at the order
 of magnitude Jamieson's own curves report for the most exposed lines under
 extreme wind. Its shape (an exponential approach to a ceiling, split into a
 wind term and an ice term) is a choice this package made to have those
 properties, not a curve fitted to any dataset. The comments beside its
 constants say exactly this and should be read before this rate is quoted as
-"from Jamieson et al." — only the aggregation equation is; the rate function
+"from Jamieson et al.", only the aggregation equation is; the rate function
 inside it is not.
 
 ## Storage
@@ -230,7 +230,7 @@ and the migration's own comment.
 
 There is no computation table. `ComputeResult.ComputationID` is minted for a
 caller to log, not stored anywhere this extension could resolve it back
-from — the provenance run a pass records (`ComputeResult.RunID`) is the
+from. The provenance run a pass records (`ComputeResult.RunID`) is the
 traceable handle, through the existing provenance API.
 
 ## API
@@ -244,7 +244,7 @@ from loading: a `risk` component identifier already carries what it is in
 its own prefix (`span_…` or `strc_…`), and a given component only ever has
 values under the one quantity its compute pass wrote for it. `issued`,
 `from` and `to` are all **required**, for the same reason hazard's span
-endpoints require them — a window this API chose would give the same
+endpoints require them. A window this API chose would give the same
 request a different answer tomorrow.
 
 Read-only: a probability is produced by a computation that records its
@@ -295,7 +295,7 @@ to try again.
   them. `fragility.windLoadFromSpeed` builds each curve's median from a raw
   gust speed against one fixed reference diameter; `compute.go` evaluates
   the curve against hazard's directional, span-specific `wind_load` instead
-  — a value that depends on the angle between the wind and the span's
+a value that depends on the angle between the wind and the span's
   azimuth and on the real conductor's diameter. With the Lattice curve's
   near-step transition at 15.85 N/m, both dependencies dominate: the same
   gust can read P≈0 or P≈1 depending only on which way the span runs, and
@@ -303,6 +303,6 @@ to try again.
   swing by itself. A structure's collapse probability should not depend on
   its line's bearing or on which conductor happens to be strung on it, but
   as computed today, it does. See `fragility.windLoadFromSpeed`'s doc
-  comment for the full derivation. Not corrected here — this is a model
+  comment for the full derivation. Not corrected here. This is a model
   change, not a bookkeeping one, and the uncalibrated scalar is the wrong
   tool for a directional error.

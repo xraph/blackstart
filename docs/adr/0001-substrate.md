@@ -1,4 +1,4 @@
-# 0001 — Build on Forge, Vessel, Grove and Fabriq
+# 0001: Build on Forge, Vessel, Grove and Fabriq
 
 **Status:** Accepted
 
@@ -11,7 +11,7 @@ the point of the project.
 
 The XRAPH ecosystem provides all four as Apache-2.0 or MIT packages: Forge
 (extension host), Vessel (DI), Grove (ORM, drivers, migrations), Fabriq (data
-fabric). They are also the only permitted substrate — this repository is built
+fabric). They are also the only permitted substrate. This repository is built
 fresh on public packages, with no code, schemas or configuration derived from
 any employer system.
 

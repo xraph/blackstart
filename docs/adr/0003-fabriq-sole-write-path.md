@@ -1,11 +1,11 @@
-# 0003 — Fabriq is the sole entity write path
+# 0003: Fabriq is the sole entity write path
 
 **Status:** Accepted
 
 ## Context
 
 The project's architectural claim is that a single write produces consistent
-relational, graph, spatial and search views of the same network — a domain
+relational, graph, spatial and search views of the same network. A domain
 where all four are genuinely needed. Fabriq implements that with a
 transactional outbox, a leader-elected relay, and rebuildable projections.
 
@@ -33,7 +33,7 @@ write transaction, after the row and its outbox event are staged and before
 commit, with a raw-SQL `tx.Exec` available. Two things depend on it:
 
 - **Audit becomes gapless by construction.** If the audit write fails, the
-  domain write rolls back. Grove's hooks cannot offer this — they have neither
+  domain write rolls back. Grove's hooks cannot offer this. They have neither
   the aggregate identity nor the version.
 - **Geometry becomes atomic with its entity.** Fabriq's spatial plane is
   direct-write, outside the outbox, with nothing reconciling a half-failed
@@ -43,17 +43,17 @@ commit, with a raw-SQL `tx.Exec` available. Two things depend on it:
 
 Costs, all real:
 
-- **Redis and FalkorDB are mandatory**, not optional. Without a worker draining
+- **Redis and FalkorDB are mandatory**: not optional. Without a worker draining
   it, `fabriq_outbox` grows without bound and no projection advances. FalkorDB
   is the only graph adapter, with no injection point for another. Local
   development therefore needs three services, which is what `make dev-up` is
   for.
 - **The registry must be assembled centrally, before `Open`.** Forge's default
   lifecycle interleaves `Register` and `Start` per extension, and Fabriq
-  validates its registry inside `Open` during `Start` — so an extension
+  validates its registry inside `Open` during `Start`, so an extension
   declaring its `EntitySpec` in its own `Register` would register too late.
   Specs are collected eagerly in `internal/entities`.
-- **Every entity table carries `id`, `tenant_id` and `version`**, plus an RLS
+- **Every entity table carries `id`, `tenant_id` and `version`**: plus an RLS
   policy written by hand; Fabriq generates DDL only for dynamic entities. The
   application must connect as a non-superuser or RLS is silently a no-op, so a
   boot assertion checks that.
@@ -65,7 +65,7 @@ Costs, all real:
 Bitemporality interacts awkwardly and the resolution is recorded here because
 it is not obvious. Fabriq's `OpUpdate` mutates in place and bumps `version`,
 while a bitemporal correction needs a new row. Rather than making the aggregate
-an append-only version table — which would project one graph node per version,
-forfeiting the very claim this decision exists to prove — the current table
+an append-only version table. Which would project one graph node per version,
+forfeiting the very claim this decision exists to prove. The current table
 stays the aggregate and a `LifecycleHook` writes the prior image to
 `<table>_history` in the same transaction.

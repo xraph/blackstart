@@ -1,4 +1,4 @@
-# 0005 — Same-machine determinism, documented tolerances across machines
+# 0005: Same-machine determinism, documented tolerances across machines
 
 **Status:** Accepted
 
@@ -66,7 +66,7 @@ The cost is small relative to the factorization itself, and validation is worth
 more than the margin.
 
 The tolerance numbers must be justified rather than tuned. If a golden
-comparison fails, the fix is the solver — never a wider tolerance. That rule is
+comparison fails, the fix is the solver, never a wider tolerance. That rule is
 only credible because the tolerances are committed with reasoning attached, so
 loosening one is a visible change to a reviewed artifact.
 

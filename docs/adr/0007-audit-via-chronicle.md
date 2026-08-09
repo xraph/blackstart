@@ -47,7 +47,7 @@ chronicle's.
 The same reasoning applies to two other planned pieces, recorded here so the
 plan and the code do not disagree:
 
-- **`identity`** — the planned principal registry overlaps `authsome`
+- **`identity`**: the planned principal registry overlaps `authsome`
   (authentication) and `warden` (permissions). Blackstart keeps `pkg/hooks.ActorID`
   as its own vocabulary for *who did this*, because that is a value type every
   extension embeds and it must not depend on an authentication provider. Lookup
@@ -68,8 +68,8 @@ The audit path is stronger than planned and cost less to build. In exchange:
   a compromise: writing audit records through `fabriq.Exec` would recurse
   through the very hook that produced them, which is why the plan already
   excluded them from that path.
-- The planned in-transaction guarantee — a failed audit write rolls back the
-  domain write — is not what chronicle offers by default; it batches. Where that
+- The planned in-transaction guarantee. A failed audit write rolls back the
+  domain write, is not what chronicle offers by default; it batches. Where that
   guarantee is genuinely required, a `LifecycleHook` writing through `tx`
   remains available and would sit alongside chronicle rather than replace it.
   Nothing in Phase 0–2 requires it, and claiming the guarantee without

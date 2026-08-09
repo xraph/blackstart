@@ -32,8 +32,8 @@ Concretely, and enforced rather than promised:
 A system that ranks contingencies by probability is, by construction, a system that
 knows which switching actions would help. The distance between "recommend" and
 "execute" is therefore small in code and very large in consequence. Drawing the line
-at the repository boundary — rather than at a configuration flag or a deployment
-choice — is the only version of this commitment that a reviewer can verify.
+at the repository boundary, rather than at a configuration flag or a deployment
+choice, is the only version of this commitment that a reviewer can verify.
 
 It also keeps the safety case simple. Blackstart cannot cause an outage it predicted,
 cannot be induced to act by a corrupted forecast, and cannot be repurposed by an
@@ -52,13 +52,13 @@ disabled.
   and the reasoning.
 
 A promise that continuous integration cannot check is not an architectural boundary.
-If you find a gap in this enforcement, it is a bug — please report it per
+If you find a gap in this enforcement, it is a bug. Please report it per
 [SECURITY.md](../SECURITY.md).
 
 ## Operational recommendations
 
-Where Blackstart produces recommended actions — crew pre-positioning, candidate
-switching plans, load transfer options, dynamic rating headroom — those are presented
+Where Blackstart produces recommended actions (crew pre-positioning, candidate
+switching plans, load transfer options, dynamic rating headroom) those are presented
 for a qualified human to evaluate and, if they choose, carry out through their own
 operational systems. Recommendations are labelled as such in the API and the client,
 and carry the provenance reference needed to understand where the number came from.
@@ -66,7 +66,7 @@ and carry the provenance reference needed to understand where the number came fr
 ## Published analysis
 
 Vulnerability analysis, ranked contingency lists, and cascade results are published in
-this repository only for synthetic test systems — principally the Texas A&M ACTIVSg
+this repository only for synthetic test systems, principally the Texas A&M ACTIVSg
 cases, which are statistically realistic but correspond to no real utility's network
 and are free of Critical Energy/Electric Infrastructure Information restrictions.
 

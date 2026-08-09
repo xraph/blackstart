@@ -42,8 +42,8 @@ know how wide a face it is pushing on.
 ## Nothing here guesses a conductor
 
 IEEE 738 needs a diameter, two resistance points, emissivity, absorptivity and
-a temperature limit. Nothing else in this platform has any of them — the
-network model carries a single static rating per branch — so `hazard` ships a
+a temperature limit. Nothing else in this platform has any of them, the
+network model carries a single static rating per branch, so `hazard` ships a
 library of standard ACSR types and a per-branch `Assignment` binding one to a
 line.
 
@@ -59,8 +59,8 @@ nothing**. It is never given a default. A rating conditioned on a guessed
 conductor looks exactly like one conditioned on a surveyed one, and the whole
 point of recording the basis is that they must not.
 
-`AssumeByVoltage`'s thresholds — under 200 kV `hawk`, 200–299 kV `drake`,
-300 kV and above `cardinal` — are defensible starting points from typical
+`AssumeByVoltage`'s thresholds (under 200 kV `hawk`, 200–299 kV `drake`,
+300 kV and above `cardinal`) are defensible starting points from typical
 transmission practice, not authority. They deserve a second opinion from
 somebody who strings line for a living.
 
@@ -69,7 +69,7 @@ somebody who strings line for a living.
 **The gust and the mean are not interchangeable.** The mechanical models take
 the *gust*, because drag goes as the square of speed and a conductor fails on
 the peak. The thermal model takes the *mean*, because cooling integrates over
-the ten to twenty minutes of a conductor's thermal time constant — a
+the ten to twenty minutes of a conductor's thermal time constant, a
 three-second gust does not cool a conductor, and it breaks one instantly if it
 is going to.
 
@@ -82,7 +82,7 @@ into a 0–90° incidence, so a span surveyed south-to-north loads like the same
 span surveyed north-to-south.
 
 **Absence is absence.** GFS publishes no freezing-rain accumulation, so a
-GFS-derived pass has **no ice series at all** — not a zero one. Inventing an
+GFS-derived pass has **no ice series at all**, not a zero one. Inventing an
 accumulation would put a fabricated load on a line nobody needs to derate,
 which is the expensive direction to be wrong in. A moment with no temperature
 produces nothing rather than part of the set, because temperature enters every
@@ -91,7 +91,7 @@ downstream could reconstruct the reason for.
 
 ## The external reference
 
-IEEE 738-2012's own worked example is the test §10 requires — the same role
+IEEE 738-2012's own worked example is the test §10 requires. The same role
 ecCodes plays for the GRIB decoder. Drake at 100 °C in a 40 °C ambient,
 0.61 m/s across the conductor, clear sky at 30° N on 10 June at 11:00 solar.
 
@@ -104,7 +104,7 @@ tolerance with two terms wrong in opposite directions is not agreement.
 Two departures from the standard, both conservative and both documented in
 place: the sun is assumed square to the conductor (a rating is per branch while
 bearings are per span), and cloud attenuates the solar flux via Kasten and
-Czeplak — the standard rates for clear sky by convention, and blackstart rates
+Czeplak. The standard rates for clear sky by convention, and blackstart rates
 against a forecast that has to be allowed to say overcast.
 
 ## Storage
@@ -118,13 +118,13 @@ Two relational tables and one hypertable.
 | `blackstart_hazard_span_value` | the numbers, keyed `span｜quantity｜issuance` |
 
 The series table carries exactly `(time, tenant_id, tag_id, value, quality,
-scope_id)` — fabriq's Timescale adapter names those six in its INSERT and
+scope_id)`, fabriq's Timescale adapter names those six in its INSERT and
 nothing else. It has no row-level security, which is the documented exception
 rather than an oversight: Timescale's columnstore forbids it. Every read
 carries a tenant predicate written by hand, in one place, for that reason.
 
-Several passes over one cycle is the normal case — one per correction to the
-assignments — and every one is kept, so a rating already consumed downstream
+Several passes over one cycle is the normal case. One per correction to the
+assignments. And every one is kept, so a rating already consumed downstream
 still has the computation that made it.
 
 ## API
@@ -142,7 +142,7 @@ provenance, and an endpoint accepting one inline would produce a number nothing
 could trace.
 
 `issued`, `from` and `to` are all **required**. A window this API chose would
-give the same request a different answer tomorrow — and "what is the rating
+give the same request a different answer tomorrow, and "what is the rating
 now" and "what did the 06Z run say it would be" are different questions, only
 the second of which can be checked afterwards.
 
@@ -157,7 +157,7 @@ bsctl hazard rating  --span span_… --issued 2026-08-04T01:00:00Z
 bsctl hazard loading --span span_… --issued 2026-08-04T01:00:00Z
 ```
 
-`conductors` needs no database — the library is compiled in.
+`conductors` needs no database. The library is compiled in.
 
 `assign` takes either `--conductor` or `--kv`. Giving the voltage picks a
 conductor *and* stamps the basis as assumed, so the two cannot drift apart.
@@ -165,14 +165,14 @@ Giving neither is refused rather than defaulted.
 
 ## The worker
 
-The server runs it and `bsctl` does not. It needs no registry slugs — it reads
-what `weather` already stored — so draining workers is the whole condition.
+The server runs it and `bsctl` does not. It needs no registry slugs. It reads
+what `weather` already stored. So draining workers is the whole condition.
 
 Every two minutes it looks for cycles that have been sampled and have no
 computation, inside a twelve-hour lookback, and rates up to four of them. The
 queue is durable state rather than an event: a cycle is pending exactly when it
 is sampled and unrated. That survives a restart, works across replicas, and
-cannot drop work the way an in-process notification can — which matters here,
+cannot drop work the way an in-process notification can. Which matters here,
 because `*hooks.Bus` is never provided into the container, so an event-driven
 trigger would have been dead on arrival.
 
@@ -203,7 +203,7 @@ covered     21 of 21 span-hours
 the remedy attached. The run names the `bs-hazard` model version and the 19
 dataset versions behind the cycle's grids.
 
-One span at 35.6 °C with a 4.3 m/s wind rated **1715 A** — about 1.7× Drake's
+One span at 35.6 °C with a 4.3 m/s wind rated **1715 A**, about 1.7× Drake's
 static summer rating, which is the whole value proposition of a dynamic rating
 and is what a real wind against an assumed 0.61 m/s produces.
 

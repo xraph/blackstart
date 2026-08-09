@@ -1,4 +1,4 @@
-# 0006 — Every number traceable to data, model and commit
+# 0006. Every number traceable to data, model and commit
 
 **Status:** Accepted
 
@@ -50,7 +50,7 @@ run before it, because those backtests cannot be shown not to have leaked. That
 is why it lands in Phase 1 rather than alongside the prediction work that needs
 it, and why the proving extension exercises it before any real entity exists.
 
-Neither Grove nor Fabriq offers any help here — no `AsOf`, no valid-time or
+Neither Grove nor Fabriq offers any help here, no `AsOf`, no valid-time or
 knowledge-time support, nothing. The whole mechanism is ours.
 
 There is a real cost in ergonomics. Every bitemporal entity carries four extra

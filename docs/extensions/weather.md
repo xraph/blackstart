@@ -19,7 +19,7 @@ Only what the §8 registry names.
 
 The engine takes a **feed slug, never a URL**. Resolving through `datasource`
 is the only route to a fetch, so a source outside §8 cannot be ingested
-without first being added to the registry — which is a decision with a person
+without first being added to the registry. Which is a decision with a person
 attached rather than a convention someone remembers.
 
 ## How a retrieval works
@@ -50,19 +50,19 @@ it; sampling is recomputable from the stored bytes forever.
 
 **Issuance and valid time are independent.** A forecast says "at 09:00 we
 expected 14:00 to look like this". Every sample carries both, and the series
-key is where issuance lives — the Timeseries port has one string key and one
+key is where issuance lives. The Timeseries port has one string key and one
 float per point, with no column for it. Collapsing the two axes is the most
 common source of silent leakage in the outage-prediction literature.
 
 **Absence is absence.** HRRR covers CONUS and nothing else. A span outside it
-gets *no sample*, not a zero — a zero gust is a real value, and a fabricated
+gets *no sample*, not a zero. A zero gust is a real value, and a fabricated
 calm entering a hazard calculation is invisible once it is there. The `covered`
 and `total` counts on each `Grid` row are where that stays visible.
 
 ## Wind is stored as components
 
 `wind_u_10m` and `wind_v_10m`, not a scalar speed. Neither product publishes an
-instantaneous scalar wind — but more importantly, a crosswind on a span is the
+instantaneous scalar wind. But more importantly, a crosswind on a span is the
 component perpendicular to it, which is why `geo` stores an azimuth per span.
 A scalar speed cannot produce one.
 
@@ -77,7 +77,7 @@ A scalar speed cannot produce one.
 Samples live in two Timescale hypertables rather than as entities:
 `blackstart_weather_span_sample`, keyed `span|field|issuance`, and
 `blackstart_weather_station_obs`, keyed `station|field`. Those tables sit
-outside row-level security — Timescale's columnstore forbids it — so tenant
+outside row-level security, Timescale's columnstore forbids it, so tenant
 isolation there is enforced by hand in one store method.
 
 ## Command line
@@ -105,7 +105,7 @@ could trace.
 
 `issued` is required on the span forecast rather than inferred from the
 window, because "what does the latest run say" and "what did the 06Z run say"
-are different questions — and a reader who cannot ask the second cannot check
+are different questions. And a reader who cannot ask the second cannot check
 a forecast against what actually happened.
 
 ## The worker
@@ -134,7 +134,7 @@ rather than each polling NOAA for the same cycle.
 
 GRIB2 decoding is `rust/bs-grib`, served over gRPC from the solver binary
 under `blackstart.weather.v1`. It implements grid templates 3.0 and 3.30 and
-data templates 5.0 and 5.3 — the ones HRRR and GFS actually use, verified
+data templates 5.0 and 5.3. The ones HRRR and GFS actually use, verified
 against real messages. Anything else is an error naming the template rather
 than a best-effort parse, because a misread packing produces plausible wrong
 numbers rather than a crash.

@@ -26,14 +26,14 @@ one.** It is meant to be readable as a record of how the system was built.
   `web`, `bsctl`, `solver`).
 - **No commit adds more than roughly 500 lines of hand-written code.** If a unit of
   work is larger, decompose it. Generated code, vendored dependencies, and data
-  fixtures are excluded — the exclusion list is `.gitattributes`, and the check reads
+  fixtures are excluded. The exclusion list is `.gitattributes`, and the check reads
   it directly so the two cannot drift apart.
 - **Tests land in the same commit as the code they cover.** Not in a follow-up.
 - **History is never rewritten.** No squashing, no force-pushing to `main`, no
   interactive rebase of merged work. Pull requests are merged with merge commits;
   squash-merge and rebase-merge are disabled on the repository for this reason.
 
-The commit body matters more than usual here. Explain why, not what — the diff already
+The commit body matters more than usual here. Explain why, not what. The diff already
 says what.
 
 `make setup` installs a `commit-msg` hook that checks these locally, so you find out
@@ -44,16 +44,16 @@ before you push rather than in CI.
 Extensions are the unit of work, and every one is built in the same seven stages, in
 this order. Do not start a new extension until the current one passes all seven.
 
-1. **Foundations** — TypeID prefixes (declared once, immutable thereafter), public
+1. **Foundations**: TypeID prefixes (declared once, immutable thereafter), public
    interfaces, ORM models, DI key, database migration
-2. **Stores** — store interface, then the PostgreSQL implementation
-3. **Services** — managers and domain services holding the business logic, with no
+2. **Stores**: store interface, then the PostgreSQL implementation
+3. **Services**: managers and domain services holding the business logic, with no
    transport concerns
-4. **Transport** — HTTP controllers, gRPC handlers, request and response types
-5. **Registration** — extension registration, DI wiring, host application wiring
-6. **Hooks** — hook integration and lifecycle events, with the acting identity carried
+4. **Transport**: HTTP controllers, gRPC handlers, request and response types
+5. **Registration**: extension registration, DI wiring, host application wiring
+6. **Hooks**: hook integration and lifecycle events, with the acting identity carried
    through
-7. **Tests** — unit tests with mocked stores, integration tests against a real
+7. **Tests**: unit tests with mocked stores, integration tests against a real
    database, golden-file tests for parsers and solvers
 
 Rules that apply throughout:
@@ -61,11 +61,11 @@ Rules that apply throughout:
 - No extension imports another extension's internal packages. Cross-extension access
   goes through published interfaces resolved from the container.
 - Electrical quantities are typed `Quantity` values carrying magnitude, unit, and
-  per-unit-versus-SI reference base — **never bare `float64`**. Mixing per-unit and
+  per-unit-versus-SI reference base, **never bare `float64`**. Mixing per-unit and
   physical units is the classic power-systems bug class.
 - Every fact carries valid time (when it was true of the world) and knowledge time
   (when the system learned it). This is not optional and not deferrable.
-- Never construct database drivers directly, and never unwrap the Postgres driver —
+- Never construct database drivers directly, and never unwrap the Postgres driver 
   `pgdriver.Unwrap` panics on any other driver and is banned by lint.
 
 ## Numerical code
@@ -76,7 +76,7 @@ Anything that produces a number that a user might act on carries a higher bar.
   an admittance, it belongs in the Rust solver.
 - Numerical code is validated against an established reference implementation
   (pandapower, MATPOWER) with committed golden files, and the tolerances are chosen by
-  measurement and documented with a rationale. **If results diverge, fix the solver —
+  measurement and documented with a rationale. **If results diverge, fix the solver 
   do not loosen the tolerance.**
 - The solver is deterministic: fixed iteration order, no unordered map traversal
   affecting results. Bit-identical results across architectures are not achievable and
@@ -86,7 +86,7 @@ Anything that produces a number that a user might act on carries a higher bar.
 
 Every dataset must be publicly downloadable without an NDA, a license negotiation, or
 a utility relationship. The allowed list is in the README. **Adding a source outside it
-requires discussion first** — please open an issue rather than a pull request.
+requires discussion first**, please open an issue rather than a pull request.
 
 Every file under `data/` carries a row in the adjacent `SOURCES.md` giving its source
 URL, content hash, retrieval date, and license basis. A file lands only when that row

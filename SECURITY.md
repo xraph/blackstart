@@ -46,8 +46,8 @@ Texas A&M ACTIVSg synthetic cases exist for exactly this reason.
 
 ## Advisory-only boundary
 
-A defect that would allow Blackstart to write to a SCADA, EMS, ADMS, or field device —
-whether through a protocol adapter, an API, or a dependency — is treated as a critical
+A defect that would allow Blackstart to write to a SCADA, EMS, ADMS, or field device 
+whether through a protocol adapter, an API, or a dependency, is treated as a critical
 security vulnerability regardless of how difficult it is to exploit. The absence of
 that capability is a safety property of the system, and any erosion of it is a bug of
 the highest severity.

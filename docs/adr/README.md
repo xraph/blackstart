@@ -1,7 +1,7 @@
 # Architecture decision records
 
 Short records of decisions that were not obvious and would otherwise be
-re-litigated. Each states the context, the decision, and — most importantly —
+re-litigated. Each states the context, the decision, and, most importantly 
 what the decision costs.
 
 An ADR is written when a choice constrains later work, when a reasonable
