@@ -1,83 +1,152 @@
 # Blackstart
 
-**Weather-driven outage risk and cascading failure impact for United States electric power systems.**
+**A digital twin of a United States electric power network, built to answer what severe
+weather does to it.**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/go-1.26%2B-00ADD8.svg)](go.mod)
+[![Rust](https://img.shields.io/badge/rust-see%20toolchain-DEA584.svg)](rust/rust-toolchain.toml)
+[![Status](https://img.shields.io/badge/status-early%20development-orange.svg)](#status)
 
-> **Status: early development, Phase 3 (weather and hazard) complete.** The repository is
-> being built in public from its first commit. The network model, the solver, and the
-> weather-to-line-rating path work end to end; the prediction and visualization layers do
-> not exist yet. See [Status](#status) for what actually exists today.
+> **Early development.** Phases 0 through 3 of nine are complete, phase 4 is in progress,
+> and the first piece of the prediction layer landed on 8 August 2026. The network model,
+> the Rust solver, the weather-to-line-rating path and the fragility layer run end to end.
+> There is no backtest and no calibrated model, so the system makes no accuracy claim of
+> any kind. Nothing here is ready to be relied upon and there are no releases.
+
+Blackstart ingests public numerical weather prediction, derives the engineering
+quantities that break equipment, and attaches them to a versioned, geographically routed
+model of a transmission network. Weather is sampled along each conductor span rather than
+at one point per line, because a 30 km line does not experience one gust.
+
+Every figure it produces traces to a dataset version, a model version, and a code commit.
+Facts carry two time axes: when they were true of the world, and when the system learned
+them. A model evaluated as of a past moment resolves its inputs at that moment, never
+against a record corrected a week later.
 
 ---
 
-Blackstart estimates how likely each component of a power grid is to fail under a given
-weather forecast, and what happens to the rest of the network when it does. It ingests
-public numerical weather prediction, derives the engineering quantities that actually
-break equipment — conductor wind loading, ice accretion, vegetation contact risk,
-thermal ratings — and attaches them to a versioned, geographically-routed model of the
-network. Weather is sampled along each conductor span rather than at a single point per
-line, because a 30 km transmission line does not experience one gust.
+## Contents
 
-Those per-component hazard exposures feed a calibrated failure-probability model, which
-in turn ranks which contingencies are worth simulating. A physics-based simulator then
-takes each candidate initiating outage and propagates it: protection operates, flow
-redistributes, downstream elements overload and trip, the network separates into islands,
-under-frequency and under-voltage load shedding fires, and each island either stabilises
-or collapses. The output is a time-ordered event sequence, a final islanded state, and
-the quantities an operator or planner would actually use — customers interrupted,
-megawatts lost, expected unserved energy, and the geographic extent of the affected area.
+[What is built](#what-is-built) · [Positioning](#positioning) · [Validation](#validation) ·
+[Advisory only](#advisory-only) · [Public data only](#public-data-only) ·
+[Open-core boundary](#open-core-boundary) · [Architecture](#architecture) ·
+[Status](#status) · [Building](#building)
 
-Every number the system produces is traceable to a dataset version, a model or solver
-version, and a code commit. Facts carry two time axes: when they were true of the world,
-and when the system learned them. A model evaluated as of some past moment sees only what
-was known at that moment, never the record corrected a week later. This is unglamorous
-and it is the difference between a backtest that means something and one that does not.
+---
 
-## The technical claim
+## What is built
 
-The contribution is a **coupling**: weather-conditioned per-component failure
-probabilities feeding a physics-based cascade simulator, integrated end to end to produce
-expected unserved energy and geographic impact extent.
+Measured against commit `c3c93c2b` on 9 August 2026.
 
-Two research communities have solved the halves separately. One predicts outage counts
-from weather with no network model, so it cannot say what the outage does to the system.
-The other simulates cascade propagation with no weather, so it cannot say which
-contingency is likely tonight. Blackstart connects them, so that the forecast determines
-which contingencies get solved and the network model determines what those contingencies
-cost.
+| | |
+|---|---|
+| Extensions | 15 |
+| Go | 496 files, 99,506 lines |
+| Rust | 12 crates, 20,575 lines |
+| Tests | 1,326 Go functions, 312 Rust functions |
+| Commits | 703 |
 
-**What this project does not claim.** Predicting outages from weather is published work
-since 2014 and is operationally deployed at major utilities — that is not new here.
-Rare-event and importance-sampling methods for blackout analysis were established in
-2011–2012. Graph-neural-network and physics-informed surrogates for power flow have been
-an active field since 2023. Influence-graph cascade models are Dobson, Hines, and
-colleagues, 2012–2020. Blackstart builds on all of it. The coupling is the part that is
-checkable and not already done, which is why it is the only claim made.
+**Runs end to end.** Network import and geospatial routing. AC and DC power flow and N-1
+screening in Rust. IEC 61850 SCL parsing. NOAA HRRR retrieval by byte range against the
+GRIB2 index sidecars, decoded by a first-party decoder and sampled onto individual spans.
+Per-span wind loading, ice accretion and IEEE 738 dynamic ratings. Per-component failure
+probability from published fragility curves. Cascade propagation with protection,
+islanding and under-frequency load shedding.
+
+**Does not exist.** Outage-history ingest. Any calibration of the fragility curves against
+an observed record. A backtest harness. Contingency selection driven by failure
+probability, which is the step that would close the pipeline. Protocol clients of any
+kind. Vegetation modelling.
+
+## Positioning
+
+Coupling weather-derived component fragility to a network model to estimate consequence
+is established practice, not a gap. Panteli, Pickering, Wilkinson, Dawson and Mancarella
+published it in 2017, over optimal power flow and sequential Monte Carlo, for a windstorm
+moving across a transmission network. The AC cascading failure model of Noebels, Preece
+and Panteli was later extended from simultaneous contingencies to a discretised weather
+event at hourly intervals. Karagiannakis and colleagues reviewed the field in 2025.
+
+Nor are the components new here. Outage-count prediction from weather is published since
+2014 and operationally deployed. Rare-event splitting for blackout probability is Shortle
+and colleagues and Bae and Thorp. Influence-graph cascade models are Dobson, Hines and
+colleagues. Learned power-flow surrogates have been active since 2023. Grid digital twins
+are a commercial category, and versioned network models with audit trails are ordinary
+utility practice, specified by EPRI and operated at ERCOT and CAISO.
+
+**What this project is, then.** That literature produces studies: a methodology run to
+yield a result. This is an attempt to build the thing underneath one, maintained rather
+than assembled per analysis, and to give it away. Three properties follow from that:
+
+- **Knowledge time is enforced in storage.** Every fact records when it was learned, and
+  an evaluation as of a past instant cannot read a record corrected afterwards. Model
+  management answers what the network was configured to be; this answers what was
+  believed at the time, which is the question a backtest actually asks.
+- **It runs on public data only**, so a result is reproducible by someone who does not
+  work at a utility.
+- **It is open.** Apache-2.0, adoptable without a transaction, which matters most to the
+  cooperative and municipal utilities that cannot commission this analysis commercially.
+
+## Validation
+
+The claims worth weighing are the ones checked against something outside this project.
+
+| Component | Checked against | Result |
+|---|---|---|
+| AC and DC power flow | Committed pandapower reference solutions: IEEE 14, 30, 57, 118, 300 and PEGASE 2869 | Agrees within committed per-quantity tolerances, each with a written rationale |
+| GRIB2 decoder | ecCodes, run out of process, on three real NOAA messages | Agrees on strided samples and whole-field statistics |
+| Solver internals | Power balance, nodal balance and linearity, independent of any oracle | Holds; exists to catch a solver and its golden being wrong the same way |
+| Determinism | Same case solved twice in one process | Byte-identical event sequence, load loss and outcome |
+| Cascade outcomes | Nothing external | **Not validated.** No historical cascade reproduced |
+
+Tolerances are committed with reasoning attached. A failing comparison is a solver defect,
+never an occasion to widen a tolerance.
+
+### A measured result
+
+Dynamic line ratings computed twice for the same span and valid time, once from the
+forecast an operator held and once from the analysis that exists only afterwards, across
+39,501 span-hours on 216 rated spans:
+
+| Lead | Mean | Median | Max | Differ by >5% | Differ by >100 A |
+|---|---|---|---|---|---|
+| 1 hour | 62.3 A | 49.7 A | 500.6 A | 45.4% | 19.5% |
+| 6 hours | 87.7 A | 71.4 A | 505.2 A | 55.7% | 38.1% |
+| 12 hours | 120.7 A | 102.2 A | 572.1 A | 69.2% | 50.8% |
+
+Mean rating over the period is 1,181 A. Both runs read the same assumed conductor, so the
+conductor assumption cancels and what remains is the weather vintage. This is divergence
+against a later model analysis rather than error against truth, it covers one network and
+one week of August with no icing, and it measures an input to a risk model rather than the
+skill of one. Method and query: [`docs/extensions/hazard.md`](docs/extensions/hazard.md).
 
 ## Advisory only
 
-**Blackstart produces forecasts, rankings, and recommendations. It does not act on them.**
+**Blackstart produces forecasts, rankings and recommendations. It does not act on them.**
 
-There is no code path that writes to a SCADA, EMS, ADMS, or field device. Protocol
-adapters — IEC 61850, DNP3, IEC 60870-5-104 — are **read-only clients**. There is no
-control API, no write method on any protocol client, and no placeholder suggesting one is
-planned. This is an architectural boundary enforced in continuous integration, not a
-limitation of the current phase, and it will not be relaxed. See [docs/SAFETY.md](docs/SAFETY.md).
+No code in this repository writes to a SCADA, EMS, ADMS, RTU, relay or any other field
+device, and no endpoint accepts an instruction destined for one. There is no protocol
+client here at all: no MMS, GOOSE, DNP3 or IEC 60870-5-104. Phase 5 has not started. What
+exists is the IEC 61850 SCL parser, which reads substation configuration files and
+originates nothing.
 
-Recommendations — crew pre-positioning, candidate switching plans, load transfer options,
-dynamic rating headroom — are presented for a human to evaluate and execute through their
-own systems.
+The read-only rule therefore binds adapters when they are written. A lint in the required
+CI check already covers the packages they will live in, and rejects identifiers matching
+write, send, issue, execute, operate or set combined with control, command, setpoint,
+breaker, point, output or tap. A system that ranks contingencies by probability is one
+command away from acting on them, which is why the line sits at the repository boundary
+rather than at a configuration flag. See [docs/SAFETY.md](docs/SAFETY.md).
 
 ## Public data only
 
-Blackstart runs entirely on data that anyone can download without an NDA, a license
-negotiation, or a utility relationship. This is a deliberate constraint: it means the
-results are reproducible by people who do not work at a utility.
+Every dataset is downloadable without an NDA, a licence negotiation or a utility
+relationship. Every ingest records the source URL, retrieval timestamp, content hash and
+parser version.
 
 | Source | Provides |
 |---|---|
-| [Texas A&M ACTIVSg synthetic grids](https://electricgrids.engr.tamu.edu) | Realistic synthetic networks (2000-bus Texas, 200, 500, 10k) free of CEII restriction |
+| [Texas A&M ACTIVSg synthetic grids](https://electricgrids.engr.tamu.edu) | Realistic synthetic networks free of CEII restriction |
 | IEEE standard test cases (14/30/57/118/300) | Solver validation |
 | NOAA HRRR, NBM, NDFD, GFS, GEFS, HREF | Numerical weather prediction (GRIB2) |
 | NOAA MRMS | Radar-derived precipitation and hail |
@@ -85,65 +154,45 @@ results are reproducible by people who do not work at a utility.
 | [ORNL EAGLE-I](https://eagle-i.doe.gov) | County-level historical outage counts |
 | [DOE OE-417](https://doe417.pnnl.gov) | Major electric disturbance reports |
 | EIA-860 / 861 / 930 | Generator inventory, reliability metrics, hourly BA operations |
-| NERC TADS / DADS | Transmission and distribution outage statistics, aggregate reports only |
+| NERC TADS / DADS | Transmission and distribution outage statistics, aggregate only |
 | [EIA U.S. Energy Atlas](https://atlas.eia.gov) | Transmission line geospatial layer, 69–765 kV |
-| [PNNL-33587](https://www.pnnl.gov/main/publications/external/technical_reports/PNNL-33587.pdf) and the open-access fragility literature it catalogues | Published wind and ice fragility functions per structure class |
-| [OpenStreetMap power layer](https://overpass-api.de) | Per-structure geometry — the only public source of structure positions (ODbL 1.0, share-alike) |
+| [PNNL-33587](https://www.pnnl.gov/main/publications/external/technical_reports/PNNL-33587.pdf) | Fragility functions resource report, and the literature it catalogues |
+| [OpenStreetMap power layer](https://overpass-api.de) | Per-structure geometry (ODbL 1.0, share-alike) |
 | USGS 3DEP | Terrain elevation |
-| NLCD / LANDFIRE | Land cover and vegetation fuel |
+| NLCD / LANDFIRE | Land cover |
 | ENTSO-E CGMES conformity models | CIM/CGMES parser test data |
 | Public IEC 61850 sample SCD/ICD files | SCL parser test data |
 
-Every ingest records the source URL, retrieval timestamp, content hash, and the version
-of the parser that read it.
+### Security and CEII
 
-## Security and responsible disclosure
+**Analysis results are published only for synthetic test systems, never for real named
+utilities.** The ACTIVSg cases exist so this work can be done in the open without touching
+Critical Energy/Electric Infrastructure Information. They are statistically and
+geographically realistic and correspond to no real network. Contributions containing
+results for a real, named utility will not be accepted.
 
-**Vulnerability analysis results are published only for synthetic test systems, never for
-real named utilities.**
-
-The Texas A&M ACTIVSg cases exist precisely so that this research can be done in the open
-without touching Critical Energy/Electric Infrastructure Information. They are
-statistically and geographically realistic but correspond to no real utility's network.
-All published cascade results, ranked contingency lists, and blast-radius figures in this
-repository use them.
-
-If you identify a security issue in the software, see [SECURITY.md](SECURITY.md).
+For software vulnerabilities, see [SECURITY.md](SECURITY.md).
 
 ## Open-core boundary
 
-Stated plainly so there is no ambiguity about what this repository is.
+**Open, Apache-2.0, here:** the simulation engine; all parsers and importers; all data
+connectors; the grid domain model including the bitemporal and provenance machinery; the
+benchmark suite and numerical validation record; the reference web client.
 
-**Open, Apache-2.0, in this repository:**
+**Open, separately licensed:** OSM-derived route and structure geometry ships as a
+standalone **ODbL 1.0** artifact. The connector is Apache-2.0 code here; the geometry it
+produces is a derived database and inherits share-alike terms.
 
-- The simulation engine — power flow, contingency analysis, cascade propagation
-- All parsers and importers — IEC 61850 SCL, CIM/CGMES, MATPOWER, PSS/E, GRIB2
-- All data connectors for the public sources listed above
-- The grid domain model, including the bitemporal and provenance machinery
-- The benchmark suite and the numerical validation record
-- The reference web client
+**Not open:** trained model weights; the hosted service; operator workflow and
+incident-management surface; customer-specific integrations.
 
-**Open, separately licensed:**
-
-- OSM-derived route and structure geometry, as a standalone **ODbL 1.0** artifact. The
-  connector that fetches it is Apache-2.0 code in this repository; the geometry it
-  produces is a derived database and inherits OpenStreetMap's share-alike terms, so it
-  ships on its own rather than inside the Apache-2.0 release.
-
-**Not open:**
-
-- Trained model weights
-- The hosted service
-- Operator workflow and incident-management product surface
-- Customer-specific integrations
-
-The boundary is drawn so that everything needed to reproduce and check a published result
-is open, and everything that is an operational product is not.
+The line is drawn so everything needed to reproduce and check a published result is open,
+and everything that is an operational product is not.
 
 ## Architecture
 
-Go for the platform, Rust for the numerical solver, TypeScript and React for the client.
-The platform is a graph of self-contained extensions resolved at startup through a
+Go for the platform, Rust for the numerical core, TypeScript and React for the client. The
+platform is a graph of self-contained extensions resolved at startup through a
 dependency-injection container, built on the [Forge](https://github.com/xraph/forge)
 composition model with [Grove](https://github.com/xraph/grove) for storage and
 [Fabriq](https://github.com/xraph/fabriq) as the data fabric.
@@ -153,48 +202,33 @@ blackstart/
 ├── cmd/          # blackstart (host), bsctl (CLI)
 ├── pkg/          # shared primitives: quantities, bitemporality, identifiers
 ├── extensions/   # the unit of work — one directory per extension
-├── rust/         # Cargo workspace: the numerical solver
+├── rust/         # Cargo workspace: the numerical core
 ├── web/          # pnpm workspace: the 3D client
 ├── proto/        # gRPC contract between Go and Rust
 └── data/         # public test cases, golden files, sample files
 ```
 
-Electrical quantities are typed values carrying magnitude, unit, and per-unit-versus-SI
-reference base — never bare floats. Mixing per-unit and physical units is the classic
-power-systems bug class, and the type system is arranged to make it hard.
+Electrical quantities are typed values carrying magnitude, unit, and per-unit versus SI
+reference base, never bare floats. Mixing the two is the classic power-systems bug class,
+and the type system is arranged to make it hard.
+
+Decisions are recorded in [`docs/adr`](docs/adr). Extension guides:
+[`weather`](docs/extensions/weather.md), [`hazard`](docs/extensions/hazard.md).
 
 ## Status
-
-Phase 3 of nine, complete. Phase 4 next.
-
-What works today, end to end against a live stack: a synthetic Texas network imported
-from MATPOWER and routed over real geography; AC and DC power flow and N-1 contingency
-analysis in the Rust solver, checked against committed pandapower reference solutions;
-NOAA HRRR retrieval by byte-range against the GRIB2 index sidecars, decoded by a
-first-party decoder verified against ecCodes, and sampled onto individual conductor
-spans; and per-span wind loading, ice accretion and IEEE 738 dynamic line ratings
-derived from those samples. Every number traces back through a provenance run to the
-model version, the code commit, and the dataset versions it was computed from.
-
-What does not exist yet: outage-history ingest, the risk model, and the backtest
-harness. Cascade simulation and playback exist; the operator console renders a hazard
-layer — ampacity and mechanical loading over the network, with quantized severity
-coloring — covering 216 rated spans as of 2026-08-05.
 
 | Phase | Scope | State |
 |---|---|---|
 | 0 | Foundation — host, DI, migrations, provenance, audit, CI | **complete** |
 | 1 | Network model — topology, geospatial routing, importers, viewer | **complete** |
-| 2 | Solver — Rust AC/DC power flow, N-1, checked against pandapower reference solutions | **complete** |
+| 2 | Solver — Rust AC/DC power flow, N-1, checked against pandapower | **complete** |
 | 2.5 | IEC 61850 SCL parser | **complete** |
-| 3 | Weather and hazard — HRRR ingest, GRIB2 decoding, per-span wind, ice and IEEE 738 ratings | **complete** |
+| 3 | Weather and hazard — HRRR ingest, GRIB2 decoding, per-span ratings | **complete** |
 | 4 | Cascade — propagation, scenario orchestration, blast-radius geometry | in progress |
-| 5–8 | Grid protocols, prediction, full visual system | not started |
+| 5–8 | Grid protocols, prediction, full visual system | fragility landed 8 Aug 2026; rest not started |
 
-Nothing here is ready to be relied upon. There are no releases yet.
-
-Extension guides, as they land: [`weather`](docs/extensions/weather.md),
-[`hazard`](docs/extensions/hazard.md).
+The operator console renders a hazard layer over the network with quantized severity
+colouring, covering 216 rated spans.
 
 ## Building
 
@@ -207,10 +241,10 @@ make dev-up     # start Postgres+PostGIS, Redis, FalkorDB
 make lint test  # what CI runs
 ```
 
-Three services are required rather than optional, because every entity write goes
-through the data fabric: Postgres is the source of truth, Redis drains the transactional
-outbox, and FalkorDB holds the graph projection. Host ports are deliberately non-default
-so the stack does not collide with a Postgres or Redis you already have running.
+Three services are required rather than optional, because every entity write goes through
+the data fabric: Postgres is the source of truth, Redis drains the transactional outbox,
+and FalkorDB holds the graph projection. Host ports are deliberately non-default so the
+stack does not collide with a Postgres or Redis already running.
 
 ```bash
 export BLACKSTART_DATABASE_DSN='postgres://blackstart:blackstart@localhost:55432/blackstart?sslmode=disable'
@@ -227,10 +261,8 @@ make test-integration            # containerized, needs Docker
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The commit history is treated as an artifact of
-this project: small, semantically-scoped commits in
-[Conventional Commits](https://www.conventionalcommits.org/) form, never squashed, never
-rewritten.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Small, semantically scoped commits in
+[Conventional Commits](https://www.conventionalcommits.org/) form, never squashed.
 
 ## License
 
