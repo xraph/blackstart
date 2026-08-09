@@ -227,9 +227,7 @@ func TestMigrationsRunBothWays(t *testing.T) {
 
 	testsupport.Migrate(t, dsn, dsfabriq.Group())
 
-	if err := testsupport.Rollback(t, dsn, dsfabriq.Group()); err != nil {
-		t.Fatalf("rolling back: %v", err)
-	}
+	testsupport.RollbackAll(t, dsn, dsfabriq.Group())
 
 	testsupport.Migrate(t, dsn, dsfabriq.Group())
 }

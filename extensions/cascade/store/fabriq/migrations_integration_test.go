@@ -12,25 +12,6 @@ import (
 	"github.com/xraph/blackstart/internal/testsupport"
 )
 
-// rollBackFully unwinds every migration this group carries.
-//
-// Grove rolls back one migration per call rather than a whole batch, so a group
-// with more than one needs that many calls to unwind. Discovering that by
-// watching a table survive a rollback is how it first got written down — as a
-// constant, which then went stale the moment a third migration landed without
-// anyone bumping it, and this test failed for a reason that had nothing to do
-// with either migration's correctness. Asking the group how many it has cannot
-// go stale.
-func rollBackFully(t *testing.T, dsn string) {
-	t.Helper()
-
-	for step := range len(cscfabriq.Group().Migrations()) {
-		if err := testsupport.Rollback(t, dsn, cscfabriq.Group()); err != nil {
-			t.Fatalf("rolling back step %d: %v", step+1, err)
-		}
-	}
-}
-
 // Spec section 10 requires migrations to run forward and backward cleanly.
 func TestMigrationsRunBothWays(t *testing.T) {
 	superDSN := testsupport.Postgres(t)
@@ -41,7 +22,7 @@ func TestMigrationsRunBothWays(t *testing.T) {
 		t.Fatal("migrating created no cascade tables")
 	}
 
-	rollBackFully(t, superDSN)
+	testsupport.RollbackAll(t, superDSN, cscfabriq.Group())
 
 	if got := cascadeTableCount(t, superDSN); got != 0 {
 		t.Errorf("%d cascade tables survived the rollback", got)
@@ -55,7 +36,7 @@ func TestMigrationsReapplyAfterRollback(t *testing.T) {
 
 	testsupport.Migrate(t, superDSN, cscfabriq.Group())
 
-	rollBackFully(t, superDSN)
+	testsupport.RollbackAll(t, superDSN, cscfabriq.Group())
 
 	testsupport.Migrate(t, superDSN, cscfabriq.Group())
 

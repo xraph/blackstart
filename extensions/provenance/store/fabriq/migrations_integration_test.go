@@ -32,9 +32,7 @@ func TestMigrationsRunBothWays(t *testing.T) {
 
 	testsupport.Migrate(t, dsn, pvfabriq.Group())
 
-	if err := testsupport.Rollback(t, dsn, pvfabriq.Group()); err != nil {
-		t.Fatalf("rolling back: %v", err)
-	}
+	testsupport.RollbackAll(t, dsn, pvfabriq.Group())
 
 	testsupport.Migrate(t, dsn, pvfabriq.Group())
 }

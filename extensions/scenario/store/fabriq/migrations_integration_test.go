@@ -12,12 +12,6 @@ import (
 	"github.com/xraph/blackstart/internal/testsupport"
 )
 
-// registered is how many migrations this group carries.
-//
-// Grove rolls back one migration per call rather than a whole batch, so a
-// group with more than one needs that many calls to unwind.
-const registered = 3
-
 // Spec section 10 requires migrations to run forward and backward cleanly.
 func TestMigrationsRunBothWays(t *testing.T) {
 	superDSN := testsupport.Postgres(t)
@@ -28,20 +22,10 @@ func TestMigrationsRunBothWays(t *testing.T) {
 		t.Fatal("migrating created no scenario tables")
 	}
 
-	rollBackFully(t, superDSN)
+	testsupport.RollbackAll(t, superDSN, scnfabriq.Group())
 
 	if got := scenarioTableCount(t, superDSN); got != 0 {
 		t.Errorf("%d scenario tables survived the rollback", got)
-	}
-}
-
-func rollBackFully(t *testing.T, dsn string) {
-	t.Helper()
-
-	for step := range registered {
-		if err := testsupport.Rollback(t, dsn, scnfabriq.Group()); err != nil {
-			t.Fatalf("rolling back step %d: %v", step+1, err)
-		}
 	}
 }
 
@@ -52,7 +36,7 @@ func TestMigrationsReapplyAfterRollback(t *testing.T) {
 
 	testsupport.Migrate(t, superDSN, scnfabriq.Group())
 
-	rollBackFully(t, superDSN)
+	testsupport.RollbackAll(t, superDSN, scnfabriq.Group())
 
 	testsupport.Migrate(t, superDSN, scnfabriq.Group())
 

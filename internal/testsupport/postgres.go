@@ -164,6 +164,40 @@ func Rollback(t testing.TB, dsn string, groups ...*migrate.Group) error {
 	return err
 }
 
+// RollbackAll unwinds every migration the given groups carry, and is what a
+// test asserting "migrations run both ways" wants rather than Rollback.
+//
+// Grove's orchestrator undoes exactly one migration per call — the single most
+// recently applied one across every group handed to it. A group with more than
+// one migration therefore needs that many calls to come back to nothing, and a
+// test that calls Rollback once leaves the earlier steps applied. That reads as
+// a broken down step: tables survive a rollback that reported success, and the
+// migration named in the failure is not the one at fault.
+//
+// The count is asked of the groups rather than written down beside them. Every
+// version of this loop that recorded its own count went stale the moment a
+// migration was registered without anyone bumping it, which is how the same
+// failure arrived twice from two different extensions.
+//
+// Deriving it is also what keeps the loop from running long. Rollback carries
+// Fabriq's group alongside the caller's, so a call past the caller's own
+// migrations would begin unwinding the outbox and projection-state tables the
+// rest of the schema is built on.
+func RollbackAll(t testing.TB, dsn string, groups ...*migrate.Group) {
+	t.Helper()
+
+	steps := 0
+	for _, group := range groups {
+		steps += len(group.Migrations())
+	}
+
+	for step := range steps {
+		if err := Rollback(t, dsn, groups...); err != nil {
+			t.Fatalf("testsupport: rolling back (step %d of %d): %v", step+1, steps, err)
+		}
+	}
+}
+
 // Graph starts a FalkorDB container and returns its address.
 //
 // Separate from Postgres because most integration tests do not need it and a

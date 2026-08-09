@@ -25,9 +25,7 @@ func TestMigrationsRunBothWays(t *testing.T) {
 		t.Fatal("migrating created no hazard tables")
 	}
 
-	if err := testsupport.Rollback(t, superDSN, hzfabriq.Group()); err != nil {
-		t.Fatalf("rolling back: %v", err)
-	}
+	testsupport.RollbackAll(t, superDSN, hzfabriq.Group())
 
 	if got := hazardTableCount(t, superDSN); got != 0 {
 		t.Errorf("%d hazard tables survived the rollback", got)
@@ -41,8 +39,14 @@ func TestMigrationsReapplyAfterRollback(t *testing.T) {
 
 	testsupport.Migrate(t, superDSN, hzfabriq.Group())
 
-	if err := testsupport.Rollback(t, superDSN, hzfabriq.Group()); err != nil {
-		t.Fatalf("rolling back: %v", err)
+	testsupport.RollbackAll(t, superDSN, hzfabriq.Group())
+
+	// Asserted before the second migrate, because Migrate only runs *pending*
+	// migrations: a half-unwound group would skip re-applying the steps still
+	// on record and the final count would look identical to a full round trip.
+	if got := hazardTableCount(t, superDSN); got != 0 {
+		t.Fatalf("%d hazard tables still present after the rollback, before the "+
+			"second migrate — the rollback was only partial", got)
 	}
 
 	testsupport.Migrate(t, superDSN, hzfabriq.Group())

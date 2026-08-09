@@ -26,9 +26,7 @@ func TestMigrationsRunBothWays(t *testing.T) {
 		t.Fatal("migrating created no weather tables")
 	}
 
-	if err := testsupport.Rollback(t, superDSN, dsfabriq.Group(), wxfabriq.Group()); err != nil {
-		t.Fatalf("rolling back: %v", err)
-	}
+	testsupport.RollbackAll(t, superDSN, dsfabriq.Group(), wxfabriq.Group())
 
 	if got := weatherTableCount(t, superDSN); got != 0 {
 		t.Errorf("%d weather tables survived the rollback", got)
@@ -42,9 +40,7 @@ func TestMigrationsReapplyAfterRollback(t *testing.T) {
 
 	testsupport.Migrate(t, superDSN, dsfabriq.Group(), wxfabriq.Group())
 
-	if err := testsupport.Rollback(t, superDSN, dsfabriq.Group(), wxfabriq.Group()); err != nil {
-		t.Fatalf("rolling back: %v", err)
-	}
+	testsupport.RollbackAll(t, superDSN, dsfabriq.Group(), wxfabriq.Group())
 
 	testsupport.Migrate(t, superDSN, dsfabriq.Group(), wxfabriq.Group())
 
