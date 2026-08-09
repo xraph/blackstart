@@ -110,7 +110,9 @@ type CombinedLoad struct {
 }
 
 // Ice computes the ice a freezing-rain event leaves on a conductor, after
-// Jones (1996).
+// Jones (1998), "A simple model for freezing rain ice loads", Atmospheric
+// Research 46, 87-97. The 1996 CRREL report of the same author is a different
+// document; this is the journal model.
 //
 // The collected mass is the flux onto the conductor's projected width. Rain
 // falls onto the top, and wind drives droplets onto the side; the two fluxes

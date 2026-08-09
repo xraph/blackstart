@@ -15,7 +15,7 @@ fetched from.
 | Quantity | Unit | Model |
 |---|---|---|
 | `wind_load` | N/m | drag on a cylinder, `C_d = 1.0` |
-| `ice_thickness` | m | Jones (1996) equivalent radial glaze |
+| `ice_thickness` | m | Jones (1998) equivalent radial glaze |
 | `ice_load` | kg/m | the same sleeve, as mass |
 | `combined_load` | N/m | drag and ice weight as a vector |
 | `ampacity` | A | IEEE Std 738 steady-state heat balance |
