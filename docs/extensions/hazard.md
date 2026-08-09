@@ -215,3 +215,54 @@ and is what a real wind against an assumed 0.61 m/s produces.
 - `AssumeByVoltage`'s thresholds want review by a transmission engineer.
 - The solar term assumes the sun is square to the conductor. Resolving it
   against a bearing needs a rating that is per span rather than per branch.
+
+## Forecast vintage changes the rating
+
+Measured 9 August 2026, on 216 rated spans over HRRR cycles from 3 to 8
+August. For each span and valid time the rating is computed twice: once from
+the forecast issued some hours earlier, and once from the analysis issued at
+that valid time. Same span, same conductor, same model, same code. Only the
+weather vintage differs.
+
+| Lead | Span-hours | Mean | Median | p95 | Max | >5% | >100 A |
+|---|---|---|---|---|---|---|---|
+| 1 h | 9,993 | 62.3 A | 49.7 A | 170.2 A | 500.6 A | 45.4% | 19.5% |
+| 2 h | 9,129 | 87.6 A | 62.0 A | 266.5 A | 748.1 A | 54.2% | 27.1% |
+| 3 h | 8,265 | 80.0 A | 68.2 A | 205.1 A | 572.2 A | 57.0% | 29.0% |
+| 6 h | 6,774 | 87.7 A | 71.4 A | 212.7 A | 505.2 A | 55.7% | 38.1% |
+| 12 h | 3,276 | 120.7 A | 102.2 A | 295.8 A | 572.1 A | 69.2% | 50.8% |
+| 18 h | 1,632 | 97.1 A | 88.9 A | 237.6 A | 427.7 A | 60.9% | 43.0% |
+
+Mean rating over the period is 1,181 A, so the twelve-hour row is half of all
+span-hours moving by roughly a tenth of the rating. Most assignments in this
+run are `assumed_by_voltage`, which conditions the absolute ratings on a
+guess. It does not condition the difference: both runs read the same assumed
+conductor, so the assumption cancels.
+
+This is divergence rather than error. The analysis is a model product, not a
+measurement, and this period contains no icing at all, so it exercises the
+wind and thermal paths only.
+
+Reproduce it against a database that has hazard values for overlapping
+issuances:
+
+```sql
+WITH v AS (
+  SELECT split_part(tag_id,'|',1) AS span,
+         to_timestamp(substr(split_part(tag_id,'|',3),1,8)
+                      ||substr(split_part(tag_id,'|',3),10,4),
+                      'YYYYMMDDHH24MI') AS issued,
+         time AS valid, value
+  FROM blackstart_hazard_span_value
+  WHERE split_part(tag_id,'|',2) = 'ampacity'
+)
+SELECT (EXTRACT(EPOCH FROM (f.valid-f.issued))/3600)::int AS lead_h,
+       count(*), avg(abs(f.value-a.value)), max(abs(f.value-a.value))
+FROM v f JOIN v a
+  ON a.span = f.span AND a.valid = f.valid AND a.issued = a.valid
+WHERE f.issued < f.valid
+GROUP BY 1 ORDER BY 1;
+```
+
+The join condition `a.issued = a.valid` is what picks the analysis: a run
+whose issuance and valid time coincide is the zero-hour field.
