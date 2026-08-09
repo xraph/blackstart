@@ -8,11 +8,11 @@ weather does to it.**
 [![Rust](https://img.shields.io/badge/rust-see%20toolchain-DEA584.svg)](rust/rust-toolchain.toml)
 [![Status](https://img.shields.io/badge/status-early%20development-orange.svg)](#status)
 
-> **Early development.** Phases 0 through 3 of nine are complete, phase 4 is in progress,
-> and the first piece of the prediction layer landed on 8 August 2026. The network model,
-> the Rust solver, the weather-to-line-rating path and the fragility layer run end to end.
-> There is no backtest and no calibrated model, so the system makes no accuracy claim of
-> any kind. Nothing here is ready to be relied upon and there are no releases.
+> **Early development.** The network model, the Rust solver, the weather-to-line-rating
+> path and the fragility layer run end to end. Cascade simulation is being built. There is
+> no backtest and no calibrated model, so the system makes no accuracy claim of any kind.
+> Nothing here is ready to be relied upon and there are no releases. See the
+> [roadmap](ROADMAP.md) for what is built and what comes next.
 
 Blackstart ingests public numerical weather prediction, derives the engineering
 quantities that break equipment, and attaches them to a versioned, geographically routed
@@ -31,7 +31,7 @@ against a record corrected a week later.
 [What is built](#what-is-built) · [Positioning](#positioning) · [Validation](#validation) ·
 [Advisory only](#advisory-only) · [Public data only](#public-data-only) ·
 [Open-core boundary](#open-core-boundary) · [Architecture](#architecture) ·
-[Status](#status) · [Building](#building)
+[Status](#status) · [Roadmap](ROADMAP.md) · [Building](#building)
 
 ---
 
@@ -127,9 +127,9 @@ skill of one. Method and query: [`docs/extensions/hazard.md`](docs/extensions/ha
 
 No code in this repository writes to a SCADA, EMS, ADMS, RTU, relay or any other field
 device, and no endpoint accepts an instruction destined for one. There is no protocol
-client here at all: no MMS, GOOSE, DNP3 or IEC 60870-5-104. Phase 5 has not started. What
-exists is the IEC 61850 SCL parser, which reads substation configuration files and
-originates nothing.
+client here at all: no MMS, GOOSE, DNP3 or IEC 60870-5-104; they are further down the
+[roadmap](ROADMAP.md) and read-only when they arrive. What exists is the IEC 61850 SCL
+parser, which reads substation configuration files and originates nothing.
 
 The read-only rule therefore binds adapters when they are written. A lint in the required
 CI check already covers the packages they will live in, and rejects identifiers matching
@@ -217,15 +217,19 @@ Decisions are recorded in [`docs/adr`](docs/adr). Extension guides:
 
 ## Status
 
-| Phase | Scope | State |
-|---|---|---|
-| 0 | Foundation — host, DI, migrations, provenance, audit, CI | **complete** |
-| 1 | Network model — topology, geospatial routing, importers, viewer | **complete** |
-| 2 | Solver — Rust AC/DC power flow, N-1, checked against pandapower | **complete** |
-| 2.5 | IEC 61850 SCL parser | **complete** |
-| 3 | Weather and hazard — HRRR ingest, GRIB2 decoding, per-span ratings | **complete** |
-| 4 | Cascade — propagation, scenario orchestration, blast-radius geometry | in progress |
-| 5–8 | Grid protocols, prediction, full visual system | fragility landed 8 Aug 2026; rest not started |
+| Area | State |
+|---|---|
+| Foundation — host, DI, migrations, provenance, audit, CI | **delivered** |
+| Network model — topology, geospatial routing, importers, viewer | **delivered** |
+| Numerical core — Rust AC/DC power flow and N-1, checked against pandapower | **delivered** |
+| IEC 61850 SCL parser | **delivered** |
+| Weather and hazard — HRRR ingest, GRIB2 decoding, per-span ratings | **delivered** |
+| Fragility — per-component failure probability from published curves | **delivered**, 8 Aug 2026 |
+| Cascade — propagation, scenario orchestration, blast-radius geometry | in progress |
+| Outage history, calibration, backtest, risk-ordered contingency selection | not started |
+| Grid protocol clients, full visual system | not started |
+
+The [roadmap](ROADMAP.md) gives the ordering and the reasoning behind it.
 
 The operator console renders a hazard layer over the network with quantized severity
 colouring, covering 216 rated spans.
