@@ -34,6 +34,7 @@ This is Phase 0 work, not a later addition. Specifically:
 - Every simulation run records the scenario manifest, network model version,
   solver version, seed, and a hash of the result.
 - `bsctl replay <run-id>` reproduces any run from its manifest alone.
+  **Not built.** The manifest is recorded; nothing yet reads one back.
 - No result reaches the client without a provenance reference.
 
 Bitemporality is the mechanism that makes the first problem impossible rather

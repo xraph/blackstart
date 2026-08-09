@@ -27,8 +27,17 @@ vectorisation. That is a large permanent cost for a property nobody needs.
 Two different promises, stated separately because conflating them is how this
 goes wrong:
 
-**Same machine, same build: bit-identical.** Tested by running a case 100 times
-under a shuffled thread pool and asserting identical result hashes.
+**Same machine, same build: bit-identical.** Tested today by solving the same
+case twice in one process and asserting a byte-identical event sequence, load
+loss and outcome (`the_event_sequence_is_reproducible`, `bs-cascade`). That
+catches a `HashMap` on a numeric path and a collection-order tie-break, which
+is what it is for.
+
+It does not catch a cross-process difference, because a repeated run in one
+process shares the hasher seed and the thread pool. The stronger test, many
+runs under a shuffled pool comparing result hashes, is **not written yet**, and
+until it is, the bit-identical promise is enforced by the rules below rather
+than demonstrated end to end.
 
 **Across machines: agreement within documented tolerances.** Golden-file
 comparison uses per-quantity tolerances chosen by measurement, committed

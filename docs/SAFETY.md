@@ -12,11 +12,15 @@ Concretely, and enforced rather than promised:
 
 1. **No write path to operational systems.** No code in this repository writes to a
    SCADA, EMS, ADMS, RTU, relay, or any other field device.
-2. **Protocol adapters are read-only clients.** The IEC 61850 (MMS and GOOSE), DNP3,
-   and IEC 60870-5-104 adapters implement reads, polls, and subscriptions only. They
-   expose no method that writes a control point, issues a select-before-operate, sets
-   a tap position, or changes a setpoint. Blackstart's IEC 61850 support parses
-   configuration and subscribes to reports; it does not originate control blocks.
+2. **Protocol adapters, when they exist, are read-only clients.** No protocol
+   client is implemented today: there is no MMS, GOOSE, DNP3 or IEC 60870-5-104
+   client in this repository, and phase 5 has not started. What exists is the IEC
+   61850 SCL parser, which reads substation *configuration files* and originates
+   nothing. This clause is therefore a constraint on adapters not yet written,
+   binding when they are: reads, polls and subscriptions only, with no method that
+   writes a control point, issues a select-before-operate, sets a tap position or
+   changes a setpoint. The lint in the enforcement section already covers the
+   packages they will live in.
 3. **No control API.** No REST, gRPC, CLI, or streaming endpoint accepts an
    instruction destined for a physical device.
 4. **No forward-looking placeholders.** There is no `TODO`, stub, feature flag, or
@@ -38,8 +42,10 @@ disabled.
 
 ## How it is enforced
 
-- A lint rule rejects identifiers matching `(?i)(write|send|issue|execute)(Control|Command|Setpoint|Breaker)`
-  in protocol and adapter packages. It runs in the required CI check.
+- A lint rule rejects identifiers matching
+  `(Write|Send|Issue|Execute|Operate|Set)(Control|Command|Setpoint|Breaker|Point|Output|Tap)`
+  in protocol and adapter packages. It runs in the required CI check, over 510
+  files as of this writing.
 - Protocol client interfaces are defined with read methods only; adding a write method
   is a visible interface change, not an implementation detail.
 - Architecture decision record `docs/adr/0004-advisory-only.md` records the decision
