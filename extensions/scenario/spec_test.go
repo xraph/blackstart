@@ -178,6 +178,9 @@ func TestEveryComponentThisExtensionPublishesIsItsOwn(t *testing.T) {
 		"ScenarioRun":          {"scenario_id", "manifest", "status", "queued_at"},
 		"scenariosResponse":    {"scenarios"},
 		"scenarioRunsResponse": {"runs"},
+		// Forge 1.13 publishes a request body as its own component, named
+		// after the request type.
+		"defineScenarioRequestBody": {"id", "name", "manifest"},
 	}
 
 	for component, fields := range mine {
@@ -215,6 +218,7 @@ func TestNoScenarioPathReferencesAnUnaccountedComponent(t *testing.T) {
 	accounted := map[string]bool{
 		"Manifest": true, "Failure": true, "Scenario": true, "ScenarioRun": true,
 		"scenariosResponse": true, "scenarioRunsResponse": true,
+		"defineScenarioRequestBody": true,
 	}
 
 	paths, ok := document["paths"].(map[string]any)

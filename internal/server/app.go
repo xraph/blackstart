@@ -344,11 +344,8 @@ func Build(cfg Config, contributors ...entities.Contributor) (forge.App, error) 
 	// discovery machinery would poll for peers that do not exist. It becomes a
 	// contributor by configuration if that ever changes.
 	extensions = append(extensions, dashboardExt.NewExtension(
-		dashboardExt.WithTitle(cfg.Name+" — operations"),
 		dashboardExt.WithBasePath("/_forge/dashboard"),
 		dashboardExt.WithDiscovery(false),
-		dashboardExt.WithRealtime(true),
-		dashboardExt.WithSearch(true),
 		dashboardExt.WithRefreshInterval(10*time.Second),
 	))
 
